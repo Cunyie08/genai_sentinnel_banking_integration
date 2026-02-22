@@ -1,5 +1,26 @@
+# Environment variables
 .env
-.venv
-a_venv
-app\logs\reasoning.log
-system_architecture_banking_.pdf
+
+
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+venv/
+.venv/
+
+# Node
+node_modules/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+test.sql
+info.md
+schema.pgerd
+create_schema.py
