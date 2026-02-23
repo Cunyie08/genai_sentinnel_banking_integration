@@ -4,6 +4,18 @@
 
 ---
 
+## 📅 Timeline
+
+| Day       | Date                | Goal                                                                                 |
+| --------- | ------------------- | ------------------------------------------------------------------------------------ |
+| **Day 1** | Sunday, 23 Feb 2026 | Environment setup, clone repo, set up `.env`, create feature branch, start endpoints |
+| **Day 2** | Monday, 24 Feb 2026 | Complete all endpoints, push branch, open PR into `backend`                          |
+
+> [!IMPORTANT]
+> All PRs must be open and ready for review by end of **Day 2 (24 Feb)**.
+
+---
+
 ## What Is This Project?
 
 **Sentinel Bank** is an AI-powered banking backend. It combines a standard banking API (accounts, transactions, complaints) with three AI agents:

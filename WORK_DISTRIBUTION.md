@@ -12,7 +12,17 @@
 
 ---
 
-## Pre-requisites (Everyone Must Do First)
+## 📅 Timeline
+
+| Day       | Date                | Goal                                                                  |
+| --------- | ------------------- | --------------------------------------------------------------------- |
+| **Day 1** | Sunday, 23 Feb 2026 | Environment setup, branch creation, start building assigned endpoints |
+| **Day 2** | Monday, 24 Feb 2026 | Complete all endpoints, open PRs into `backend`, final integration    |
+
+> [!IMPORTANT]
+> All PRs must be open and ready for review by end of **Day 2 (24 Feb)**.
+
+---
 
 > [!IMPORTANT]
 > Read the `ONBOARDING.md` file first if you are new to the project.
