@@ -8,17 +8,18 @@ This project uses a **PostgreSQL** database hosted on [Aiven](https://aiven.io).
 
 The database contains **5 tables**:
 
-| Table          | Primary Key              | Description                                              |
-| -------------- | ------------------------ | -------------------------------------------------------- |
-| `customers`    | `customer_id` (UUID)     | Customer profiles — name, BVN, NIN, contact info, branch |
-| `accounts`     | `account_id` (UUID)      | Bank accounts linked to customers                        |
-| `transactions` | `transaction_id` (UUID)  | Transaction records with fraud scoring & merchant info   |
-| `complaints`   | `complaint_id` (VARCHAR) | Customer complaints with SLA tracking & sentiment        |
-| `users`        | `id` (SERIAL)            | App authentication — username, email, hashed password    |
+| Table          | Primary Key                | Description                                                       |
+| -------------- | -------------------------- | ----------------------------------------------------------------- |
+| `customers`    | `customer_id` (VARCHAR)    | Customer profiles — name, BVN, NIN, contact info, branch          |
+| `users`        | `user_id` (VARCHAR)        | App authentication — linked to a customer, with role-based access |
+| `accounts`     | `account_id` (VARCHAR)     | Bank accounts linked to customers                                 |
+| `transactions` | `transaction_id` (VARCHAR) | Transaction records with fraud scoring & merchant info            |
+| `complaints`   | `complaint_id` (VARCHAR)   | Customer complaints with SLA tracking & sentiment                 |
 
 ### Relationships
 
 ```
+customers (1) ──→ (N) users
 customers (1) ──→ (N) accounts
 customers (1) ──→ (N) complaints
 accounts  (1) ──→ (N) transactions
@@ -54,6 +55,8 @@ pip install psycopg2-binary python-dotenv
 python database/create_schema.py
 ```
 
+> ⚠️ The script **drops and recreates all tables** — do not run on a populated database unless you intend to reset it.
+
 ### Testing Your Connection
 
 You can test the connection using `psql`:
@@ -61,3 +64,5 @@ You can test the connection using `psql`:
 ```bash
 psql "postgresql://avnadmin:<password>@<host>:<port>/defaultdb?sslmode=require"
 ```
+
+> ⚠️ **Never commit your `.env` or `info.md` to git!**
