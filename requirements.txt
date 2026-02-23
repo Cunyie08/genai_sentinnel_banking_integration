@@ -8,3 +8,4 @@ chromadb
 sentence_transformers
 torch
 pandas
+asyncpg

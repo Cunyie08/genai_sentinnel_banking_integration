@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 
 # Define the contract for the router's output schema 
 class RouterOutput(BaseModel):
-    intent: Literal[    # To prevent the LLM from inventing/hallucinating.
+    intent: Literal[   
         "Bank_Policy_Enquiry",
         "Security_Alert",
         "Financial_Growth_Advisory",

@@ -296,6 +296,9 @@ def fraud_logic(customer):
 # MERCHANT DEFINITIONS
 # ----------------------------------------------------------
 
+txn_count_tracker = defaultdict(int)
+avg_balance_tracker = defaultdict(list)
+
 MERCHANTS = {
     "supermarket": ["Shoprite","SPAR","Justrite","Ebeano","Market Square"],
     "restaurants": ["Chicken Republic","Kilimanjaro","Mr Biggs","Dominos","Cold Stone","Bukka Hut"],
@@ -337,25 +340,62 @@ for _,acc in accounts_df.iterrows():
             monthly_inflow_tracker[acc["customer_id"]] += amount
     
         # Salary detection pattern (recurring large credit)
-        if amount > 200000 and merchant_category == "fintech":
+        if (txn_type == "credit"
+            and merchant_category == "fintech"
+            and amount >= 300000
+            and balance >= 150000
+        ):
             salary_tracker[acc["customer_id"]] += 1
 
-        salary_detected = salary_tracker[acc["customer_id"]] >= 2
+        salary_detected = salary_tracker[acc["customer_id"]] >= 3
 
         # Uber usage tracking
         if merchant_name in ["Uber","Bolt","LagRide"]:
             uber_tracker[acc["customer_id"]] += 1
+        # -----------------------------
+        # CUSTOMER VALUE METRICS
+        # -----------------------------
+        txn_count = txn_count_tracker[acc["customer_id"]]
+        avg_balance = (
+            sum(avg_balance_tracker[acc["customer_id"]]) /
+            max(1, len(avg_balance_tracker[acc["customer_id"]]))
+        )
 
-        car_loan_score = 0
+        # -----------------------------
+        # VALUE GATING (HARD FILTERS)
+        # -----------------------------
+        eligible_for_scoring = (
+            avg_balance >= 300000 and
+            monthly_inflow_tracker[acc["customer_id"]] >= 800000 and
+            txn_count >= 20
+        )
 
-        if uber_tracker[acc["customer_id"]] >= 6:
-            car_loan_score += 0.4
+        car_loan_score = 0.0
+        if eligible_for_scoring:
 
-        if salary_detected:
-            car_loan_score += 0.3
+            # Transport behavior (usage consistency)
+            if uber_tracker[acc["customer_id"]] >= 10:
+                car_loan_score += 0.25
 
-        if monthly_inflow_tracker[acc["customer_id"]] > 500000:
-            car_loan_score += 0.3
+            # Income stability
+            if salary_detected:
+                car_loan_score += 0.35
+
+            # Affordability
+            inflow = monthly_inflow_tracker[acc["customer_id"]]
+
+            if inflow >= 1_500_000:
+                car_loan_score += 0.25
+            elif inflow >= 1_000_000:
+                car_loan_score += 0.15
+
+            # Balance health
+            if avg_balance >= 1_000_000:
+                car_loan_score += 0.15
+
+        # Clamp score
+        car_loan_score = round(min(car_loan_score, 1.0), 2)
+        recommended_product = None
 
         recommended_product = None
 
@@ -392,7 +432,8 @@ for _,acc in accounts_df.iterrows():
                 fraud_trace.append("multiple_failures")
 
         fraud_explainability_trace = ",".join(fraud_trace) if fraud_trace else "normal_pattern"
-
+        txn_count_tracker[acc["customer_id"]] += 1
+        avg_balance_tracker[acc["customer_id"]].append(balance)
 
         transactions.append({
 
@@ -553,12 +594,14 @@ def generate_complaint_text(txn, dept_code, sentiment):
 # ==========================================================
 
 complaints = []
-
 complaint_counter = 1
+account_to_customer = dict(
+    zip(accounts_df["account_id"], accounts_df["customer_id"])
+)
 
 for _, txn in transactions_df.iterrows():
 
-    # 15% normal complaint rate
+    # 15% baseline complaint probability
     complaint_probability = 0.15
 
     # Fraud auto-trigger
@@ -568,59 +611,64 @@ for _, txn in transactions_df.iterrows():
     if random.random() > complaint_probability:
         continue
 
+    # ✅ FIX: Resolve correct customer_id
+    customer_id = account_to_customer.get(txn["account_id"])
+
+    # Safety check (should never fail)
+    if customer_id not in set(customers_df["customer_id"]):
+        continue
+
     dept_code, priority = map_transaction_to_department(txn)
     dept = DEPARTMENTS[dept_code]
 
     # Sentiment logic
-    if priority == "Critical":
-        sentiment = "angry"
-    else:
-        sentiment = random.choices(SENTIMENTS, weights=[0.3,0.4,0.3])[0]
+    sentiment = "angry" if priority == "Critical" else random.choices(
+        SENTIMENTS, weights=[0.3, 0.4, 0.3]
+    )[0]
 
-    # Complaint timestamps
     complaint_time = txn["transaction_timestamp"] + timedelta(
         minutes=random.randint(5, 720)
     )
 
-    # Resolution time simulation
     resolution_hours = random.randint(2, dept["sla_hours"] + 48)
     resolution_time = complaint_time + timedelta(hours=resolution_hours)
 
-    # SLA breach detection
-    sla_breach = 1 if resolution_hours > dept["sla_hours"] else 0
-
-    # Agent assignment simulation
+    sla_breach = int(resolution_hours > dept["sla_hours"])
     assigned_agent = random.choice(dept["agents"])
 
-    # Generate the complaint text
     complaint_text = generate_complaint_text(txn, dept_code, sentiment)
 
     complaints.append({
         "complaint_id": f"CMP-{str(complaint_counter).zfill(6)}",
-        "customer_id": txn["account_id"],   # linked through account
+
+        
+        "customer_id": customer_id,
+
+        "account_id": txn["account_id"],  # keep for traceability
         "linked_transaction_id": txn["transaction_id"],
         "linked_reference": txn["transaction_reference_number"],
+
         "department_code": dept_code,
         "department_name": dept["name"],
         "priority_level": priority,
         "sentiment": sentiment,
         "complaint_channel": random.choice(COMPLAINT_CHANNELS),
         "assigned_agent_id": assigned_agent,
+
         "complaint_timestamp": complaint_time,
         "resolution_timestamp": resolution_time,
         "resolution_time_hours": resolution_hours,
         "sla_hours_limit": dept["sla_hours"],
         "sla_breach_flag": sla_breach,
+
         "complaint_status": random.choice(["open","resolved","escalated"]),
         "fraud_related": int(txn["is_fraud_score"]),
-        "complaint_text": complaint_text,
-        "complaint_narration": f"Customer reported issue regarding transaction {txn['transaction_reference_number']}"
+        "complaint_text": complaint_text
     })
 
     complaint_counter += 1
 
 complaints_df = pd.DataFrame(complaints)
-
 
 
 # ==========================================================
