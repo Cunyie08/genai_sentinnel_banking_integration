@@ -1,0 +1,9 @@
+.env
+app\.env
+.venv
+a_venv
+app\logs\reasoning.log
+system_architecture_banking_.pdf_
+sentinnel_banking_dataset\test.ipynb
+app\rag\chroma_db
+dataset
