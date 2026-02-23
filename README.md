@@ -1,0 +1,115 @@
+# Sentinel Bank — AI-Powered Banking System
+
+A full-stack banking backend powered by FastAPI, PostgreSQL, and AI agents for fraud detection, complaint routing, and financial personalization.
+
+---
+
+## Project Overview
+
+Sentinel Bank combines a standard banking API with three AI agents:
+
+| Agent                | Role                                                                            |
+| -------------------- | ------------------------------------------------------------------------------- |
+| **Sentinel Agent**   | Scores every transaction for fraud risk in real-time                            |
+| **Dispatcher Agent** | Routes complaints to the right department with AI priority & sentiment analysis |
+| **Trajectory Agent** | Analyzes spending patterns and gives personalized financial advice              |
+
+---
+
+## Tech Stack
+
+| Layer         | Technology                         |
+| ------------- | ---------------------------------- |
+| API Framework | FastAPI (Python)                   |
+| Database      | PostgreSQL on Aiven (cloud-hosted) |
+| ORM           | SQLAlchemy (async)                 |
+| AI Agents     | LangChain + LangGraph              |
+| Auth          | JWT (Jose) + bcrypt                |
+| Vector Store  | ChromaDB (RAG pipeline)            |
+
+---
+
+## Project Structure
+
+```
+Sentinnel_bank_project/
+├── Backend/               ← API layer (endpoints, models, auth)
+│   ├── app.py             ← Main FastAPI app
+│   ├── api.py             ← Auth routes
+│   ├── models.py          ← SQLAlchemy DB models
+│   ├── schemas.py         ← Pydantic request/response schemas
+│   ├── database.py        ← Async DB connection
+│   ├── middleware.py      ← JWT token guard
+│   └── auth.py            ← Password hashing & JWT helpers
+│
+├── app/
+│   ├── agents/            ← AI agents (sentinel, dispatcher, trajectory)
+│   ├── prompts/           ← LLM system prompts
+│   └── core/              ← LangGraph orchestrator
+│
+├── database/
+│   ├── create_schema.py   ← Creates all DB tables on Aiven
+│   └── README.md          ← Database setup guide
+│
+├── WORK_DISTRIBUTION.md   ← Team task assignments
+├── ONBOARDING.md          ← Setup guide for new teammates
+├── .env.example           ← Environment variable template
+└── requirements.txt       ← Python dependencies
+```
+
+---
+
+## Getting Started
+
+### 1. Clone and set up environment
+
+```bash
+git clone https://github.com/Cunyie08/genai_sentinel_banking_integration.git
+cd genai_sentinel_banking_integration
+
+python -m venv .venv
+.venv\Scripts\activate        # Windows
+source .venv/bin/activate     # Mac/Linux
+
+pip install -r requirements.txt
+```
+
+### 2. Configure environment variables
+
+```bash
+cp .env.example .env
+```
+
+Fill in your credentials (get from TunjiPaul privately):
+
+- `DB_PASSWORD` — Aiven database password
+- `DATABASE_URL` — Full asyncpg connection string
+- `SECRET_KEY` — JWT signing key
+
+### 3. Run the server
+
+```bash
+uvicorn Backend.app:app --reload
+```
+
+API docs available at: [http://localhost:8000/docs](http://localhost:8000/docs)
+
+---
+
+## Database
+
+16 tables on Aiven PostgreSQL. See [`database/README.md`](database/README.md) for the full schema and setup instructions.
+
+---
+
+## Team
+
+| Person             | Role                                            |
+| ------------------ | ----------------------------------------------- |
+| **TunjiPaul**      | Database Schema + Auth + User Profile endpoints |
+| **Mr Opnex**       | Accounts + Cards + Notifications                |
+| **Halimat**        | Transactions (Extended) + Settings              |
+| **Barrister Femi** | Quick Services + Admin + Audit                  |
+| **David Ekpo**     | Backend Foundation + Trajectory Agent           |
+
+See [`WORK_DISTRIBUTION.md`](WORK_DISTRIBUTION.md) for full task breakdown and [`ONBOARDING.md`](ONBOARDING.md) for setup instructions.
