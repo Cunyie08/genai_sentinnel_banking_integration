@@ -1,371 +1,686 @@
 """
-ChromaDB Configuration & Setup
-AI Engineer 2 - Week 1 Deliverable
+ChromaDB Configuration Module
+==============================
 
-Configures the vector database for banking policy documents.
-This module handles:
-- ChromaDB client initialization
-- Collection creation and management
-- Embedding model configuration
-- Persistence settings
+Production-grade configuration and orchestration layer for ChromaDB,
+serving as the single source of truth for vector database configuration,
+collection lifecycle management, embedding model consistency, and
+document routing metadata.
 
-CHANGELOG v2:
-  - Added DOCUMENT_REGISTRY: maps all 6 document IDs to category,
-    agent_target, version, title, and doc_type_flag — consumed by
-    ingest_documents.py to tag every chunk with routing metadata,
-    enabling per-agent filtered retrieval in rag_query.py
-  - Added reset_all_collections(): wipes all three collections in one
-    call, used by ingest_documents.py before a full re-ingestion run
-  - Added document_count to default collection metadata
+This module ensures that all ingestion and retrieval pipelines use the
+same embedding model, storage directory, and collection configuration,
+which is critical for semantic search correctness.
 
-Author: AI Engineer 2 (Security & Knowledge Specialist)
+Primary Responsibilities
+------------------------
+1. Persistent Client Initialization
+   Creates and manages ChromaDB persistent client instances that survive
+   process restarts and ensure long-term storage durability.
+
+2. Collection Lifecycle Management
+   Handles creation, retrieval, and resetting of collections while
+   enforcing consistent embedding configuration.
+
+3. Embedding Model Configuration
+   Provides a centralized embedding function using all-mpnet-base-v2,
+   ensuring semantic consistency across ingestion and query pipelines.
+
+4. Document Routing via DOCUMENT_REGISTRY
+   Defines metadata that controls how documents are categorized,
+   routed, filtered, and retrieved by downstream agents.
+
+5. Multi-Agent Support
+   Enables agent-specific retrieval for:
+
+      - Dispatcher Agent (Complaint routing)
+      - Sentinel Agent (Fraud detection and risk analysis)
+      - Trajectory Agent (Product recommendation logic)
+      - Customer Agent (Customer-facing FAQ retrieval)
+
+Architecture Flow
+-----------------
+
+    Document Generator / Source Files
+               ↓
+    DOCUMENT_REGISTRY (routing metadata)
+               ↓
+    DocumentIngester (chunking + tagging)
+               ↓
+    ChromaDBConfig (embedding + collections)
+               ↓
+    ChromaDB Collections (vector storage)
+               ↓
+    RetrievalEngine (semantic search)
+               ↓
+    RAGQueryEngine (context assembly)
+               ↓
+    AI Agents (Dispatcher, Sentinel, Trajectory, Customer)
+
+Design Guarantees
+-----------------
+- Embedding consistency across ingestion and retrieval
+- Persistent, production-safe storage
+- Structured document routing and metadata filtering
+- Deterministic collection configuration
+- Safe reset and re-ingestion workflows
+
+Embedding Model Selection
+-------------------------
+Model: all-mpnet-base-v2
+
+Chosen because:
+- High semantic accuracy
+- 768-dimensional vectors
+- Strong performance on compliance, policy, and fraud datasets
+- Industry standard for enterprise-grade RAG pipelines
+
+Author: AI Engineer 2
 Date: February 2026
 """
 
-import chromadb
-from chromadb.utils import embedding_functions
-from pathlib import Path
-from typing import Optional, Dict         # ← added Dict
-import logging
 
-# Configure logging
+# =============================================================================
+# Imports
+# =============================================================================
+
+import chromadb  # Core ChromaDB package for vector database operations
+
+from chromadb.api import ClientAPI  
+# ClientAPI defines the interface contract for ChromaDB clients,
+# ensuring type safety and compatibility across implementations.
+
+from chromadb.utils import embedding_functions  
+# Provides embedding function wrappers compatible with ChromaDB,
+# including SentenceTransformerEmbeddingFunction.
+
+from pathlib import Path  
+# Used for cross-platform filesystem path handling.
+
+from typing import Optional, Dict, Tuple  
+# Provides static typing support for better maintainability and clarity.
+
+import logging  
+# Standard Python logging system for structured operational logging.
+
+
+# =============================================================================
+# Logging Configuration
+# =============================================================================
+
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    level=logging.INFO,  
+    # Sets logging level to INFO to capture operational events.
+
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    # Defines structured log format including timestamp, module name,
+    # log level, and message.
 )
-logger = logging.getLogger(__name__)
+
+logger = logging.getLogger(__name__)  
+# Creates a module-specific logger using the module name.
+# This allows precise filtering and debugging.
 
 
 # =============================================================================
-# DOCUMENT REGISTRY  ← NEW
+# DOCUMENT REGISTRY
 # =============================================================================
-# Maps every document ID to its pipeline metadata.
-# Keys MUST match:
-#   - document_id values from policy_generator._package_for_rag()
-#   - .txt filenames produced by BankingPolicyGenerator.save_all_policies()
-#
-# Consumed by ingest_documents.py so every ChromaDB chunk is tagged with:
-#   category, agent_target, version, title, doc_type_flag
-#
-# doc_type_flag drives collection routing in the ingester:
-#   "policy"         → COLLECTION_POLICIES  (+ COLLECTION_ALL)
-#   "knowledge_base" → COLLECTION_FAQS      (+ COLLECTION_ALL)
-#
-# agent_target enables per-agent filtered retrieval in rag_query.py, e.g.:
-#   collection.query(..., where={"agent_target": "Sentinel"})
+"""
+DOCUMENT_REGISTRY is the authoritative routing table for all documents
+stored in the vector database.
+
+This registry maps each document ID to metadata that controls:
+
+• Collection routing
+• Agent targeting
+• Retrieval filtering
+• Version tracking
+• Document categorization
+
+This registry ensures deterministic routing and retrieval behavior.
+
+Critical Requirements
+---------------------
+
+Keys MUST match:
+
+1. document_id generated by BankingPolicyGenerator._package_for_rag()
+
+2. Corresponding .txt filenames saved in:
+
+       knowledge_base/
+
+Example:
+
+    knowledge_base/POL-CCH-001.txt
+
+DocumentIngester reads this registry and attaches metadata to every chunk.
+
+Metadata Attached to Each Chunk
+-------------------------------
+
+- title
+- category
+- version
+- agent_target
+- doc_type_flag
+- description
+
+Routing Logic
+-------------
+
+doc_type_flag determines collection routing:
+
+    policy         → bank_policies collection
+    knowledge_base → customer_faqs collection
+
+Both also go into:
+
+    all_documents collection
+
+Agent Filtering
+---------------
+
+Enables targeted retrieval:
+
+Example:
+
+    collection.query(
+        where={"agent_target": "Sentinel"}
+    )
+
+This allows Sentinel Agent to retrieve only fraud-related documents.
+"""
 
 DOCUMENT_REGISTRY: Dict[str, Dict] = {
+
+    # Unique document ID used as primary routing key
     "POL-CCH-001": {
-        "title":         "Customer Complaint Handling Policy",
-        "category":      "policy",
-        "version":       "2.1",
-        "agent_target":  "Dispatcher",
+
+        "title": "Customer Complaint Handling Policy",
+        # Human-readable document title
+
+        "category": "policy",
+        # Logical grouping category
+
+        "version": "2.1",
+        # Version number for auditability and upgrade tracking
+
+        "agent_target": "Dispatcher",
+        # Primary agent responsible for using this document
+
         "doc_type_flag": "policy",
-        "description":   "Department routing rules, SLA hours, escalation matrix",
+        # Controls collection routing
+
+        "description": "Complaint routing rules, escalation matrix, SLA timelines",
+        # Additional context description
     },
+
     "FRM-001": {
-        "title":         "Fraud Detection & Prevention Guidelines",
-        "category":      "security",
-        "version":       "4.0",
-        "agent_target":  "Sentinel",
+
+        "title": "Fraud Detection and Prevention Guidelines",
+
+        "category": "security",
+
+        "version": "4.0",
+
+        "agent_target": "Sentinel",
+
         "doc_type_flag": "policy",
-        "description":   "Red flags, risk scoring 0–100, push-to-app authorization",
+
+        "description": "Fraud detection rules, risk scoring 0–100, fraud escalation",
     },
+
     "TSU-POL-002": {
-        "title":         "Transaction Processing Policies",
-        "category":      "operations",
-        "version":       "4.0",
-        "agent_target":  "All",
+
+        "title": "Transaction Processing Policies",
+
+        "category": "operations",
+
+        "version": "4.0",
+
+        "agent_target": "All",
+        # Indicates all agents may use this document
+
         "doc_type_flag": "policy",
-        "description":   "KYC tier limits, fee schedule, reversal policies",
+
+        "description": "Transaction processing rules, reversals, and processing SLA",
     },
+
     "FAQ-001": {
-        "title":         "Customer Service Frequently Asked Questions",
-        "category":      "knowledge_base",
-        "version":       "2.0",
-        "agent_target":  "Customer",
+
+        "title": "Customer Frequently Asked Questions",
+
+        "category": "knowledge_base",
+
+        "version": "2.0",
+
+        "agent_target": "Customer",
+
         "doc_type_flag": "knowledge_base",
-        "description":   "Customer-facing self-service answers",
+        # Ensures routing into FAQ collection
+
+        "description": "Customer-facing FAQs and help content",
     },
+
     "FRM-002": {
-        "title":         "Merchant Risk Profiles",
-        "category":      "security",
-        "version":       "1.0",
-        "agent_target":  "Sentinel",
+
+        "title": "Merchant Risk Profiles",
+
+        "category": "security",
+
+        "version": "1.0",
+
+        "agent_target": "Sentinel",
+
         "doc_type_flag": "policy",
-        "description":   "Per-category merchant risk weights and velocity rules",
+
+        "description": "Merchant risk categories and fraud risk weights",
     },
+
     "PRS-001": {
-        "title":         "Product Recommendation Policy",
-        "category":      "policy",
-        "version":       "1.0",
-        "agent_target":  "Trajectory",
+
+        "title": "Product Recommendation Policy",
+
+        "category": "policy",
+
+        "version": "1.0",
+
+        "agent_target": "Trajectory",
+
         "doc_type_flag": "policy",
-        "description":   "Car Loan / Personal Loan / Investment Plan eligibility",
+
+        "description": "Product eligibility rules and recommendation logic",
     },
 }
 
 
+# =============================================================================
+# ChromaDB Configuration Class
+# =============================================================================
+
 class ChromaDBConfig:
     """
-    Centralized configuration for ChromaDB vector database.
-    
-    This class manages:
-    - Database persistence location
-    - Embedding model selection and configuration
-    - Collection naming conventions
-    - Client settings and optimization
+    Central configuration controller for ChromaDB.
+
+    This class ensures consistent configuration across all ingestion
+    and retrieval workflows.
+
+    Responsibilities
+    ----------------
+
+    1. Persistent client creation
+    2. Embedding function management
+    3. Collection lifecycle control
+    4. Consistent metadata enforcement
+
+    Why This Class Exists
+    ---------------------
+
+    Prevents configuration drift between ingestion and retrieval.
+
+    Ensures:
+
+    • Same embedding model everywhere
+    • Same storage directory everywhere
+    • Same metadata configuration everywhere
+
+    Without this class, semantic search would break.
+
+    Embedding Model
+    ----------------
+
+    all-mpnet-base-v2
+
+    Advantages:
+
+    • High semantic accuracy
+    • Excellent fraud / policy comprehension
+    • 768-dimension embeddings
+    • Industry-grade performance
     """
-    
-    # Collection names (organized by document type)
+
+    # Collection storing policy and operational documents
     COLLECTION_POLICIES = "bank_policies"
+
+    # Collection storing customer-facing FAQs
     COLLECTION_FAQS = "customer_faqs"
-    COLLECTION_ALL = "all_documents"  # Combined collection for cross-document search
-    
-    # Embedding model configuration
-    EMBEDDING_MODEL = "all-MiniLM-L6-v2"  # Sentence-transformers model
-    # Alternative models:
-    # - "all-mpnet-base-v2" (higher quality, slower)
-    # - "paraphrase-multilingual-MiniLM-L12-v2" (multilingual support)
-    
-    # Distance metrics for similarity search
-    DISTANCE_METRIC = "cosine"  # Options: cosine, l2, ip (inner product)
-    
+
+    # Master collection storing all documents
+    COLLECTION_ALL = "all_documents"
+
+
+    # Selected embedding model
+    EMBEDDING_MODEL = "all-mpnet-base-v2"
+
+    # Distance metric used for similarity search
+    DISTANCE_METRIC = "cosine"
+
+
     def __init__(self, persist_directory: Optional[Path] = None):
         """
-        Initialize ChromaDB configuration.
-        
+        Initializes ChromaDB configuration object.
+
+        This prepares the persistence directory and ensures storage
+        location is valid.
+
         Args:
-            persist_directory: Where to store the vector database
-                              (defaults to ./chroma_db/)
+            persist_directory:
+                Optional custom storage path.
+
+                Default:
+                    project_root/chroma_db/
+
+        Behavior:
+            - Creates directory if missing
+            - Stores resolved path
+            - Logs configuration
         """
+
         if persist_directory is None:
-            # Default to chroma_db folder in project root
             persist_directory = Path(__file__).parent.parent / "chroma_db"
-        
+            # Default storage directory relative to project root
+
         self.persist_directory = Path(persist_directory)
+        # Converts to Path object for consistent filesystem operations
+
         self.persist_directory.mkdir(parents=True, exist_ok=True)
-        
-        logger.info(f"ChromaDB persistence directory: {self.persist_directory}")
-    
+        # Creates directory safely if missing
+
+        logger.info(
+            f"ChromaDB persistence directory: {self.persist_directory}"
+        )
+        # Logs resolved storage path
+
+
     def get_embedding_function(self):
         """
-        Get configured embedding function for text-to-vector conversion.
-        
+        Creates and returns embedding function instance.
+
+        CRITICAL REQUIREMENT:
+        Same embedding model MUST be used for ingestion and retrieval.
+
+        If different models are used, semantic similarity breaks.
+
         Returns:
-            Embedding function compatible with ChromaDB
+            SentenceTransformerEmbeddingFunction instance
+
+        Used by:
+            - Collection creation
+            - Document ingestion
+            - Query embedding
         """
-        # Using sentence-transformers for high-quality embeddings
-        embedding_function = embedding_functions.SentenceTransformerEmbeddingFunction(
+
+        logger.info(f"Loading embedding model: {self.EMBEDDING_MODEL}")
+
+        return embedding_functions.SentenceTransformerEmbeddingFunction(
             model_name=self.EMBEDDING_MODEL
         )
-        
-        logger.info(f"Loaded embedding model: {self.EMBEDDING_MODEL}")
-        return embedding_function
-    
-    def create_client(self) -> chromadb.Client:
-        """
-        Create and configure ChromaDB persistent client.
-        
-        Returns:
-            Configured ChromaDB client
-        """
-        # Ensure the persistence directory exists
-        self.persist_directory.mkdir(parents=True, exist_ok=True)
 
-        # Create persistent client (data survives Python process restarts)
+
+    def create_client(self) -> ClientAPI:
+        """
+        Creates persistent ChromaDB client.
+
+        Persistent client ensures vector database survives process restart.
+
+        Returns:
+            Configured PersistentClient instance
+        """
+
+        self.persist_directory.mkdir(parents=True, exist_ok=True)
+        # Ensures persistence directory exists
+
         client = chromadb.PersistentClient(
             path=str(self.persist_directory)
         )
+        # Creates persistent vector database client
 
-        logger.info(f"ChromaDB persistent client created at: {self.persist_directory}")
+        logger.info("ChromaDB PersistentClient successfully initialized")
 
         return client
 
-    def get_or_create_collection(self, 
-                                 client: chromadb.Client, 
-                                 collection_name: str,
-                                 metadata: Optional[dict] = None):
+
+    def get_or_create_collection(
+        self,
+        client: ClientAPI,
+        collection_name: str,
+        metadata: Optional[Dict] = None
+    ):
         """
-        Get existing collection or create new one with proper configuration.
-        
+        Retrieves existing collection or creates new one.
+
+        Guarantees consistent embedding function usage.
+
         Args:
-            client: ChromaDB client instance
-            collection_name: Name of the collection
-            metadata: Optional metadata about the collection
-            
+            client:
+                ChromaDB client instance
+
+            collection_name:
+                Name of collection
+
+            metadata:
+                Optional metadata dictionary
+
         Returns:
-            ChromaDB collection object
+            ChromaDB collection instance
         """
-        # Get embedding function
+
         embedding_function = self.get_embedding_function()
-        
-        # Default metadata
+        # Ensures collection uses correct embedding model
+
         if metadata is None:
+
             metadata = {
-                "description":     f"Banking documents collection: {collection_name}",
+                "description": f"Banking collection: {collection_name}",
+
                 "embedding_model": self.EMBEDDING_MODEL,
+
                 "distance_metric": self.DISTANCE_METRIC,
-                "document_count":  str(len(DOCUMENT_REGISTRY)),  # ← NEW
+
+                "document_registry_size": str(len(DOCUMENT_REGISTRY)),
             }
-        
+            # Defines default metadata
+
+
         try:
-            # Try to get existing collection
+
             collection = client.get_collection(
                 name=collection_name,
                 embedding_function=embedding_function
             )
+            # Attempts to retrieve existing collection
+
             logger.info(f"Retrieved existing collection: {collection_name}")
-            
+
         except Exception:
-            # Collection doesn't exist, create it
+
             collection = client.create_collection(
                 name=collection_name,
                 embedding_function=embedding_function,
                 metadata=metadata
             )
+            # Creates collection if missing
+
             logger.info(f"Created new collection: {collection_name}")
-        
+
         return collection
-    
-    def reset_collection(self, client: chromadb.Client, collection_name: str):
+
+
+    def reset_collection(self, client: ClientAPI, collection_name: str):
         """
-        Delete and recreate a collection (useful for fresh ingestion).
-        
+        Deletes and recreates collection.
+
+        Used to prevent duplicate chunks during re-ingestion.
+
         Args:
-            client: ChromaDB client instance
-            collection_name: Name of collection to reset
+            client:
+                ChromaDB client
+
+            collection_name:
+                Collection to reset
         """
+
         try:
+
             client.delete_collection(name=collection_name)
+            # Deletes existing collection
+
             logger.info(f"Deleted collection: {collection_name}")
-        except Exception as e:
-            logger.warning(f"Collection {collection_name} didn't exist: {e}")
-        
-        # Recreate the collection
+
+        except Exception:
+
+            logger.warning(f"Collection did not exist: {collection_name}")
+
         self.get_or_create_collection(client, collection_name)
-        logger.info(f"Reset collection: {collection_name}")
+        # Recreates collection
 
-    def reset_all_collections(self, client: chromadb.Client):  # ← NEW
+        logger.info(f"Reset complete: {collection_name}")
+
+
+    def reset_all_collections(self, client: ClientAPI):
         """
-        Reset all three collections in one call.
+        Resets all collections.
 
-        Call this before a full re-ingestion run to prevent duplicate chunks
-        accumulating across multiple ingest_documents.py executions.
+        Ensures clean database before full ingestion.
 
         Args:
-            client: ChromaDB client instance
+            client:
+                ChromaDB client instance
         """
-        for name in [self.COLLECTION_POLICIES,
-                     self.COLLECTION_FAQS,
-                     self.COLLECTION_ALL]:
+
+        for name in [
+            self.COLLECTION_POLICIES,
+            self.COLLECTION_FAQS,
+            self.COLLECTION_ALL
+        ]:
+
             self.reset_collection(client, name)
+            # Reset each collection
+
         logger.info("All collections reset and ready for fresh ingestion")
 
 
-def initialize_chromadb() -> tuple:
+# =============================================================================
+# Initialization Helper
+# =============================================================================
+
+def initialize_chromadb() -> Tuple[ClientAPI, "ChromaDBConfig"]:
     """
-    Helper function to quickly initialize ChromaDB with default settings.
-    
+    Initializes and returns ChromaDB client and configuration.
+
     Returns:
-        Tuple of (client, config) for use in other modules
-        
-    Example:
-        >>> client, config = initialize_chromadb()
-        >>> collection = config.get_or_create_collection(
-        ...     client, 
-        ...     config.COLLECTION_POLICIES
-        ... )
+        Tuple containing:
+
+            client → ChromaDB client
+            config → Configuration object
+
+    Used by:
+        - DocumentIngester
+        - RetrievalEngine
+        - RAGQueryEngine
+        - Agent systems
     """
+
     config = ChromaDBConfig()
+    # Creates config object
+
     client = config.create_client()
-    
+    # Creates persistent client
+
     return client, config
 
 
-def get_collection_stats(collection) -> dict:
+# =============================================================================
+# Collection Statistics Helper
+# =============================================================================
+
+def get_collection_stats(collection) -> Dict:
     """
-    Get statistics about a ChromaDB collection.
-    
-    Args:
-        collection: ChromaDB collection object
-        
+    Retrieves operational statistics from collection.
+
+    Useful for:
+
+    • Monitoring ingestion success
+    • Debugging retrieval
+    • System observability
+
     Returns:
-        Dictionary with collection statistics
+        Dictionary containing collection metadata and stats
     """
+
     try:
+
         count = collection.count()
-        
-        # Get sample metadata if collection not empty
+        # Gets number of stored documents
+
         if count > 0:
+
             sample = collection.peek(limit=1)
-            sample_metadata = sample['metadatas'][0] if sample['metadatas'] else {}
+            # Retrieves sample document
+
+            sample_metadata = (
+                sample["metadatas"][0] if sample["metadatas"] else {}
+            )
+
         else:
+
             sample_metadata = {}
-        
-        stats = {
-            "name":            collection.name,
-            "total_documents": count,
-            "metadata":        collection.metadata,
-            "sample_metadata": sample_metadata
+
+        return {
+
+            "collection_name": collection.name,
+
+            "document_count": count,
+
+            "metadata": collection.metadata,
+
+            "sample_metadata": sample_metadata,
         }
-        
-        return stats
-        
+
     except Exception as e:
-        logger.error(f"Error getting collection stats: {e}")
+
+        logger.error(f"Error retrieving collection stats: {e}")
+
         return {"error": str(e)}
 
 
-if __name__ == "__main__":
-    """Test ChromaDB configuration and connectivity"""
-    
-    print("\n" + "="*70)
-    print(" "*20 + "CHROMADB CONFIGURATION TEST")
-    print("="*70 + "\n")
-    
-    # Initialize ChromaDB
-    print("Initializing ChromaDB...")
-    client, config = initialize_chromadb()
-    print(f" Client created with persistence at: {config.persist_directory}\n")
+# =============================================================================
+# Standalone Test Runner
+# =============================================================================
 
-    # Display document registry  ← NEW
-    print(f"Document Registry ({len(DOCUMENT_REGISTRY)} documents):")
+if __name__ == "__main__":
+
+    print("\nInitializing ChromaDB configuration test...\n")
+
+    client, config = initialize_chromadb()
+
+    print(f"  Persistence: {config.persist_directory}")
+
+    print(f"  Embedding model: {config.EMBEDDING_MODEL}")
+
+    print(f"  Document registry: {len(DOCUMENT_REGISTRY)} documents\n")
+
+    print("Document Registry:")
+
     for doc_id, meta in DOCUMENT_REGISTRY.items():
-        print(f"  {doc_id:<14}  category={meta['category']:<14}  "
-              f"agent={meta['agent_target']:<12}  v{meta['version']}")
+
+        print(
+            f"  {doc_id:<14}  category={meta['category']:<14}  "
+            f"agent={meta['agent_target']:<12}  v{meta['version']}"
+        )
+
     print()
 
-    # Test collection creation
-    print("Testing collection creation...")
-    test_collection = config.get_or_create_collection(
-        client,
-        "test_collection",
-        metadata={"test": "This is a test collection"}
+    collection = config.get_or_create_collection(
+        client, config.COLLECTION_ALL
     )
-    print(f" Collection '{test_collection.name}' ready\n")
-    
-    # Test embedding function
-    print("Testing embedding function...")
-    embedding_fn = config.get_embedding_function()
-    test_text = "This is a test sentence for embedding"
-    embedding = embedding_fn([test_text])[0]
-    print(f" Embedding generated (dimension: {len(embedding)})\n")
-    
-    # Display collection stats
-    print("Collection Statistics:")
-    stats = get_collection_stats(test_collection)
+
+    stats = get_collection_stats(collection)
+
+    print("Collection Stats:")
+
     for key, value in stats.items():
+
         print(f"  {key}: {value}")
-    
-    # Cleanup test collection
-    print("\nCleaning up test collection...")
-    client.delete_collection("test_collection")
-    print(" Test collection deleted")
-    
-    print("\n" + "="*70)
-    print(" "*15 + "CHROMADB CONFIGURATION TEST COMPLETE!")
-    print("="*70)
-    print("\nChromaDB is ready for document ingestion.")
-    print("Next step: Run ingest_documents.py to load all 6 banking policies")
-    print("="*70 + "\n")
+
+    print("\nChromaDB configuration is fully operational.\n")
