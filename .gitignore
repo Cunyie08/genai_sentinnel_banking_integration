@@ -1,14 +1,14 @@
 # Environment variables
 .env
 
-
-
 # Python
 __pycache__/
 *.py[cod]
+*$py.class
 *.egg-info/
 venv/
 .venv/
+a_venv/
 
 # Node
 node_modules/
@@ -20,9 +20,13 @@ node_modules/
 # OS
 .DS_Store
 Thumbs.db
+
+# Project specific
 test.sql
 info.md
 schema.pgerd
 create_schema.py
 PROGRESS.md
 PLANNING.md
+app/logs/reasoning.log
+*.pdf_
