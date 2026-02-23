@@ -2,13 +2,13 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 import bcrypt
 import jwt
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession 
+from sqlalchemy import select 
 from fastapi import HTTPException, status
 
 from app.settings import SECRET_KEY
 from Backend.models import User
 
-# Configuration
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
@@ -40,19 +40,23 @@ def verify_access_token(token: str):
     """Verify a JWT access token."""
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        username: str = payload.get("sub")
-        if username is None:
+        email: str = payload.get("sub") 
+        if email is None:
             return None
         return payload
     except jwt.PyJWTError:
         return None
 
-def authenticate_user(db: Session, username: str, password: str):
+async def authenticate_user(db: AsyncSession, email: str, password: str):
     """Authenticate a user against the database."""
-    # Check by username or email
-    user = db.query(User).filter((User.username == username) | (User.email == username)).first()
+    stmt = select(User).filter(User.email == email)
+    result = await db.execute(stmt)
+    user = result.scalars().first()
+
     if not user:
         return False
-    if not verify_password(password, user.hashed_password):
+    
+    if not verify_password(password, user.password_hash):
         return False
+    
     return user
