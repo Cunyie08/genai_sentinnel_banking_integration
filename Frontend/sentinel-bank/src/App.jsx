@@ -1,37 +1,114 @@
-import React from 'react';
-import MobileSimulator from './components/MobileSimulator';
-import GlassBoxTerminal from './components/GlassBoxTerminal';
+import React, { useEffect } from 'react';
+import { useSelector, useDispatch } from 'react-redux';
+import { setRoute, triggerPayment } from './features/uiSlice';
 
-function App() {
+import AuthScreens from './screens/AuthScreens';
+import HomeScreen from './screens/HomeScreen';
+import ChatScreen from './screens/ChatScreen';
+import AdminDashboard from './screens/AdminDashboard';
+import AdminLogin from './screens/AdminLogin';
+import BottomNav from './components/BottomNav';
+import { VoiceModal, SentinelModal } from './components/SystemModals';
+import PaymentModal from './components/PaymentModal';
+
+// NEW Screens
+import SendScreen from './screens/SendScreen';
+import FundScreen from './screens/FundScreen';
+import HistoryScreen from './screens/HistoryScreen';
+import AirtimeScreen from './screens/AirtimeScreen';
+import DataScreen from './screens/DataScreen';
+import BillsScreen from './screens/BillsScreen';
+import BettingScreen from './screens/BettingScreen';
+import ProfileScreen from './screens/ProfileScreen';
+
+// NEW Components
+import DesktopSidebar from './components/DesktopSidebar';
+import RightPanel from './components/RightPanel';
+
+const App = () => {
+  const dispatch = useDispatch();
+  const activeRoute = useSelector(state => state.ui.activeRoute);
+
+  useEffect(() => {
+    const path = window.location.pathname.toLowerCase();
+
+    if (path.includes('/admin/dashboard'))
+      dispatch(setRoute('adminDashboard'));
+    else if (path.includes('/admin/login'))
+      dispatch(setRoute('adminLogin'));
+
+    if (activeRoute === 'home') {
+      const timer = setTimeout(() => dispatch(triggerPayment()), 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [dispatch, activeRoute]);
+
+  const renderScreen = () => {
+    switch (activeRoute) {
+
+      case 'welcome':
+      case 'login':
+      case 'signup':
+        return <AuthScreens />;
+
+      case 'home':           return <HomeScreen />;
+      case 'chat':           return <ChatScreen />;
+      case 'adminLogin':     return <AdminLogin />;
+      case 'adminDashboard': return <AdminDashboard />;
+
+      case 'send':     return <SendScreen />;
+      case 'fund':     return <FundScreen />;
+      case 'history':  return <HistoryScreen />;
+      case 'airtime':  return <AirtimeScreen />;
+      case 'data':     return <DataScreen />;
+      case 'bills':    return <BillsScreen />;
+      case 'betting':  return <BettingScreen />;
+      case 'profile':  return <ProfileScreen />;
+
+      default:
+        return <AuthScreens />;
+    }
+  };
+
+  const isAdmin = ['adminLogin', 'adminDashboard'].includes(activeRoute);
+  const isAuth  = ['welcome', 'login', 'signup'].includes(activeRoute);
+  const isHome  = activeRoute === 'home';
+  const showNav = !isAdmin && !isAuth && activeRoute !== 'chat';
+
+  if (isAuth) {
+    return (
+      <div className="h-[100dvh] w-full overflow-hidden font-sans">
+        <AuthScreens />
+      </div>
+    );
+  }
+
   return (
-    <div className="flex h-screen bg-sentinel-dark text-sentinel-text w-full">
-      
-      {/* LEFT PANEL: User Experience (40%) */}
-      <div className="w-2/5 min-w-[400px] flex items-center justify-center bg-[#020617] border-r border-slate-800 relative z-10 shadow-2xl">
-        {/* Abstract Background Glow */}
-        <div className="absolute inset-0 bg-gradient-to-b from-blue-900/10 via-transparent to-transparent pointer-events-none"></div>
-        
-        {/* The Phone */}
-        <div className="transform scale-[0.85] 2xl:scale-100 transition-transform duration-500 ease-out hover:scale-[0.87]">
-            <MobileSimulator />
-        </div>
-      </div>
+    <div className={`h-[100dvh] w-full flex overflow-hidden font-sans ${isAdmin ? 'bg-gray-100' : 'bg-gray-50'}`}>
 
-      {/* RIGHT PANEL: The "Glass Box" (60%) */}
-      <div className="w-3/5 p-6 flex flex-col bg-sentinel-dark relative">
-        {/* Grid Background Pattern */}
-        <div className="absolute inset-0 opacity-[0.03]" 
-             style={{ backgroundImage: 'radial-gradient(#fff 1px, transparent 1px)', backgroundSize: '20px 20px' }}>
+      {!isAdmin && !isAuth && (
+        <DesktopSidebar activeRoute={activeRoute} />
+      )}
+
+      <main className="flex-1 h-full flex flex-col overflow-hidden min-w-0 bg-white">
+        <div className="flex-1 overflow-y-auto">
+          {renderScreen()}
         </div>
 
-        {/* Terminal Container */}
-        <div className="relative z-10 h-full shadow-2xl">
-            <GlassBoxTerminal />
-        </div>
-      </div>
+        {showNav && (
+          <div className="md:hidden">
+            <BottomNav />
+          </div>
+        )}
 
+        {!isAdmin && <VoiceModal />}
+        {!isAdmin && <SentinelModal />}
+        {!isAdmin && <PaymentModal />}
+      </main>
+
+      {isHome && <RightPanel />}
     </div>
   );
-}
+};
 
 export default App;
