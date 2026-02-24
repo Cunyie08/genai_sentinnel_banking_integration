@@ -1,3 +1,4 @@
+ <!-- HEAD -->
 # Sentinnel Banking
 
 ## Executive Summary
@@ -299,5 +300,5 @@ Sentinnel Banking demonstrates and reflects a modular, explainable approach to i
 * Structured audit logging
 
 
-
-
+![glass screen](image.png)
+ 843f8a6 (updated functional client interface)
