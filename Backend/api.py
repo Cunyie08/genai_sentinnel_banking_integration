@@ -114,7 +114,7 @@ async def register(user: UserCreate, db: AsyncSession = Depends(get_db)):
             user_id=new_user.user_id,
             otp_code=otp_code,
             purpose="registration",
-            expires_at=datetime.now() + timedelta(minutes=10),
+            expires_at=datetime.now() + timedelta(minutes=15),
         )
         db.add(otp_token)
 
@@ -216,7 +216,7 @@ async def resend_otp(
         user_id=user.user_id,
         otp_code=otp_code,
         purpose="registration",  # Assuming resend for registration
-        expires_at=datetime.now() + timedelta(minutes=10),
+        expires_at=datetime.now() + timedelta(minutes=15),
     )
     db.add(otp_token)
     await db.commit()
@@ -239,7 +239,7 @@ async def forgot_password(
         reset_token = PasswordResetToken(
             user_id=user.user_id,
             token=token,
-            expires_at=datetime.now() + timedelta(hours=1),
+            expires_at=datetime.now() + timedelta(minutes=15),
         )
         db.add(reset_token)
         await db.commit()
