@@ -30,3 +30,18 @@ PROGRESS.md
 PLANNING.md
 app/logs/reasoning.log
 *.pdf_
+ONBOARDING.md
+WORK_DISTRIBUTION.md
+
+# Test Scripts & Database Helpers
+test_*.py
+*_test.py
+verify_*.py
+*setup_test*.py
+create_test_user.py
+test_email.txt
+
+# Documentation
+PRODUCTION_READY.md
+ONBOARDING.md
+WORK_DISTRIBUTION.md
