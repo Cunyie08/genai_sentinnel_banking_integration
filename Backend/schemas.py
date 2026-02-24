@@ -107,3 +107,55 @@ class CustomerCreate(BaseModel):
     state_of_origin: str
     residential_state: str
     banking_branch: str
+
+# --- Account Schemas ---
+
+class AccountResponse(BaseModel):
+    account_id: str
+    account_number: str
+    account_type: Optional[str]
+    currency: Optional[str]
+    current_balance: float
+    account_status: Optional[str]
+    opened_date: Optional[date]
+
+    class Config:
+        from_attributes = True
+
+# --- Card Schemas ---
+
+class CardRequest(BaseModel):
+    account_id: str
+    card_type: Literal["Debit", "Credit"]
+
+class CardResponse(BaseModel):
+    card_id: str
+    account_id: str
+    card_type: Optional[str]
+    status: Optional[str]
+    card_number: str
+    expiry_date: str
+    daily_limit: float
+
+    class Config:
+        from_attributes = True
+
+class CardLimitUpdate(BaseModel):
+    daily_limit: float = Field(gt=0)
+
+# --- Notification Schemas ---
+
+class NotificationResponse(BaseModel):
+    notification_id: str
+    title: str
+    message: str
+    is_read: bool
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class NotificationSend(BaseModel):
+    customer_id: str
+    title: str
+    message: str

@@ -6,7 +6,13 @@ if not DATABASE_URL:
     raise ValueError("DATABASE_URL is not set in settings")
 
 
-engine = create_async_engine(DATABASE_URL, echo=False)
+engine = create_async_engine(
+    DATABASE_URL, 
+    echo=False,
+    pool_pre_ping=True,
+    pool_recycle=3600,
+    connect_args={"command_timeout": 60}
+)
 
 
 SessionLocal = async_sessionmaker(

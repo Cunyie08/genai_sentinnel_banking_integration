@@ -9,3 +9,11 @@ sentence_transformers
 torch
 pandas
 asyncpg
+fastapi
+uvicorn
+sqlalchemy
+databases
+alembic
+PyJWT
+bcrypt
+google-genai

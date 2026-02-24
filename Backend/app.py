@@ -5,7 +5,7 @@ from fastapi import Depends, FastAPI, APIRouter, HTTPException, status
 from fastapi import BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import Dict, Any
+from typing import Dict, Any, List
 import sys
 import os
 import uuid
@@ -27,8 +27,10 @@ from app.agents.dispatcher_agent import DispatcherAgent
 from app.agents.sentinel_agent import SentinelAgent
 from Backend.api import router 
 from app.utils.schemas import DispatcherQuery, SentinelQuery, ComplaintQuery
-from Backend.schemas import TransactionRequest, CustomerCreate
+from Backend.schemas import TransactionRequest, CustomerCreate, AccountResponse
 from Backend.database import get_db
+from Backend.cards import router as cards_router
+from Backend.notifications import router as notifications_router
 
 
 @asynccontextmanager
@@ -45,6 +47,8 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(version="1.0.0", lifespan=lifespan)
 app.include_router(router)
+app.include_router(cards_router)
+app.include_router(notifications_router)
 
 app.add_middleware(
     CORSMiddleware,
@@ -225,13 +229,6 @@ async def create_customer(
             "account_number": new_account.account_number,
             "starting_balance": new_account.current_balance
         }
-        await db.commit()
-        await db.refresh(new_customer)
-
-        return {
-            "message": "Customer created successfully",
-            "customer_id": new_customer.customer_id
-        }
 
     except HTTPException:
         raise
@@ -319,6 +316,122 @@ async def make_transaction(
         # logger.error(f"Transaction failed: {e}", exc_info=True)
         print(f"Transaction failed: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
+
+# --- Account Endpoints ---
+
+@app.get("/accounts", tags=["Accounts"], response_model=List[AccountResponse])
+async def get_accounts(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user)
+):
+    result = await db.execute(
+        select(Account).filter(Account.customer_id == user.customer_id)
+    )
+    return result.scalars().all()
+
+@app.get("/accounts/{accountId}", tags=["Accounts"], response_model=AccountResponse)
+async def get_account_details(
+    accountId: str,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user)
+):
+    result = await db.execute(
+        select(Account).filter(
+            Account.account_id == accountId,
+            Account.customer_id == user.customer_id
+        )
+    )
+    account = result.scalars().first()
+    if not account:
+        raise HTTPException(status_code=404, detail="Account not found")
+    return account
+
+@app.get("/accounts/{accountId}/balance", tags=["Accounts"])
+async def get_account_balance(
+    accountId: str,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user)
+):
+    result = await db.execute(
+        select(Account).filter(
+            Account.account_id == accountId,
+            Account.customer_id == user.customer_id
+        )
+    )
+    account = result.scalars().first()
+    if not account:
+        raise HTTPException(status_code=404, detail="Account not found")
+    
+    return {
+        "account_id": account.account_id,
+        "current_balance": account.current_balance,
+        "currency": account.currency
+    }
+
+@app.get("/accounts/{accountId}/status", tags=["Accounts"])
+async def get_account_status(
+    accountId: str,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user)
+):
+    result = await db.execute(
+        select(Account).filter(
+            Account.account_id == accountId,
+            Account.customer_id == user.customer_id
+        )
+    )
+    account = result.scalars().first()
+    if not account:
+        raise HTTPException(status_code=404, detail="Account not found")
+    
+    return {
+        "account_id": account.account_id,
+        "status": account.account_status
+    }
+
+@app.patch("/accounts/{accountId}/freeze", tags=["Accounts"])
+async def freeze_account(
+    accountId: str,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user)
+):
+    result = await db.execute(
+        select(Account).filter(
+            Account.account_id == accountId,
+            Account.customer_id == user.customer_id
+        )
+    )
+    account = result.scalars().first()
+    if not account:
+        raise HTTPException(status_code=404, detail="Account not found")
+    
+    account.account_status = "frozen"
+    await db.commit()
+    await db.refresh(account)
+    
+    return {"message": "Account frozen successfully", "status": account.account_status}
+
+@app.patch("/accounts/{accountId}/activate", tags=["Accounts"])
+async def activate_account(
+    accountId: str,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user)
+):
+    result = await db.execute(
+        select(Account).filter(
+            Account.account_id == accountId,
+            Account.customer_id == user.customer_id
+        )
+    )
+    account = result.scalars().first()
+    if not account:
+        raise HTTPException(status_code=404, detail="Account not found")
+    
+    account.account_status = "active"
+    await db.commit()
+    await db.refresh(account)
+    
+    return {"message": "Account activated successfully", "status": account.account_status}
     
 if __name__ == "__main__":
     uvicorn.run(app, host="127.0.0.1", port=8080)

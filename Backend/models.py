@@ -30,6 +30,7 @@ class Customer(Base):
     accounts: Mapped[List["Account"]] = relationship(back_populates="customer", cascade="all, delete")
     users: Mapped[List["User"]] = relationship(back_populates="customer", cascade="all, delete")
     complaints: Mapped[List["Complaint"]] = relationship(back_populates="customer", cascade="all, delete")
+    notifications: Mapped[List["Notification"]] = relationship(back_populates="customer", cascade="all, delete")
 
 
 class User(Base):
@@ -54,11 +55,13 @@ class Account(Base):
     account_type: Mapped[Optional[str]] = mapped_column(String(50))
     currency: Mapped[Optional[str]] = mapped_column(String(10))
     current_balance: Mapped[Optional[float]] = mapped_column(Numeric(18, 2), default=0.00)
+    account_status: Mapped[Optional[str]] = mapped_column(String(20), default="active")
     opened_date: Mapped[Optional[date]] = mapped_column(Date)
 
     # Relationships
     customer: Mapped["Customer"] = relationship(back_populates="accounts")
     transactions: Mapped[List["Transaction"]] = relationship(back_populates="account", cascade="all, delete")
+    cards: Mapped[List["Card"]] = relationship(back_populates="account", cascade="all, delete")
 
 
 class Transaction(Base):
@@ -117,3 +120,30 @@ class Complaint(Base):
     # Relationships
     customer: Mapped["Customer"] = relationship(back_populates="complaints")
     transaction: Mapped[Optional["Transaction"]] = relationship(back_populates="complaints")
+
+class Card(Base):
+    __tablename__ = "cards"
+
+    card_id: Mapped[str] = mapped_column(String(50), primary_key=True)
+    account_id: Mapped[str] = mapped_column(String(50), ForeignKey("accounts.account_id", ondelete="CASCADE"))
+    card_type: Mapped[Optional[str]] = mapped_column(String(20)) # e.g., Debit, Credit
+    status: Mapped[Optional[str]] = mapped_column(String(20), default="active")
+    card_number: Mapped[str] = mapped_column(String(20), unique=True, nullable=False)
+    expiry_date: Mapped[str] = mapped_column(String(10), nullable=False)
+    cvv: Mapped[str] = mapped_column(String(4), nullable=False)
+    daily_limit: Mapped[float] = mapped_column(Numeric(18, 2), default=100000.00)
+
+    account: Mapped["Account"] = relationship(back_populates="cards")
+
+class Notification(Base):
+    __tablename__ = "notifications"
+
+    notification_id: Mapped[str] = mapped_column(String(50), primary_key=True)
+    customer_id: Mapped[str] = mapped_column(String(50), ForeignKey("customers.customer_id", ondelete="CASCADE"))
+    title: Mapped[str] = mapped_column(String(100), nullable=False)
+    message: Mapped[str] = mapped_column(Text, nullable=False)
+    notification_type: Mapped[Optional[str]] = mapped_column(String(20), default="in-app")
+    is_read: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    customer: Mapped["Customer"] = relationship(back_populates="notifications")
