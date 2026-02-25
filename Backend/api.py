@@ -1,6 +1,12 @@
+from Backend.middleware import get_current_user
+from Backend.models import User, Customer, Account, Transaction, Complaint
+import uvicorn
+from Backend.auth import authenticate_user, create_access_token, get_password_hash, ACCESS_TOKEN_EXPIRE_MINUTES, verify_password
+from Backend.schemas import UserCreate, UserResponse, Token, UserLogin
+from Backend.database import engine, get_db, Base
 from fastapi import FastAPI, Depends, HTTPException, status, Body, APIRouter
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta, timezone
 from typing import Annotated
@@ -16,27 +22,33 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
-from Backend.database import engine, get_db, Base
-from Backend.models import User, Customer, Account, Transaction, Complaint 
-from Backend.schemas import UserCreate, UserResponse, Token, UserLogin
-from Backend.auth import authenticate_user, create_access_token, get_password_hash, ACCESS_TOKEN_EXPIRE_MINUTES, verify_password
-import uvicorn
 
 # Initialize DB Tables
 Base.metadata.create_all(bind=engine)
 
+# Create FastAPI app
+app = FastAPI(version="1.0.0")
+
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 router = APIRouter(tags=["Authentication"])
-
-
-
 
 
 @router.post("/auth/register", response_model=UserResponse)
 def register(user: UserCreate, db: Session = Depends(get_db)):
-    db_user = db.query(User).filter((User.username == user.username) | (User.email == user.email)).first()
+    db_user = db.query(User).filter(
+        (User.username == user.username) | (User.email == user.email)).first()
     if db_user:
-        raise HTTPException(status_code=400, detail="Username or Email already registered")
-    
+        raise HTTPException(
+            status_code=400, detail="Username or Email already registered")
+
     hashed_password = get_password_hash(user.password)
     new_user = User(
         username=user.username,
@@ -49,27 +61,27 @@ def register(user: UserCreate, db: Session = Depends(get_db)):
     db.refresh(new_user)
     return new_user
 
+
 @router.post("/auth/token", response_model=Token)
-def login_for_access_token(form_data: Annotated[OAuth2PasswordRequestForm, Depends()], db: Session = Depends(get_db)):
+def login_for_access_token(credentials: UserLogin, db: Session = Depends(get_db)):
     # Authenticate user
-    # Note: OAuth2PasswordRequestForm puts the username/email in the `username` field
-    user = authenticate_user(db, form_data.username, form_data.password)
+    user = authenticate_user(db, credentials.username, credentials.password)
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect username/email or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    
+
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
         data={"sub": user.username}, expires_delta=access_token_expires
     )
     return {"access_token": access_token, "token_type": "bearer"}
 
-from Backend.middleware import get_current_user
 
 # ...
+
 
 @router.post("/auth/refresh", response_model=Token)
 def refresh_token(current_user: Annotated[dict, Depends(get_current_user)]):
@@ -84,12 +96,13 @@ def refresh_token(current_user: Annotated[dict, Depends(get_current_user)]):
             detail="Could not validate credentials",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    
+
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
         data={"sub": username}, expires_delta=access_token_expires
     )
     return {"access_token": access_token, "token_type": "bearer"}
+
 
 @router.post("/auth/forgot-password")
 def forgot_password(email: str = Body(..., embed=True)):
@@ -102,3 +115,15 @@ def home():
     return {"message": "Bank System API is Online. Go to /docs for Swagger UI."}
 
 
+# Include the router in the app
+app.include_router(router)
+
+# Include settings routes
+try:
+    from Backend.settings_routes import router as settings_router
+    # Attach settings routes to the shared `router` so other apps
+    # that include `router` (e.g., `main_entry.app`) also get these routes.
+    router.include_router(settings_router)
+except Exception:
+    # If settings_routes is missing or errors, continue without failing import
+    pass

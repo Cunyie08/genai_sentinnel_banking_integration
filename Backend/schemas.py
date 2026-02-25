@@ -1,36 +1,44 @@
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 
 # --- Auth Schemas ---
 
+
 class UserBase(BaseModel):
     username: str
-    email: EmailStr
+    email: str = Field(...,
+                       pattern=r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$')
     age: Optional[int] = None
+
 
 class UserCreate(UserBase):
     password: str
 
+
 class UserLogin(BaseModel):
-    username: str # Can be email or username
+    username: str  # Can be email or username
     password: str
+
 
 class Token(BaseModel):
     access_token: str
     token_type: str
 
+
 class TokenData(BaseModel):
     username: Optional[str] = None
+
 
 class UserResponse(UserBase):
     id: int
     created_at: datetime
-    
+
     class Config:
         from_attributes = True
 
 # --- Chat Schemas ---
+
 
 class ChatRequest(BaseModel):
     message: str
@@ -38,8 +46,10 @@ class ChatRequest(BaseModel):
 
 # --- Onboarding Schemas ---
 
+
 class OnboardingSubmission(BaseModel):
     answers: Dict[str, Any]
+
 
 class OnboardingResponse(BaseModel):
     id: int
@@ -52,14 +62,20 @@ class OnboardingResponse(BaseModel):
 
 # --- Agent Schemas ---
 
+
 class RoutingResponse(BaseModel):
-    intent: str = Field(description="Why the model is routing to the department")
-    department: str = Field(description="Banking department we are sending the complaint to")
-    confidence: float = Field(ge=0, le=1, description="Confidence score between 0 and 1")
+    intent: str = Field(
+        description="Why the model is routing to the department")
+    department: str = Field(
+        description="Banking department we are sending the complaint to")
+    confidence: float = Field(
+        ge=0, le=1, description="Confidence score between 0 and 1")
     reasoning: str = Field(description="How the model arrived at the decision")
+
 
 class FraudResponse(BaseModel):
     intent: str = Field(description="Transaction Fraud Analysis")
     department: str = Field(description="Fraud Prevention")
-    confidence: float = Field(ge=0, le=1, description="Confidence score between 0 and 1")
+    confidence: float = Field(
+        ge=0, le=1, description="Confidence score between 0 and 1")
     reasoning: str = Field(description="How the model arrived at the decision")
