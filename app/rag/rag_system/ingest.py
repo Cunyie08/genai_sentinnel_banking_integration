@@ -557,7 +557,7 @@ class DocumentIngester:
         knowledge_base_dir = Path(knowledge_base_dir)
 
         if not knowledge_base_dir.exists():
-            print(f"⚠️  Not found: {knowledge_base_dir}")
+            print(f"Not found: {knowledge_base_dir}")
             print("    Auto-generating policy documents...\n")
             BankingPolicyGenerator().save_all_policies(knowledge_base_dir)
             print()
@@ -565,11 +565,11 @@ class DocumentIngester:
         if reset_first:
             print("Step 0: Resetting collections...")
             self.config.reset_all_collections(self.client)
-            print("  ✓ All collections cleared\n")
+            print("  All collections cleared\n")
 
         print("Step 1: Loading documents...")
         documents = self.load_documents_from_directory(knowledge_base_dir)
-        print(f"  ✓ {len(documents)} documents loaded\n")
+        print(f"   {len(documents)} documents loaded\n")
 
         print("Step 2: Preprocessing...")
         for doc in documents:
@@ -650,8 +650,15 @@ class DocumentIngester:
                 f"{len(batch)} chunks inserted"
             )
 
-        logger.info(f"  ✓ All chunks ingested to {collection_name}")
+        logger.info(f"  All chunks ingested to {collection_name}")
+        try:
+            if hasattr(self.client, "persist"):
+                self.client.persist()
+                logger.info("ChromaDB persisted to disk")
+        except Exception as e:
+            logger.warning(f"Persistence warning: {e}")
 
+        logger.info(f"All chunks ingested to {collection_name}")
     # =========================================================================
     # Completion Block
     # =========================================================================

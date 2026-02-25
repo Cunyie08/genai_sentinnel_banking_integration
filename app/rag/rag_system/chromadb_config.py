@@ -95,7 +95,7 @@ from chromadb.utils import embedding_functions
 
 from pathlib import Path  
 # Used for cross-platform filesystem path handling.
-
+from chromadb.config import Settings
 from typing import Optional, Dict, Tuple  
 # Provides static typing support for better maintainability and clarity.
 
@@ -390,7 +390,7 @@ class ChromaDBConfig:
             f"ChromaDB persistence directory: {self.persist_directory}"
         )
         # Logs resolved storage path
-
+  
 
     def get_embedding_function(self):
         """
@@ -428,17 +428,24 @@ class ChromaDBConfig:
         """
 
         self.persist_directory.mkdir(parents=True, exist_ok=True)
-        # Ensures persistence directory exists
+
+        settings = Settings(
+            persist_directory=str(self.persist_directory),
+            anonymized_telemetry=False,
+            allow_reset=True,
+            is_persistent=True,
+        )
 
         client = chromadb.PersistentClient(
-            path=str(self.persist_directory)
+            path=str(self.persist_directory),
+            settings=settings
         )
-        # Creates persistent vector database client
 
-        logger.info("ChromaDB PersistentClient successfully initialized")
+        logger.info(
+            f"ChromaDB PersistentClient initialized at {self.persist_directory}"
+        )
 
-        return client
-
+        return client   
 
     def get_or_create_collection(
         self,

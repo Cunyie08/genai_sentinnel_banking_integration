@@ -52,6 +52,12 @@ Sentinel Agent Rule:
   IF merchant_category = "fintech" AND amount > 200000 AND
      no prior fintech transactions:
     Treat as if multiple_failures flag present (+20 additional).
+Note on Salary Signals:
+  Regular fintech credits (Paystack, Remita, Flutterwave) where
+  amount > N200,000 are interpreted as salary/payroll credits.
+  These are BEHAVIORAL CONTEXT signals recorded in salary_detected
+  and do NOT trigger fraud flags when the account holder is the
+  recipient (credit transactions).    
 Recommended Escalation:
   Combined score ≥ 61 (fintech + any one FRM-001 flag) → HIGH risk.
   Mandatory push-to-app challenge for ALL fintech transactions > ₦100,000
@@ -80,6 +86,11 @@ Positive Contextual Signal:
     → REDUCES suspicion (regular commuter behavior)
   - This is the car_loan_signal_score trigger in transactions.csv
     (uber_tracker ≥ 6 adds +0.4 to car_loan_signal_score)
+Note on Uber Tracker:
+  Uber/Bolt/LagRide transactions are counted in uber_tracker. This
+  counter is a BEHAVIORAL CONTEXT signal stored for explainability.
+  Frequent ride-hailing (>= 6 in 90 days) indicates regular commuter
+  behaviour, not fraud.    
 Sentinel Agent Rule:
   IF merchant_category = "transport" AND is_fraud_score = 1:
     Add +15 points.
