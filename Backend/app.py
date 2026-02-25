@@ -28,6 +28,9 @@ from Backend.middleware import get_current_user
 from app.agents.dispatcher_agent import DispatcherAgent
 from app.agents.sentinel_agent import SentinelAgent
 from Backend.api import router as auth_router
+from Backend.services import router as services_router
+from Backend.admin import router as admin_router
+from Backend.audit import router as audit_router
 from Backend.email import send_complaint_confirmation_email
 from app.settings import RESEND_WEBHOOK_SECRET
 from app.utils.schemas import DispatcherQuery, SentinelQuery, ComplaintQuery
@@ -244,6 +247,9 @@ async def admin_delete_user(
 
 
 app.include_router(profile_router)
+app.include_router(services_router)
+app.include_router(admin_router)
+app.include_router(audit_router)
 
 
 # --- Webhooks ---

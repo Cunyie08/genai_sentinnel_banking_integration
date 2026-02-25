@@ -188,4 +188,92 @@ class SettingsResponse(BaseModel):
 
 class FullUserResponse(UserResponse):
     customer_details: Optional[Dict[str, Any]] = None
-    account_details: Optional[List[Dict[str, Any]]] = None
+
+
+# --- Quick Services Schemas ---
+
+
+class AirtimePurchaseRequest(BaseModel):
+    account_id: str
+    provider: str
+    phone_number: str
+    amount: float = Field(gt=0)
+
+
+class DataPurchaseRequest(BaseModel):
+    account_id: str
+    provider: str
+    phone_number: str
+    data_plan: str
+    amount: float = Field(gt=0)
+
+
+class BillPayRequest(BaseModel):
+    account_id: str
+    provider: str
+    category: str
+    bill_account_number: str
+    amount: float = Field(gt=0)
+
+
+class ServiceTransactionResponse(BaseModel):
+    service_tx_id: str
+    service_type: str
+    provider: Optional[str] = None
+    amount: float
+    status: str
+    reference: Optional[str] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class ProviderOut(BaseModel):
+    name: str
+    code: str
+
+
+class BillCategoryOut(BaseModel):
+    name: str
+    code: str
+
+
+# --- Admin Schemas ---
+
+
+class AdminUserStatusUpdate(BaseModel):
+    status: str = Field(..., description="active | suspended | deactivated")
+
+
+class TicketAssign(BaseModel):
+    assigned_to: str = Field(
+        ..., description="user_id of the agent to assign the ticket to"
+    )
+
+
+class TicketResolve(BaseModel):
+    resolution_note: Optional[str] = None
+
+
+class AnalyticsSummary(BaseModel):
+    total: int
+    period: str
+    breakdown: dict
+
+
+# --- Audit Schemas ---
+
+
+class AuditLogOut(BaseModel):
+    log_id: int
+    actor_id: str
+    action: str
+    target_type: Optional[str] = None
+    target_id: Optional[str] = None
+    details: Optional[str] = None
+    ip_address: Optional[str] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True

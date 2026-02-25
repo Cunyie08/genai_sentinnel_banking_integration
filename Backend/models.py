@@ -337,11 +337,19 @@ class ServiceTransaction(Base):
     account_id: Mapped[str] = mapped_column(
         String(50), ForeignKey("accounts.account_id", ondelete="CASCADE")
     )
-    service_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    service_type: Mapped[str] = mapped_column(
+        String(50), nullable=False
+    )  # airtime | data | bills
     provider: Mapped[Optional[str]] = mapped_column(String(100))
-    recipient: Mapped[Optional[str]] = mapped_column(String(100))
+    category: Mapped[Optional[str]] = mapped_column(
+        String(50)
+    )  # e.g. electricity, water
     amount: Mapped[float] = mapped_column(Numeric(18, 2), nullable=False)
-    status: Mapped[str] = mapped_column(String(20), default="pending")
+    phone_number: Mapped[Optional[str]] = mapped_column(String(20))
+    data_plan: Mapped[Optional[str]] = mapped_column(String(50))
+    bill_account_number: Mapped[Optional[str]] = mapped_column(String(100))
+    reference: Mapped[Optional[str]] = mapped_column(String(100))
+    status: Mapped[str] = mapped_column(String(20), default="completed")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
 
     user: Mapped["User"] = relationship(back_populates="service_transactions")
@@ -375,6 +383,7 @@ class AuditLog(Base):
     actor_role: Mapped[Optional[str]] = mapped_column(String(50))
     action: Mapped[str] = mapped_column(String(100), nullable=False)
     target_type: Mapped[Optional[str]] = mapped_column(String(50))
-    target_id: Mapped[Optional[str]] = mapped_column(String(50))
-    details: Mapped[Optional[str]] = mapped_column(Text)
+    target_id: Mapped[Optional[str]] = mapped_column(String(100))
+    details: Mapped[Optional[str]] = mapped_column(Text)  # JSON string
+    ip_address: Mapped[Optional[str]] = mapped_column(String(45))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
