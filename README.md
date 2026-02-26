@@ -112,10 +112,10 @@ API docs available at: [http://localhost:8000/docs](http://localhost:8000/docs)
 
 | Person             | Role                                            |
 | ------------------ | ----------------------------------------------- |
-| **TunjiPaul**      | Database Schema + Auth + User Profile endpoints |
-| **Mr Opnex**       | Accounts + Cards + Notifications                |
-| **Halimat**        | Transactions (Extended) + Settings              |
-| **Barrister Femi** | Quick Services + Admin + Audit                  |
-| **David Ekpo**     | Backend Foundation + Trajectory Agent           |
+| **[TunjiPaul](https://github.com/tunjipaul)** | Database Schema + Auth + User Profile endpoints |
+| **[Mr Opnex](https://github.com/opnex)** | Accounts + Cards + Notifications                |
+| **[Halimat](https://github.com/halimahAkinoso)** | Transactions (Extended) + Settings              |
+| **[Barrister Femi](https://github.com/Femilearnsai)** | Quick Services + Admin + Audit                  |
+| **[David Ekpo](https://github.com/david4129)** | Backend Foundation + Trajectory Agent           |
 
 See [`WORK_DISTRIBUTION.md`](WORK_DISTRIBUTION.md) for full task breakdown and [`ONBOARDING.md`](ONBOARDING.md) for setup instructions.
