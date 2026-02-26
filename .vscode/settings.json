@@ -1,6 +1,0 @@
-{
-  "python.analysis.extraPaths": [
-    "./app/rag/knowledge_base"
-  ],
-  "python-envs.defaultEnvManager": "ms-python.python:system"
-}

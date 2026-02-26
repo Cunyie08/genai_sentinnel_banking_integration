@@ -53,6 +53,9 @@ from Backend.auth import (
 )
 from Backend.email import send_otp_email, send_password_reset_email
 import uvicorn
+from fastapi.responses import HTMLResponse
+
+APP_URL = os.getenv("APP_URL", "https://sentinnelbanking.com")
 
 router = APIRouter(tags=["Authentication"])
 
@@ -244,10 +247,53 @@ async def forgot_password(
         db.add(reset_token)
         await db.commit()
 
-        reset_link = f"https://sentinel-bank.com/reset-password?token={token}"
+        reset_link = f"{APP_URL}/auth/reset-password?token={token}"
         await send_password_reset_email(to_email=request.email, reset_link=reset_link)
 
     return {"message": "If the email exists, a reset link has been sent."}
+
+
+@router.get("/auth/verify-link", response_class=HTMLResponse)
+async def verify_magic_link(
+    email: str, otp_code: str, purpose: str, db: AsyncSession = Depends(get_db)
+):
+    stmt = select(User).filter(User.email == email)
+    result = await db.execute(stmt)
+    user = result.scalars().first()
+
+    if not user:
+        return "<h3>User not found.</h3>"
+
+    stmt_otp = select(OTPToken).filter(
+        OTPToken.user_id == user.user_id,
+        OTPToken.otp_code == otp_code,
+        OTPToken.purpose == purpose,
+        OTPToken.is_used == False,
+        OTPToken.expires_at > datetime.now(),
+    )
+    result_otp = await db.execute(stmt_otp)
+    otp = result_otp.scalars().first()
+
+    if not otp:
+        return "<h3>Invalid or expired verification link.</h3>"
+
+    otp.is_used = True
+    if purpose == "registration":
+        user.is_active = True
+
+    await db.commit()
+
+    return f"""
+    <html>
+        <body style="font-family: sans-serif; text-align: center; padding: 50px;">
+            <h2 style="color: #001F3F;">Verification Successful!</h2>
+            <p>Your account has been successfully verified.</p>
+            <p>You can now log in to your Sentinel Bank account.</p>
+            <br>
+            <a href="{APP_URL}/login" style="padding: 10px 20px; background: #001F3F; color: white; text-decoration: none; border-radius: 4px;">Go to Login</a>
+        </body>
+    </html>
+    """
 
 
 @router.post("/auth/reset-password")

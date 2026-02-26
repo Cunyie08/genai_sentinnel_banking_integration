@@ -246,10 +246,11 @@ class Card(Base):
         String(50), ForeignKey("accounts.account_id", ondelete="CASCADE")
     )
     card_type: Mapped[str] = mapped_column(String(20), default="virtual")
-    card_number_masked: Mapped[Optional[str]] = mapped_column(String(20))
-    expiry_date: Mapped[Optional[date]] = mapped_column(Date)
+    card_number: Mapped[str] = mapped_column(String(20), unique=True, nullable=False)
+    expiry_date: Mapped[str] = mapped_column(String(10), nullable=False)
+    cvv: Mapped[str] = mapped_column(String(4), nullable=False)
     status: Mapped[str] = mapped_column(String(20), default="active")
-    spending_limit: Mapped[Optional[float]] = mapped_column(Numeric(18, 2))
+    daily_limit: Mapped[float] = mapped_column(Numeric(18, 2), default=100000.00)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
 
     account: Mapped["Account"] = relationship(back_populates="cards")
@@ -258,15 +259,13 @@ class Card(Base):
 class Notification(Base):
     __tablename__ = "notifications"
 
-    notification_id: Mapped[int] = mapped_column(
-        Integer, primary_key=True, autoincrement=True
-    )
+    notification_id: Mapped[str] = mapped_column(String(50), primary_key=True)
     user_id: Mapped[str] = mapped_column(
         String(50), ForeignKey("users.user_id", ondelete="CASCADE")
     )
-    title: Mapped[Optional[str]] = mapped_column(String(200))
-    message: Mapped[Optional[str]] = mapped_column(Text)
-    channel: Mapped[str] = mapped_column(String(20), default="in-app")
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    message: Mapped[str] = mapped_column(Text, nullable=False)
+    notification_type: Mapped[str] = mapped_column(String(20), default="in-app")
     is_read: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
 

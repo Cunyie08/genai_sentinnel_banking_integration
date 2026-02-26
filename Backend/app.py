@@ -31,6 +31,9 @@ from Backend.api import router as auth_router
 from Backend.services import router as services_router
 from Backend.admin import router as admin_router
 from Backend.audit import router as audit_router
+from Backend.cards import router as cards_router
+from Backend.notifications import router as notifications_router
+from Backend.settings_routes import router as settings_router
 from Backend.email import send_complaint_confirmation_email
 from app.settings import RESEND_WEBHOOK_SECRET
 from app.utils.schemas import DispatcherQuery, SentinelQuery, ComplaintQuery
@@ -42,6 +45,7 @@ from Backend.schemas import (
     SettingsResponse,
     UserResponse,
     FullUserResponse,
+    AccountResponse,
 )
 
 logger = logging.getLogger(__name__)
@@ -250,6 +254,9 @@ app.include_router(profile_router)
 app.include_router(services_router)
 app.include_router(admin_router)
 app.include_router(audit_router)
+app.include_router(cards_router)
+app.include_router(notifications_router)
+app.include_router(settings_router)
 
 
 # --- Webhooks ---
@@ -372,7 +379,7 @@ async def process_complaint_routing(complaint_id: str, complaint_text: str):
                 user = user_result.scalars().first()
 
                 if user:
-                    print(f"📧 Sending auto-reply to {user.email}...")
+                    print(f"Sending auto-reply to {user.email}...")
                     await send_complaint_confirmation_email(
                         to_email=user.email,
                         complaint_id=complaint_id,
@@ -568,6 +575,216 @@ async def make_transaction(
     except Exception as e:
         await db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# --- Account Endpoints ---
+
+
+@app.get("/accounts", tags=["Accounts"], response_model=List[AccountResponse])
+async def list_accounts(
+    db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)
+):
+    stmt = select(Account).filter(Account.customer_id == user.customer_id)
+    result = await db.execute(stmt)
+    return result.scalars().all()
+
+
+@app.get("/accounts/{accountId}", tags=["Accounts"], response_model=AccountResponse)
+async def get_account_details(
+    accountId: str,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    stmt = select(Account).filter(
+        Account.account_id == accountId, Account.customer_id == user.customer_id
+    )
+    result = await db.execute(stmt)
+    account = result.scalars().first()
+    if not account:
+        raise HTTPException(status_code=404, detail="Account not found")
+    return account
+
+
+@app.get("/accounts/{accountId}/balance", tags=["Accounts"])
+async def get_account_balance(
+    accountId: str,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    stmt = select(Account).filter(
+        Account.account_id == accountId, Account.customer_id == user.customer_id
+    )
+    result = await db.execute(stmt)
+    account = result.scalars().first()
+    if not account:
+        raise HTTPException(status_code=404, detail="Account not found")
+    return {"account_id": accountId, "current_balance": float(account.current_balance)}
+
+
+@app.get("/accounts/{accountId}/status", tags=["Accounts"])
+async def get_account_status(
+    accountId: str,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    stmt = select(Account).filter(
+        Account.account_id == accountId, Account.customer_id == user.customer_id
+    )
+    result = await db.execute(stmt)
+    account = result.scalars().first()
+    if not account:
+        raise HTTPException(status_code=404, detail="Account not found")
+    return {"account_id": accountId, "status": account.account_status}
+
+
+@app.patch("/accounts/{accountId}/freeze", tags=["Accounts"])
+async def freeze_account(
+    accountId: str,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    stmt = select(Account).filter(
+        Account.account_id == accountId, Account.customer_id == user.customer_id
+    )
+    result = await db.execute(stmt)
+    account = result.scalars().first()
+    if not account:
+        raise HTTPException(status_code=404, detail="Account not found")
+
+    account.account_status = "frozen"
+    await db.commit()
+    return {"message": "Account frozen successfully", "status": account.account_status}
+
+
+@app.patch("/accounts/{accountId}/activate", tags=["Accounts"])
+async def activate_account(
+    accountId: str,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    stmt = select(Account).filter(
+        Account.account_id == accountId, Account.customer_id == user.customer_id
+    )
+    result = await db.execute(stmt)
+    account = result.scalars().first()
+    if not account:
+        raise HTTPException(status_code=404, detail="Account not found")
+
+    account.account_status = "active"
+    await db.commit()
+    return {
+        "message": "Account activated successfully",
+        "status": account.account_status,
+    }
+
+
+# --- Transaction Endpoints (Extended) ---
+
+
+@app.get("/transactions", tags=["Transactions"])
+async def list_transactions(
+    db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)
+):
+    # Find all accounts linked to the user's customer record
+    acc_stmt = select(Account.account_id).filter(
+        Account.customer_id == user.customer_id
+    )
+    acc_result = await db.execute(acc_stmt)
+    account_ids = acc_result.scalars().all()
+
+    if not account_ids:
+        return []
+
+    stmt = (
+        select(Transaction)
+        .filter(Transaction.account_id.in_(account_ids))
+        .order_by(Transaction.transaction_timestamp.desc())
+    )
+    result = await db.execute(stmt)
+    return result.scalars().all()
+
+
+@app.get("/transactions/{transactionId}", tags=["Transactions"])
+async def get_transaction_details(
+    transactionId: str,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    # Join with Account to verify ownership
+    stmt = (
+        select(Transaction)
+        .join(Account)
+        .filter(
+            Transaction.transaction_id == transactionId,
+            Account.customer_id == user.customer_id,
+        )
+    )
+    result = await db.execute(stmt)
+    transaction = result.scalars().first()
+    if not transaction:
+        raise HTTPException(status_code=404, detail="Transaction not found")
+    return transaction
+
+
+@app.get("/transactions/account/{accountId}", tags=["Transactions"])
+async def list_transactions_for_account(
+    accountId: str,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    # Verify account ownership
+    acc_stmt = select(Account).filter(
+        Account.account_id == accountId, Account.customer_id == user.customer_id
+    )
+    acc_result = await db.execute(acc_stmt)
+    if not acc_result.scalars().first():
+        raise HTTPException(status_code=403, detail="Unauthorized account access")
+
+    stmt = (
+        select(Transaction)
+        .filter(Transaction.account_id == accountId)
+        .order_by(Transaction.transaction_timestamp.desc())
+    )
+    result = await db.execute(stmt)
+    return result.scalars().all()
+
+
+@app.get("/transactions/filter", tags=["Transactions"])
+async def filter_transactions(
+    start_date: Optional[date] = None,
+    end_date: Optional[date] = None,
+    min_amount: Optional[float] = None,
+    max_amount: Optional[float] = None,
+    transaction_type: Optional[str] = None,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    # Find all accounts linked to the user's customer record
+    acc_stmt = select(Account.account_id).filter(
+        Account.customer_id == user.customer_id
+    )
+    acc_result = await db.execute(acc_stmt)
+    account_ids = acc_result.scalars().all()
+
+    if not account_ids:
+        return []
+
+    stmt = select(Transaction).filter(Transaction.account_id.in_(account_ids))
+
+    if start_date:
+        stmt = stmt.filter(Transaction.transaction_timestamp >= start_date)
+    if end_date:
+        stmt = stmt.filter(Transaction.transaction_timestamp <= end_date)
+    if min_amount:
+        stmt = stmt.filter(Transaction.amount >= min_amount)
+    if max_amount:
+        stmt = stmt.filter(Transaction.amount <= max_amount)
+    if transaction_type:
+        stmt = stmt.filter(Transaction.transaction_type == transaction_type)
+
+    stmt = stmt.order_by(Transaction.transaction_timestamp.desc())
+    result = await db.execute(stmt)
+    return result.scalars().all()
 
 
 if __name__ == "__main__":

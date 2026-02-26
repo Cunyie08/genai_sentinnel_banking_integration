@@ -11,12 +11,16 @@ from Backend.email_templates import (
 load_dotenv()
 
 # Pre-requisite: RESEND_API_KEY must be in .env
+# Environment config
 resend.api_key = os.getenv("RESEND_API_KEY")
+APP_URL = os.getenv("APP_URL", "https://sentinnelbanking.com")
+EMAIL_FROM = os.getenv("EMAIL_FROM", "Sentinel Bank <onboarding@sentinnelbanking.com>")
 
 
 async def send_otp_email(to_email: str, otp_code: str):
-    """Sends a premium HTML OTP email."""
-    html_content = get_otp_template(otp_code)
+    """Sends a premium HTML OTP email with a Magic Link."""
+    verify_link = f"{APP_URL}/auth/verify-link?email={to_email}&otp_code={otp_code}&purpose=registration"
+    html_content = get_otp_template(otp_code, verify_link)
     return await send_auth_email(
         to_email, "Verify your Sentinel Bank Account", html_content
     )
@@ -44,8 +48,7 @@ async def send_complaint_confirmation_email(
 
 async def send_auth_email(to_email: str, subject: str, content: str):
     """
-    Sends an authentication-related email (OTP or Reset Link) using Resend.
-    In development mode or if key is missing, it logs to console.
+    Sends an authentication-related email using Resend.
     """
     if not resend.api_key:
         print(f"\n[MOCK EMAIL SENT to {to_email}]")
@@ -55,7 +58,7 @@ async def send_auth_email(to_email: str, subject: str, content: str):
 
     try:
         params = {
-            "from": "Sentinel Bank <onboarding@resend.dev>",  # Adjust once domain is verified
+            "from": EMAIL_FROM,
             "to": [to_email],
             "subject": subject,
             "html": content,

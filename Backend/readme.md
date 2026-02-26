@@ -45,7 +45,7 @@ Swagger UI Documentation will be available at: http://localhost:8000/docs
 Important Business Logic: A user cannot register for an online profile unless they already exist in the customers table with an active bank account.
 
 1. POST /auth/register
-Creates an online user profile and securely links it to their core banking Customer ID based on their email.
+   Creates an online user profile and securely links it to their core banking Customer ID based on their email.
 
 Payload: ```json
 {
@@ -56,7 +56,7 @@ Payload: ```json
 Response: 200 OK (Returns user_id and success message). 403 Forbidden if no matching customer account exists.
 
 2. POST /auth/token
-Logs the user in and generates a JWT.
+   Logs the user in and generates a JWT.
 
 Payload: multipart/form-data (Standard OAuth2 username/password form. Note: Pass the email into the username field).
 
@@ -64,8 +64,8 @@ Response:
 
 JSON
 {
-  "access_token": "eyJhbGciOiJIUzI1NiIs...",
-  "token_type": "bearer"
+"access_token": "eyJhbGciOiJIUzI1NiIs...",
+"token_type": "bearer"
 }
 💰 Core Banking Endpoints
 All endpoints below are Protected and require the JWT token in the Authorization: Bearer <token> header.
@@ -79,27 +79,27 @@ Payload:
 
 JSON
 {
-  "account_number": "1234567890",
-  "channel": "mobile app",
-  "device_id": "Device-XYZ",
-  "counterparty_bank": "Access Bank",
-  "narration": "Groceries",
-  "transaction_type": "debit",
-  "amount": 5000.00,
-  "currency": "NGN",
-  "merchant_category": "supermarket",
-  "merchant_name": "GrabNGO"
+"account_number": "1234567890",
+"channel": "mobile app",
+"device_id": "Device-XYZ",
+"counterparty_bank": "Access Bank",
+"narration": "Groceries",
+"transaction_type": "debit",
+"amount": 5000.00,
+"currency": "NGN",
+"merchant_category": "supermarket",
+"merchant_name": "GrabNGO"
 }
 Response: 200 OK
 
 JSON
 {
-  "status": "approved",
-  "transaction_reference": "REF-A1B2C3D4E5",
-  "fraud_analysis": {
-    "risk_score": 0.1,
-    "reasoning": "Standard grocery transaction, consistent with user behavior."
-  }
+"status": "approved",
+"transaction_reference": "REF-A1B2C3D4E5",
+"fraud_analysis": {
+"risk_score": 0.1,
+"reasoning": "Standard grocery transaction, consistent with user behavior."
+}
 }
 POST /make_complaint
 Logs a customer complaint. Returns immediately to the user while spinning up a Background Task for the AI to analyze the text.
@@ -110,11 +110,11 @@ Payload:
 
 JSON
 {
-  "account_number": "1234567890",
-  "linked_transaction_id": "", 
-  "linked_reference": "",
-  "complaint_channel": "mobile_app",
-  "complaint_text": "I transferred money to my friend but he hasn't received it yet."
+"account_number": "1234567890",
+"linked_transaction_id": "",
+"linked_reference": "",
+"complaint_channel": "mobile_app",
+"complaint_text": "I transferred money to my friend but he hasn't received it yet."
 }
 (Note: Empty strings for optional IDs are handled safely by the backend).
 
@@ -122,9 +122,33 @@ Response: 200 OK
 
 JSON
 {
-  "message": "Complaint submitted successfully and is being routed.",
-  "complaint_id": "CMP-X9Y8Z7A6B5"
+"message": "Complaint submitted successfully and is being routed.",
+"complaint_id": "CMP-X9Y8Z7A6B5"
 }
+
+### ⚡ Quick Services
+
+Located in `Backend/services.py`, these endpoints allow users to perform utility transactions.
+
+- **Airtime & Data**: Purchase top-ups for any major Nigerian telco (MTN, Airtel, Glo, 9mobile).
+- **Bill Payments**: Pay for Electricity (IKEDC/EKEDC), Water, and Cable TV (DSTV/GOtv).
+- **Business Logic**: Automatically verifies account ownership and debits the `current_balance`.
+
+### 🛡️ Admin Dashboard
+
+Located in `Backend/admin.py`, restricted to users with `role == "admin"`.
+
+- **User Management**: View profiles, transaction histories, and update user status (active/suspended).
+- **Ticket Management**: Assign and resolve customer complaints.
+- **Analytics**: High-level views of transaction volumes, fraud alert stats, and user growth.
+
+### 📜 Audit & Logging
+
+Integrated into all administrative actions and located in `Backend/audit.py`.
+
+- **Immersion**: Every status change or ticket resolution is logged to the `audit_logs` table.
+- **Transparency**: Admins can query logs by specific user or transaction IDs to investigate issues.
+
 🧠 AI Agents Architecture
 The AI layer is abstracted into agent classes located in the /agents directory. They utilize a fallback mechanism: if OpenAI is rate-limited, they automatically fall back to Google Gemini.
 
@@ -136,3 +160,11 @@ Backend Developer Notes
 Datetimes: PostgreSQL expects offset-naive timestamps. The codebase enforces datetime.now(timezone.utc).replace(tzinfo=None) to maintain UTC accuracy without crashing the asyncpg driver.
 
 Database Sessions: Background tasks (process_complaint_routing) must instantiate their own SessionLocal scope, as the primary request's session closes immediately upon returning the HTTP response.
+
+## 🚀 Future Scalability Roadmap
+
+As the system grows, the following architectural upgrades are planned to ensure high performance and reliability:
+
+1. **Message Broker (Apache Kafka)**: To move from a monolithic request-response model to a highly scalable event-driven architecture.
+2. **Distributed Task Queue (FastAPI + Celery)**: Transition from standard `BackgroundTasks` to Celery to handle heavy AI processing loads outside the main application process.
+3. **Caching & Logging (Redis)**: Implement Redis as a high-speed caching layer to significantly reduce response latency and as a centralized hub for real-time logging and session management.

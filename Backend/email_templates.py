@@ -12,8 +12,17 @@ def _get_footer():
     """
 
 
-def get_otp_template(otp_code: str):
+def get_otp_template(otp_code: str, verify_link: str = None):
     footer = _get_footer()
+    magic_link_html = ""
+    if verify_link:
+        magic_link_html = f"""
+        <div style="margin-top: 30px;">
+            <p>Alternatively, click the button below to verify your account instantly:</p>
+            <a href="{verify_link}" class="btn" style="color: #ffffff;">Verify Account</a>
+        </div>
+        """
+
     return f"""
     <!DOCTYPE html>
     <html>
@@ -47,7 +56,9 @@ def get_otp_template(otp_code: str):
                     <p class="otp-code">{otp_code}</p>
                 </div>
                 
-                <p>This code is valid for <strong>10 minutes</strong>. Please do not share this code with anyone.</p>
+                {magic_link_html}
+                
+                <p style="margin-top: 30px;">This code is valid for <strong>15 minutes</strong>. Please do not share this code with anyone.</p>
                 <p class="security-note">Sentinel Bank will never ask for your password or OTP over the phone.</p>
             </div>
             {footer}

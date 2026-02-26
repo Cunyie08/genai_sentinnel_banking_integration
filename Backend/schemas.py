@@ -277,3 +277,86 @@ class AuditLogOut(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+# --- Account Schemas ---
+
+
+class AccountResponse(BaseModel):
+    account_id: str
+    account_number: str
+    account_type: Optional[str] = None
+    currency: Optional[str] = None
+    current_balance: float
+    status: Optional[str] = None
+    opened_date: Optional[date] = None
+
+    class Config:
+        from_attributes = True
+
+
+# --- Card Schemas ---
+
+
+class CardRequest(BaseModel):
+    account_id: str
+    card_type: Literal["Debit", "Credit"]
+
+
+class CardResponse(BaseModel):
+    card_id: str
+    account_id: str
+    card_type: Optional[str] = None
+    status: Optional[str] = None
+    card_number: str
+    expiry_date: str
+    daily_limit: float
+
+    class Config:
+        from_attributes = True
+
+
+class CardLimitUpdate(BaseModel):
+    daily_limit: float = Field(gt=0)
+
+
+# --- Notification Schemas ---
+
+
+class NotificationResponse(BaseModel):
+    notification_id: str
+    title: str
+    message: str
+    is_read: bool
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class NotificationSend(BaseModel):
+    customer_id: str
+    title: str
+    message: str
+
+
+# --- Settings Schemas ---
+
+
+class ThemeUpdate(BaseModel):
+    theme: Literal["light", "dark"]
+
+
+class LanguageUpdate(BaseModel):
+    language: str
+
+
+class NotificationsUpdate(BaseModel):
+    enabled: bool
+    email: Optional[bool] = None
+    sms: Optional[bool] = None
+
+
+class SecurityUpdate(BaseModel):
+    mfa_enabled: Optional[bool] = None
+    password_change_required: Optional[bool] = None

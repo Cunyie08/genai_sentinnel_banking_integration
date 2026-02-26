@@ -1,5 +1,7 @@
 # Environment variables
 .env
+.env.*
+!.env.example
 
 # Python
 __pycache__/
@@ -21,28 +23,37 @@ node_modules/
 .DS_Store
 Thumbs.db
 
-# Project specific
-test.sql
-info.md
-schema.pgerd
-create_schema.py
+# Internal Documentation & Planning
 PROGRESS.md
 PLANNING.md
-app/logs/reasoning.log
-*.pdf_
 ONBOARDING.md
 WORK_DISTRIBUTION.md
+PRODUCTION_READY.md
+SWAGGER_TEST_GUIDE.md
+DAVID_HANDOVER.md
+schema.pgerd
+*.pdf_
 
-# Test Scripts & Database Helpers
+# Database & Data
+app/logs/
+sentinnel_banking_dataset/
+app/data/*.csv
+app/rag/chroma_db/
+database/test.sql
+test.sql
+*.db
+*.sqlite3
+
+# Scripts & Laboratory
+scripts/
+create_schema.py
+
+# Test Scripts
 test_*.py
 *_test.py
 verify_*.py
 *setup_test*.py
+setup_test_db_user.py
+end_to_end_test.py
 create_test_user.py
 test_email.txt
-
-# Documentation
-PRODUCTION_READY.md
-ONBOARDING.md
-WORK_DISTRIBUTION.md
-SWAGGER_TEST_GUIDE.md
