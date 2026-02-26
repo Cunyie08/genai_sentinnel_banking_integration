@@ -14,7 +14,7 @@ from app.rag.rag_system.chromadb_config import initialize_chromadb
 import asyncio
 from app.data.dataset_loader import DatasetLoader
 from app.data.repository import BankRepository
-from app.ml.fraud_model import MLScorer
+from ml.fraud_model import MLScorer
 
 
 # Create a class that assess fraud/risk and explains why transaction was flagged
