@@ -1,4 +1,4 @@
-app\.env
+app/.env
 .venv
 a_venv
 app\logs\reasoning.log
