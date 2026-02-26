@@ -4,15 +4,20 @@ A full-stack banking backend powered by FastAPI, PostgreSQL, and AI agents for f
 
 ---
 
-## Project Overview
+### AI-Driven Agents
 
-Sentinel Bank combines a standard banking API with three AI agents:
+| Agent                | Role                                                       |
+| -------------------- | ---------------------------------------------------------- |
+| **Sentinel Agent**   | Real-time Fraud/Risk assessment for every transaction      |
+| **Dispatcher Agent** | Routes complaints using AI sentiment & priority analysis   |
+| **Trajectory Agent** | AI-Powered financial advisor & spending future-forecasting |
 
-| Agent                | Role                                                                            |
-| -------------------- | ------------------------------------------------------------------------------- |
-| **Sentinel Agent**   | Scores every transaction for fraud risk in real-time                            |
-| **Dispatcher Agent** | Routes complaints to the right department with AI priority & sentiment analysis |
-| **Trajectory Agent** | Analyzes spending patterns and gives personalized financial advice              |
+### Core Banking Features
+
+- **Authentication**: JWT-based login with OTP verification and Magic Link support.
+- **Transactions**: Secure internal transfers with database-level locking and risk scoring.
+- **Reporting**: Ability to report failed transactions and track status via unique IDs.
+- **Profile**: Full user profile management, security preferences, and theme settings.
 
 ---
 
@@ -89,7 +94,8 @@ Fill in your credentials (get from TunjiPaul privately):
 ### 3. Run the server
 
 ```bash
-uvicorn Backend.app:app --reload
+# Start the backend server
+python -m Backend.app
 ```
 
 API docs available at: [http://localhost:8000/docs](http://localhost:8000/docs)
