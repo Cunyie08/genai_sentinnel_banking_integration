@@ -57,3 +57,4 @@ setup_test_db_user.py
 end_to_end_test.py
 create_test_user.py
 test_email.txt
+find_test_accounts.py

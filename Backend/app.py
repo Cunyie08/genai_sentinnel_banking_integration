@@ -1,4 +1,3 @@
-# Libraries
 import uvicorn
 from contextlib import asynccontextmanager
 from fastapi import Depends, FastAPI, APIRouter, HTTPException, status, Body, Request
@@ -46,6 +45,8 @@ from Backend.schemas import (
     UserResponse,
     FullUserResponse,
     AccountResponse,
+    ReportFailedRequest,
+    InternalTransferRequest,
 )
 
 logger = logging.getLogger(__name__)
@@ -53,10 +54,6 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # print("Starting up: Creating database tables...")
-    # async with engine.begin() as conn:
-    #     await conn.run_sync(Base.metadata.create_all)
-
     yield
 
     print("Shutting down: Disposing database engine...")
@@ -84,8 +81,6 @@ def health():
 def home():
     return {"Message": "Welcome to the Bank System AI Assistant"}
 
-
-# --- User Profile Endpoints ---
 
 profile_router = APIRouter(tags=["User Profile"])
 
@@ -344,9 +339,6 @@ async def inbound_email_webhook(
 app.include_router(webhook_router)
 
 
-# --- Existing Agent Endpoints ---
-
-
 async def process_complaint_routing(complaint_id: str, complaint_text: str):
     """Background task to route complaints using the AI Agent."""
     async with SessionLocal() as db:
@@ -577,9 +569,6 @@ async def make_transaction(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# --- Account Endpoints ---
-
-
 @app.get("/accounts", tags=["Accounts"], response_model=List[AccountResponse])
 async def list_accounts(
     db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)
@@ -676,9 +665,6 @@ async def activate_account(
         "message": "Account activated successfully",
         "status": account.account_status,
     }
-
-
-# --- Transaction Endpoints (Extended) ---
 
 
 @app.get("/transactions", tags=["Transactions"])
@@ -785,6 +771,155 @@ async def filter_transactions(
     stmt = stmt.order_by(Transaction.transaction_timestamp.desc())
     result = await db.execute(stmt)
     return result.scalars().all()
+
+
+@app.get("/transactions/{transactionId}/status", tags=["Transactions"])
+async def get_transaction_status(
+    transactionId: str,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    stmt = (
+        select(Transaction)
+        .join(Account)
+        .filter(
+            Transaction.transaction_id == transactionId,
+            Account.customer_id == user.customer_id,
+        )
+    )
+    result = await db.execute(stmt)
+    transaction = result.scalars().first()
+
+    if not transaction:
+        raise HTTPException(status_code=404, detail="Transaction not found")
+
+    return {
+        "transaction_id": transaction.transaction_id,
+        "transaction_status": transaction.transaction_status,
+        "failure_reason": transaction.failure_reason,
+    }
+
+
+@app.post("/transactions/report-failed", tags=["Transactions"])
+async def report_failed_transaction(
+    request: ReportFailedRequest,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    stmt = (
+        select(Transaction)
+        .join(Account)
+        .filter(
+            Transaction.transaction_id == request.transaction_id,
+            Account.customer_id == user.customer_id,
+        )
+    )
+    result = await db.execute(stmt)
+    transaction = result.scalars().first()
+
+    if not transaction:
+        raise HTTPException(status_code=404, detail="Transaction not found")
+
+    transaction.transaction_status = "failed"
+    transaction.failure_reason = request.reason
+
+    await db.commit()
+    return {"message": "Transaction reported as failed and status updated"}
+
+
+@app.post("/transactions/internal-transfer", tags=["Transactions"])
+async def internal_transfer(
+    request: InternalTransferRequest,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    # Verify sender account belongs to user and is locked for update
+    from_stmt = (
+        select(Account)
+        .filter(
+            Account.account_number == request.from_account_number,
+            Account.customer_id == user.customer_id,
+        )
+        .with_for_update()
+    )
+    from_result = await db.execute(from_stmt)
+    from_account = from_result.scalars().first()
+
+    if not from_account:
+        raise HTTPException(
+            status_code=403, detail="Unauthorized access to sender account"
+        )
+
+    # Verify receiver account exists and lock it
+    to_stmt = (
+        select(Account)
+        .filter(Account.account_number == request.to_account_number)
+        .with_for_update()
+    )
+    to_result = await db.execute(to_stmt)
+    to_account = to_result.scalars().first()
+
+    if not to_account:
+        raise HTTPException(status_code=404, detail="Receiver account not found")
+
+    if from_account.account_id == to_account.account_id:
+        raise HTTPException(
+            status_code=400, detail="Cannot transfer to the same account"
+        )
+
+    amount = Decimal(str(request.amount))
+    if from_account.current_balance < amount:
+        raise HTTPException(status_code=400, detail="Insufficient funds")
+
+    # Process transfer
+    from_new_balance = from_account.current_balance - amount
+    to_new_balance = to_account.current_balance + amount
+
+    from_account.current_balance = from_new_balance
+    to_account.current_balance = to_new_balance
+
+    # Create transactions for auditing
+    timestamp = datetime.now(timezone.utc).replace(tzinfo=None)
+
+    debit_txn = Transaction(
+        transaction_id=f"TXN-{uuid.uuid4().hex[:10].upper()}",
+        transaction_reference_number=f"REF-{uuid.uuid4().hex[:10].upper()}",
+        account_id=from_account.account_id,
+        channel="in-app",
+        counterparty_bank="Sentinel",
+        narration=request.narration or "Internal Transfer",
+        transaction_type="debit",
+        amount=amount,
+        currency="NGN",
+        transaction_balance=from_new_balance,
+        transaction_status="completed",
+        transaction_timestamp=timestamp,
+    )
+
+    credit_txn = Transaction(
+        transaction_id=f"TXN-{uuid.uuid4().hex[:10].upper()}",
+        transaction_reference_number=f"REF-{uuid.uuid4().hex[:10].upper()}",
+        account_id=to_account.account_id,
+        channel="in-app",
+        counterparty_bank="Sentinel",
+        narration=request.narration or "Internal Transfer",
+        transaction_type="credit",
+        amount=amount,
+        currency="NGN",
+        transaction_balance=to_new_balance,
+        transaction_status="completed",
+        transaction_timestamp=timestamp,
+    )
+
+    db.add(debit_txn)
+    db.add(credit_txn)
+    await db.commit()
+
+    return {
+        "status": "approved",
+        "message": "Internal transfer successful",
+        "reference": debit_txn.transaction_reference_number,
+    }
 
 
 if __name__ == "__main__":

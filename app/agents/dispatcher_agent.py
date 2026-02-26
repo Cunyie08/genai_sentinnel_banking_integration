@@ -41,12 +41,10 @@ class DispatcherAgent(BaseAgent):
     async def run(self, input_data: Dict[str, Any]) -> Dict[str, Any]:
         complaint_text: str = input_data.get("complaint_text", "").lower()
 
-        # 1. Check if we have any AI keys. If not, use Simulation Mode.
         if not self.openai_llm and not self.gemini_llm:
             print("⚠️ [SIMULATION MODE] No AI providers initialized. Using keywords.")
             return self._run_simulation(complaint_text)
 
-        # 2. Try OpenAI first (if initialized)
         if self.openai_llm:
             try:
                 llm_response = await self.openai_llm.generate(
@@ -56,7 +54,6 @@ class DispatcherAgent(BaseAgent):
             except Exception as e:
                 print(f"OpenAI error: {e}. Trying Gemini...")
 
-        # 3. Try Gemini fallback (if initialized)
         if self.gemini_llm:
             try:
                 llm_response = await self.gemini_llm.generate(
@@ -66,7 +63,6 @@ class DispatcherAgent(BaseAgent):
             except Exception as e:
                 print(f"Gemini error: {e}.")
 
-        # 4. Final Fallback if AI fails or isn't available
         return self._run_simulation(complaint_text)
 
     def _finalize_response(self, llm_response) -> Dict[str, Any]:

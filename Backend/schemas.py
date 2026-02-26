@@ -103,8 +103,19 @@ class TransactionRequest(BaseModel):
     transaction_type: Literal["debit", "credit"]
     amount: float = Field(gt=0)
     currency: str
-    merchant_category: str | None = None
     merchant_name: str | None = None
+
+
+class ReportFailedRequest(BaseModel):
+    transaction_id: str
+    reason: str
+
+
+class InternalTransferRequest(BaseModel):
+    from_account_number: str
+    to_account_number: str
+    amount: float = Field(gt=0)
+    narration: Optional[str] = None
 
 
 # --- Customer Schemas ---

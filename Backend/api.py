@@ -16,8 +16,6 @@ import bcrypt
 import secrets
 import string
 
-# Add parent directory to sys.path
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
@@ -69,9 +67,12 @@ def get_password_hash(password: str) -> str:
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """Checks a plain password against the hashed version."""
-    return bcrypt.checkpw(
-        plain_password.encode("utf-8"), hashed_password.encode("utf-8")
-    )
+    try:
+        return bcrypt.checkpw(
+            plain_password.encode("utf-8"), hashed_password.encode("utf-8")
+        )
+    except ValueError:
+        return False
 
 
 def generate_otp(length: int = 6) -> str:
@@ -139,36 +140,42 @@ async def register(user: UserCreate, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-@router.post("/auth/token", response_model=Token)
+import traceback
+
+
+@router.post("/auth/token")
 async def login_for_access_token(
     form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
     db: AsyncSession = Depends(get_db),
 ):
-    stmt = select(User).filter(User.email == form_data.username)
-    result = await db.execute(stmt)
-    user = result.scalars().first()
+    try:
+        stmt = select(User).filter(User.email == form_data.username)
+        result = await db.execute(stmt)
+        user = result.scalars().first()
 
-    if not user or not verify_password(form_data.password, user.password_hash):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect email or password",
-            headers={"WWW-Authenticate": "Bearer"},
+        if not user or not verify_password(form_data.password, user.password_hash):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Incorrect email or password",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
+        if not user.is_active:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="User account is not active. Please verify your OTP.",
+            )
+
+        access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+        access_token = create_access_token(
+            data={"sub": user.email}, expires_delta=access_token_expires
         )
 
-    if not user.is_active:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="User account is not active. Please verify your OTP.",
-        )
-
-    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    access_token = create_access_token(
-        data={"sub": user.email}, expires_delta=access_token_expires
-    )
-
-    # Optional: Generate Refresh Token and store in DB here if implementing rotation
-
-    return {"access_token": access_token, "token_type": "bearer"}
+        return {"access_token": access_token, "token_type": "bearer"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        return {"error": str(e), "traceback": traceback.format_exc()}
 
 
 @router.post("/auth/verify-otp")
@@ -347,11 +354,6 @@ async def logout(
     current_user: Annotated[dict, Depends(get_current_user)],
     db: AsyncSession = Depends(get_db),
 ):
-    # If using DB-backed refresh tokens, revoke them here
-    # Example:
-    # stmt = delete(RefreshToken).where(RefreshToken.user_id == current_user.get("user_id"))
-    # await db.execute(stmt)
-    # await db.commit()
     return {"message": "Logged out successfully (tokens should be cleared on client)"}
 
 

@@ -1,13 +1,32 @@
+# --- Core Backend & API ---
+fastapi
+uvicorn[standard]
+pydantic[email]
+python-multipart
+python-dotenv
+
+# --- Database & ORM ---
+sqlalchemy
+asyncpg
+
+# --- Security & Authentication ---
+bcrypt
+PyJWT
+
+# --- AI & Agent Frameworks ---
+openai
+google-genai
 langgraph
 langchain_openai
 langchain_core
-faker
-python-dateutil
-pydantic
+
+# --- Data, RAG & Utilities ---
 chromadb
 sentence_transformers
 torch
 pandas
-asyncpg
-svix
+faker
+python-dateutil
 resend
+svix
+email-validator
