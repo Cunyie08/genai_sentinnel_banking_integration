@@ -8,5 +8,6 @@ chromadb
 sentence-transformers
 torch
 pandas
+genai
 google-genai
 dotenv
