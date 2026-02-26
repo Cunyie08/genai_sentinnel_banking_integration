@@ -22,6 +22,44 @@ Usage (from project root):
     # Automated tests only (no menu):
     python -m app.rag.rag_system.test_agents --auto
 
+Trajectory Agent architecture (v2.2):
+  The Trajectory Agent operates in two modes:
+
+  1. VALIDATION mode (rag_querys.validate_product_recommendation)
+     Called when a recommended_product is already assigned in
+     transactions.csv. Checks if the Loan_signal_score meets the
+     product's floor threshold. Returns APPROVED / NOT_ELIGIBLE.
+
+  2. PROACTIVE mode (recommend_product.recommend_product)
+     Called when the bank wants to actively suggest a product based
+     on the customer's full behavioral profile from transactions.csv:
+       - Loan_signal_score (primary eligibility score)
+       - monthly_inflow (salary/credits pattern)
+       - salary_detected (fintech credit >= 2 x N200K)
+       - uber_tracker (ride-hailing trips in 90 days)
+       - age / account_type / current_balance
+     Returns highest-priority qualifying product with EMI, DSR,
+     and detailed reasoning grounded in PRS-001 v2.2.
+
+  Tests cover BOTH modes for each customer profile so the full
+  pipeline from raw behavioral data to recommendation to validation
+  to explanation is exercised end to end.
+
+Changes vs previous version:
+  - TRAJECTORY_CASES now carry full customer profiles matching the
+    fields produced by data_generator.py (uber_tracker, account_type,
+    current_balance, desired_loan_amount)
+  - run_trajectory_tests() now calls BOTH validate_product_recommendation
+    (eligibility gate) AND RecommendationEngine.recommend() (tailored suggestion)
+  - EMI, tenure, DSR ratio, and DSR warning displayed per test case
+  - interactive_trajectory() now also runs RecommendationEngine.recommend() and
+    collects uber_tracker, account_type, balance, desired amount
+  - POLICY_CASES expanded with DSR and interest rate queries (PRS-001 v2.2)
+  - Import block updated to import RecommendationEngine class (not standalone
+    function) from recommend_product — AgentTester holds a shared instance at
+    self.recommender and calls self.recommender.recommend(customer)
+  - LOAN_SIGNAL_SCORE_RANGES imported for reference
+
 Author: AI Engineer 2
 Date: February 2026
 """
@@ -36,22 +74,24 @@ from typing import Dict, Any, List, Optional
 # =============================================================================
 
 try:
+    # Running as module: python -m app.rag.rag_system.test_agents
     from app.rag.rag_system.rag_querys import RAGQueryEngine
     from app.rag.rag_system.chromadb_config import initialize_chromadb
     from app.rag.knowledge_base.generate_policies import (
         EXPECTED_SLA, DEPT_NAMES, MERCHANT_RISK, FLAG_WEIGHTS,
         LOAN_SIGNAL_SCORE_RANGES,
     )
-    from app.rag.rag_system.recommend_product import recommend_product
+    from app.rag.rag_system.recommend_product import RecommendationEngine
 except ImportError:
     try:
-        from .rag_querys import RAGQueryEngine
-        from .chromadb_config import initialize_chromadb
-        from app.rag.knowledge_base.generate_policies import (
+        # Running from rag_system/ directory
+        from rag_querys import RAGQueryEngine
+        from chromadb_config import initialize_chromadb
+        from policy_generator import (
             EXPECTED_SLA, DEPT_NAMES, MERCHANT_RISK, FLAG_WEIGHTS,
             LOAN_SIGNAL_SCORE_RANGES,
         )
-        from recommend_product import recommend_product
+        from recommend_product import RecommendationEngine
     except ImportError as e:
         print(f"\n[ERROR] Could not import RAG system: {e}")
         print("Make sure you have run ingest_documents.py first.")
@@ -60,331 +100,323 @@ except ImportError:
 
 
 # =============================================================================
-# Terminal Colors & Styles
+# Terminal Colors — Extended Palette
 # =============================================================================
 
 class C:
-    """ANSI color and style codes for terminal output."""
-    RESET    = "\033[0m"
-    BOLD     = "\033[1m"
-    DIM      = "\033[2m"
-    ITALIC   = "\033[3m"
-    UNDERLINE= "\033[4m"
+    """ANSI color codes for terminal output — extended palette."""
+    RESET      = "\033[0m"
+    BOLD       = "\033[1m"
+    DIM        = "\033[2m"
+    ITALIC     = "\033[3m"
+    UNDERLINE  = "\033[4m"
+    BLINK      = "\033[5m"
+    REVERSE    = "\033[7m"
 
-    # Foreground colors
-    BLACK    = "\033[30m"
-    RED      = "\033[91m"
-    GREEN    = "\033[92m"
-    YELLOW   = "\033[93m"
-    BLUE     = "\033[94m"
-    MAGENTA  = "\033[95m"
-    CYAN     = "\033[96m"
-    WHITE    = "\033[97m"
-    ORANGE   = "\033[38;5;214m"
-    PURPLE   = "\033[38;5;141m"
-    TEAL     = "\033[38;5;80m"
-    LIME     = "\033[38;5;154m"
-    PINK     = "\033[38;5;213m"
-    GOLD     = "\033[38;5;220m"
-    CORAL    = "\033[38;5;203m"
+    # Standard foreground
+    BLACK      = "\033[30m"
+    RED        = "\033[91m"
+    GREEN      = "\033[92m"
+    YELLOW     = "\033[93m"
+    BLUE       = "\033[94m"
+    MAGENTA    = "\033[95m"
+    CYAN       = "\033[96m"
+    WHITE      = "\033[97m"
 
-    # Background colors
-    BG_RED   = "\033[41m"
-    BG_GREEN = "\033[42m"
-    BG_BLUE  = "\033[44m"
-    BG_CYAN  = "\033[46m"
-    BG_BLACK = "\033[40m"
-    BG_DARK  = "\033[48;5;235m"
-    BG_NAVY  = "\033[48;5;17m"
+    # Bright/vivid foreground
+    BRIGHT_RED    = "\033[91;1m"
+    BRIGHT_GREEN  = "\033[92;1m"
+    BRIGHT_YELLOW = "\033[93;1m"
+    BRIGHT_BLUE   = "\033[94;1m"
+    BRIGHT_MAGENTA= "\033[95;1m"
+    BRIGHT_CYAN   = "\033[96;1m"
+    BRIGHT_WHITE  = "\033[97;1m"
 
+    # Dark/muted
+    DARK_RED   = "\033[31m"
+    DARK_GREEN = "\033[32m"
+    DARK_YELLOW= "\033[33m"
+    DARK_BLUE  = "\033[34m"
+    DARK_CYAN  = "\033[36m"
+    ORANGE     = "\033[38;5;208m"
+    PURPLE     = "\033[38;5;135m"
+    TEAL       = "\033[38;5;37m"
+    PINK       = "\033[38;5;213m"
+    GOLD       = "\033[38;5;220m"
+    LIME       = "\033[38;5;118m"
+    CORAL      = "\033[38;5;203m"
+    SKY        = "\033[38;5;117m"
+    INDIGO     = "\033[38;5;99m"
+
+    # Background highlights
+    BG_RED     = "\033[41m"
+    BG_GREEN   = "\033[42m"
+    BG_YELLOW  = "\033[43m"
+    BG_BLUE    = "\033[44m"
+    BG_MAGENTA = "\033[45m"
+    BG_CYAN    = "\033[46m"
+    BG_WHITE   = "\033[47m"
+    BG_DARK    = "\033[40m"
+    BG_ORANGE  = "\033[48;5;208m"
+    BG_PURPLE  = "\033[48;5;57m"
+
+    # ── Shortcut static methods ──────────────────────────────────────────────
     @staticmethod
-    def green(s):    return f"{C.GREEN}{s}{C.RESET}"
+    def green(s):         return f"{C.GREEN}{s}{C.RESET}"
     @staticmethod
-    def red(s):      return f"{C.RED}{s}{C.RESET}"
+    def red(s):           return f"{C.RED}{s}{C.RESET}"
     @staticmethod
-    def yellow(s):   return f"{C.YELLOW}{s}{C.RESET}"
+    def yellow(s):        return f"{C.YELLOW}{s}{C.RESET}"
     @staticmethod
-    def cyan(s):     return f"{C.CYAN}{s}{C.RESET}"
+    def cyan(s):          return f"{C.CYAN}{s}{C.RESET}"
     @staticmethod
-    def blue(s):     return f"{C.BLUE}{s}{C.RESET}"
+    def blue(s):          return f"{C.BLUE}{s}{C.RESET}"
     @staticmethod
-    def bold(s):     return f"{C.BOLD}{s}{C.RESET}"
+    def bold(s):          return f"{C.BOLD}{s}{C.RESET}"
     @staticmethod
-    def magenta(s):  return f"{C.MAGENTA}{s}{C.RESET}"
+    def magenta(s):       return f"{C.MAGENTA}{s}{C.RESET}"
     @staticmethod
-    def dim(s):      return f"{C.DIM}{s}{C.RESET}"
+    def dim(s):           return f"{C.DIM}{s}{C.RESET}"
     @staticmethod
-    def orange(s):   return f"{C.ORANGE}{s}{C.RESET}"
+    def orange(s):        return f"{C.ORANGE}{s}{C.RESET}"
     @staticmethod
-    def gold(s):     return f"{C.GOLD}{s}{C.RESET}"
+    def gold(s):          return f"{C.GOLD}{s}{C.RESET}"
     @staticmethod
-    def teal(s):     return f"{C.TEAL}{s}{C.RESET}"
+    def teal(s):          return f"{C.TEAL}{s}{C.RESET}"
     @staticmethod
-    def lime(s):     return f"{C.LIME}{s}{C.RESET}"
+    def pink(s):          return f"{C.PINK}{s}{C.RESET}"
+    @staticmethod
+    def lime(s):          return f"{C.LIME}{s}{C.RESET}"
+    @staticmethod
+    def coral(s):         return f"{C.CORAL}{s}{C.RESET}"
+    @staticmethod
+    def sky(s):           return f"{C.SKY}{s}{C.RESET}"
+    @staticmethod
+    def indigo(s):        return f"{C.INDIGO}{s}{C.RESET}"
+    @staticmethod
+    def purple(s):        return f"{C.PURPLE}{s}{C.RESET}"
+    @staticmethod
+    def highlight(s, bg=None):
+        bg = bg or C.BG_DARK
+        return f"{bg}{C.WHITE}{C.BOLD} {s} {C.RESET}"
+    @staticmethod
+    def tag(label, colour):
+        """Render a coloured [LABEL] badge."""
+        return f"{colour}{C.BOLD}[{label}]{C.RESET}"
 
 
 # =============================================================================
-# Visual Rendering Helpers
+# Rendering helpers
 # =============================================================================
 
-WIDTH = 72  # terminal width for all decorations
+# ── Risk-level colour map ────────────────────────────────────────────────────
+RISK_COLOURS = {
+    "CRITICAL": C.BRIGHT_RED,
+    "HIGH":     C.ORANGE,
+    "MEDIUM":   C.BRIGHT_YELLOW,
+    "LOW":      C.BRIGHT_GREEN,
+}
+
+# ── Priority colour map ──────────────────────────────────────────────────────
+PRIORITY_COLOURS = {
+    "Critical": C.BRIGHT_RED,
+    "High":     C.ORANGE,
+    "Medium":   C.BRIGHT_CYAN,
+    "Low":      C.BRIGHT_GREEN,
+}
+
+# ── Department colour map ────────────────────────────────────────────────────
+DEPT_COLOURS = {
+    "FRM": C.BRIGHT_RED,
+    "TSU": C.ORANGE,
+    "COC": C.YELLOW,
+    "DCS": C.SKY,
+    "AOD": C.CYAN,
+    "CLS": C.TEAL,
+}
+
+# ── Product colour map ───────────────────────────────────────────────────────
+PRODUCT_COLOURS = {
+    "Car Loan":       C.ORANGE,
+    "Personal Loan":  C.BRIGHT_CYAN,
+    "Student Loan":   C.LIME,
+    "Investment Plan":C.GOLD,
+    "Trust Fund":     C.PURPLE,
+}
 
 
-def confidence_bar(score: float, width: int = 28, label: bool = True) -> str:
+def confidence_bar(score: float, width: int = 25) -> str:
     """
-    Render a segmented, coloured confidence bar.
-    Uses block chars for a crisp filled look.
+    Render a gradient confidence bar with block characters and percentage.
+
+    Colour tiers:
+      >= 0.90  → bright green   ██████████████████████████  96.0%
+      >= 0.75  → lime/green     ████████████████░░░░░░░░░░  77.5%
+      >= 0.60  → yellow         ████████████░░░░░░░░░░░░░░  62.0%
+      >= 0.40  → orange         ████████░░░░░░░░░░░░░░░░░░  44.0%
+       < 0.40  → red            ████░░░░░░░░░░░░░░░░░░░░░░  18.0%
     """
     filled  = int(score * width)
     empty   = width - filled
 
-    if score >= 0.85:
-        colour = C.LIME
-        fill_ch = "█"
-    elif score >= 0.65:
-        colour = C.YELLOW
-        fill_ch = "▓"
-    elif score >= 0.45:
-        colour = C.ORANGE
-        fill_ch = "▒"
+    if score >= 0.90:
+        fill_colour = C.BRIGHT_GREEN
+        pct_colour  = C.BRIGHT_GREEN
+    elif score >= 0.75:
+        fill_colour = C.LIME
+        pct_colour  = C.LIME
+    elif score >= 0.60:
+        fill_colour = C.BRIGHT_YELLOW
+        pct_colour  = C.YELLOW
+    elif score >= 0.40:
+        fill_colour = C.ORANGE
+        pct_colour  = C.ORANGE
     else:
-        colour = C.RED
-        fill_ch = "░"
+        fill_colour = C.BRIGHT_RED
+        pct_colour  = C.RED
 
-    bar = f"{colour}{fill_ch * filled}{C.DIM}{'░' * empty}{C.RESET}"
-    pct = f"{colour}{C.BOLD}{score:.1%}{C.RESET}" if label else ""
-    return f"{bar}  {pct}" if label else bar
+    bar = (
+        f"{fill_colour}{'█' * filled}{C.RESET}"
+        f"{C.DIM}{'░' * empty}{C.RESET}"
+    )
+    return f"{bar}  {pct_colour}{C.BOLD}{score:.1%}{C.RESET}"
 
 
-def risk_score_bar(score: float, max_score: int = 100, width: int = 30) -> str:
+def score_gradient_bar(score: float, lo: float, hi: float, width: int = 20) -> str:
     """
-    Render a coloured risk score bar (0-100).
-    More dramatic colouring for fraud risk display.
+    Render a score bar normalised between [lo, hi] with a position marker.
+    Used for Loan_signal_score display within its product range.
     """
-    ratio  = score / max_score
-    filled = int(ratio * width)
+    if hi == lo:
+        normalised = 1.0
+    else:
+        normalised = max(0.0, min(1.0, (score - lo) / (hi - lo)))
+
+    filled = int(normalised * width)
     empty  = width - filled
+    colour = C.BRIGHT_GREEN if normalised >= 0.5 else C.ORANGE
 
-    if ratio >= 0.80:
-        colour  = C.RED
-        fill_ch = "█"
-        bg_ch   = "▄"
-    elif ratio >= 0.60:
-        colour  = C.ORANGE
-        fill_ch = "▓"
-        bg_ch   = "░"
-    elif ratio >= 0.35:
-        colour  = C.YELLOW
-        fill_ch = "▒"
-        bg_ch   = "░"
+    bar = (
+        f"{colour}{'▓' * filled}{C.RESET}"
+        f"{C.DIM}{'░' * empty}{C.RESET}"
+    )
+    return f"{bar}  {colour}{C.BOLD}{score:.2f}{C.RESET} {C.DIM}[{lo:.2f}–{hi:.2f}]{C.RESET}"
+
+
+def dsr_bar(ratio_str: str, width: int = 20) -> str:
+    """
+    Render a DSR (Debt Service Ratio) bar.
+    ratio_str expected format: '18.4%' or similar.
+    Cap is 33.3%.
+    """
+    try:
+        val = float(ratio_str.strip("%")) / 100.0
+    except (ValueError, AttributeError):
+        return ratio_str
+
+    cap        = 0.333
+    proportion = min(1.0, val / cap)
+    filled     = int(proportion * width)
+    empty      = width - filled
+    over_cap   = val > cap
+
+    if over_cap:
+        fill_colour = C.BRIGHT_RED
+        pct_colour  = C.BRIGHT_RED
+    elif val >= 0.25:
+        fill_colour = C.ORANGE
+        pct_colour  = C.ORANGE
     else:
-        colour  = C.LIME
-        fill_ch = "▒"
-        bg_ch   = "░"
+        fill_colour = C.BRIGHT_GREEN
+        pct_colour  = C.BRIGHT_GREEN
 
-    bar = f"{colour}{fill_ch * filled}{C.DIM}{bg_ch * empty}{C.RESET}"
-    return f"{bar}  {colour}{C.BOLD}{score:>3}/100{C.RESET}"
-
-
-def score_gauge(value: float, low: float = 0.0, high: float = 1.0,
-                width: int = 30) -> str:
-    """
-    Render a loan signal score gauge with min/max boundaries displayed.
-    A triangle marker (▲) shows the current value's position.
-    """
-    norm   = (value - low) / (high - low) if high != low else 0
-    pos    = int(norm * width)
-    bar    = [C.DIM + "─" + C.RESET] * width
-    if 0 <= pos < width:
-        bar[pos] = f"{C.GOLD}{C.BOLD}▲{C.RESET}"
-
-    return (f"{C.DIM}{low:.2f}{C.RESET} "
-            + "".join(bar)
-            + f" {C.DIM}{high:.2f}{C.RESET}")
+    bar = (
+        f"{fill_colour}{'█' * filled}{C.RESET}"
+        f"{C.DIM}{'░' * empty}{C.RESET}"
+    )
+    cap_marker = f" {C.DIM}/ {cap:.0%} cap{C.RESET}"
+    return f"{bar}  {pct_colour}{C.BOLD}{ratio_str}{C.RESET}{cap_marker}"
 
 
-def pass_fail(ok: bool, verbose: bool = True) -> str:
+def risk_score_bar(score: int, width: int = 20) -> str:
+    """Render a 0–100 risk score bar."""
+    proportion = score / 100.0
+    filled     = int(proportion * width)
+    empty      = width - filled
+
+    if score >= 75:
+        colour = C.BRIGHT_RED
+    elif score >= 50:
+        colour = C.ORANGE
+    elif score >= 30:
+        colour = C.BRIGHT_YELLOW
+    else:
+        colour = C.BRIGHT_GREEN
+
+    bar = (
+        f"{colour}{'█' * filled}{C.RESET}"
+        f"{C.DIM}{'░' * empty}{C.RESET}"
+    )
+    return f"{bar}  {colour}{C.BOLD}{score}/100{C.RESET}"
+
+
+def pass_fail(ok: bool) -> str:
     if ok:
-        badge = f"{C.BG_GREEN}{C.BLACK}{C.BOLD}  PASS  {C.RESET}"
+        return f"{C.BG_GREEN}{C.BLACK}{C.BOLD}  PASS  {C.RESET}"
     else:
-        badge = f"{C.BG_RED}{C.WHITE}{C.BOLD}  FAIL  {C.RESET}"
-    return badge
+        return f"{C.BG_RED}{C.WHITE}{C.BOLD}  FAIL  {C.RESET}"
 
 
-def mini_tag(text: str, colour: str = C.CYAN) -> str:
-    """Small inline tag like [HIGH] [CRITICAL]."""
-    return f"{colour}{C.BOLD}[{text}]{C.RESET}"
+def result_badge(text: str, ok: bool) -> str:
+    """Render APPROVED / NOT_ELIGIBLE / etc. as a coloured badge."""
+    colour = C.BRIGHT_GREEN if ok else C.BRIGHT_RED
+    bg     = C.BG_GREEN     if ok else C.BG_RED
+    fg     = C.BLACK        if ok else C.WHITE
+    return f"{bg}{fg}{C.BOLD} {text} {C.RESET}"
 
 
-def spinner_line(msg: str) -> None:
-    """Print a styled loading line."""
-    print(f"  {C.DIM}⟳  {msg}{C.RESET}")
+def section(title: str, colour: str = C.CYAN) -> None:
+    """Print a bold coloured section divider."""
+    width   = 70
+    pad     = max(0, (width - len(title) - 4) // 2)
+    top     = f"{colour}{'═' * width}{C.RESET}"
+    mid     = f"{colour}╠{'═' * pad}  {C.BOLD}{C.WHITE}{title}{C.RESET}{colour}  {'═' * pad}╣{C.RESET}"
+    bot     = f"{colour}{'═' * width}{C.RESET}"
+    print(f"\n{top}\n{mid}\n{bot}\n")
+
+
+def sub_section(title: str, colour: str = C.DIM) -> None:
+    """Print a lighter sub-divider."""
+    width = 60
+    pad   = max(0, (width - len(title) - 2) // 2)
+    print(f"  {colour}{'─' * pad} {C.BOLD}{title}{C.RESET}{colour} {'─' * pad}{C.RESET}")
 
 
 def naira(amount: float) -> str:
-    return f"₦{amount:,.0f}"
+    return f"{C.GOLD}N{C.RESET}{C.BOLD}{amount:,.0f}{C.RESET}"
 
 
-def elapsed_tag(seconds: float) -> str:
+def elapsed_str(seconds: float) -> str:
     if seconds < 1.0:
-        return f"{C.DIM}({seconds * 1000:.0f}ms){C.RESET}"
-    return f"{C.DIM}({seconds:.2f}s){C.RESET}"
+        return f"{C.TEAL}{seconds * 1000:.0f}ms{C.RESET}"
+    return f"{C.TEAL}{seconds:.2f}s{C.RESET}"
 
 
-# =============================================================================
-# Section / Block Decorators
-# =============================================================================
-
-SECTION_STYLES = {
-    "dispatcher": {
-        "colour":  C.BLUE,
-        "accent":  C.TEAL,
-        "icon":    "⇄",
-        "border":  "═",
-        "corner":  "╔╗╚╝║",
-    },
-    "sentinel": {
-        "colour":  C.RED,
-        "accent":  C.ORANGE,
-        "icon":    "⚠",
-        "border":  "═",
-        "corner":  "╔╗╚╝║",
-    },
-    "trajectory": {
-        "colour":  C.MAGENTA,
-        "accent":  C.PURPLE,
-        "icon":    "◈",
-        "border":  "═",
-        "corner":  "╔╗╚╝║",
-    },
-    "policy": {
-        "colour":  C.CYAN,
-        "accent":  C.TEAL,
-        "icon":    "§",
-        "border":  "═",
-        "corner":  "╔╗╚╝║",
-    },
-    "default": {
-        "colour":  C.WHITE,
-        "accent":  C.CYAN,
-        "icon":    "◆",
-        "border":  "═",
-        "corner":  "╔╗╚╝║",
-    },
-}
+def label(text: str, colour: str = C.CYAN) -> str:
+    """Left-aligned label with consistent width."""
+    return f"{colour}{C.BOLD}{text:<16}{C.RESET}"
 
 
-def section(title: str, style_key: str = "default") -> None:
-    """
-    Print a bold, decorated section header with icon and double-line border.
-    """
-    s       = SECTION_STYLES.get(style_key, SECTION_STYLES["default"])
-    col     = s["colour"]
-    acc     = s["accent"]
-    icon    = s["icon"]
-    brdr    = s["border"]
-    crnrs   = s["corner"]  # ╔╗╚╝║
-
-    inner_w = WIDTH - 2
-    label   = f"  {icon}  {title}  {icon}  "
-    pad_tot = inner_w - len(label)
-    pad_l   = pad_tot // 2
-    pad_r   = pad_tot - pad_l
-    top_row = f"{col}{crnrs[0]}{brdr * inner_w}{crnrs[1]}{C.RESET}"
-    mid_row = (f"{col}{crnrs[4]}{acc}{brdr * pad_l}"
-               f"{C.BOLD}{C.WHITE}{label}{C.RESET}"
-               f"{acc}{brdr * pad_r}{col}{crnrs[4]}{C.RESET}")
-    bot_row = f"{col}{crnrs[2]}{brdr * inner_w}{crnrs[3]}{C.RESET}"
-
-    print(f"\n{top_row}")
-    print(mid_row)
-    print(f"{bot_row}\n")
+def bullet_ok(text: str) -> str:
+    return f"  {C.BRIGHT_GREEN}✔{C.RESET}  {text}"
 
 
-def divider(colour: str = C.DIM, char: str = "─") -> None:
-    """Thin dividing line."""
-    print(f"  {colour}{char * (WIDTH - 4)}{C.RESET}")
+def bullet_fail(text: str) -> str:
+    return f"  {C.BRIGHT_RED}✘{C.RESET}  {text}"
 
 
-def sub_header(title: str, colour: str = C.CYAN) -> None:
-    """Small sub-section label."""
-    print(f"\n  {colour}{'▸'} {C.BOLD}{title}{C.RESET}")
-
-
-def bullet_ok(text: str) -> None:
-    print(f"  {C.LIME}✔  {C.RESET}{text}")
-
-
-def bullet_fail(text: str) -> None:
-    print(f"  {C.RED}✘  {C.RESET}{text}")
-
-
-def bullet_info(text: str) -> None:
-    print(f"  {C.DIM}◦  {text}{C.RESET}")
-
-
-def key_val(key: str, value: str, key_colour: str = C.CYAN,
-            val_colour: str = C.WHITE) -> None:
-    k = f"{key_colour}{C.BOLD}{key:<14}{C.RESET}"
-    v = f"{val_colour}{value}{C.RESET}"
-    print(f"  {k}  {v}")
-
-
-def priority_badge(priority: str) -> str:
-    colours = {
-        "Critical": f"{C.BG_RED}{C.WHITE}{C.BOLD}  CRITICAL  {C.RESET}",
-        "High":     f"{C.ORANGE}{C.BOLD}[ HIGH ]    {C.RESET}",
-        "Medium":   f"{C.YELLOW}{C.BOLD}[ MEDIUM ]  {C.RESET}",
-        "Low":      f"{C.TEAL}{C.BOLD}[ LOW ]     {C.RESET}",
-    }
-    return colours.get(priority, f"[ {priority} ]")
-
-
-def risk_level_badge(level: str) -> str:
-    badges = {
-        "CRITICAL": f"{C.BG_RED}{C.WHITE}{C.BOLD}  !! CRITICAL !!  {C.RESET}",
-        "HIGH":     f"{C.RED}{C.BOLD}[ ▲ HIGH ]      {C.RESET}",
-        "MEDIUM":   f"{C.YELLOW}{C.BOLD}[ ~ MEDIUM ]    {C.RESET}",
-        "LOW":      f"{C.LIME}{C.BOLD}[ ✔ LOW ]       {C.RESET}",
-    }
-    return badges.get(level, f"[ {level} ]")
-
-
-def eligibility_badge(eligible: bool, recommendation: str) -> str:
-    if eligible:
-        return f"{C.BG_GREEN}{C.BLACK}{C.BOLD}  ✔ APPROVED  {C.RESET}"
-    return f"{C.BG_RED}{C.WHITE}{C.BOLD}  ✘ NOT ELIGIBLE  {C.RESET}"
-
-
-def dept_badge(dept_code: str) -> str:
-    dept_colours = {
-        "FRM": C.RED, "TSU": C.BLUE, "COC": C.YELLOW,
-        "DCS": C.CYAN, "AOD": C.ORANGE, "CLS": C.TEAL,
-    }
-    col = dept_colours.get(dept_code, C.WHITE)
-    return f"{col}{C.BOLD}[ {dept_code} ]{C.RESET}"
-
-
-def progress_header(current: int, total: int,
-                    label: str, colour: str = C.CYAN) -> None:
-    """Show test N/M progress with mini bar."""
-    ratio   = current / total if total else 0
-    bar_w   = 16
-    filled  = int(ratio * bar_w)
-    bar     = f"{colour}{'▪' * filled}{C.DIM}{'·' * (bar_w - filled)}{C.RESET}"
-    print(f"\n  {bar}  {colour}{C.BOLD}Test {current}/{total}{C.RESET}"
-          f"  {C.WHITE}{label}{C.RESET}")
-
-
-def summary_table_row(suite: str, passed: int, total: int,
-                      colour: str = C.WHITE) -> None:
-    rate    = passed / total if total else 0
-    bar     = confidence_bar(rate, width=22, label=False)
-    pct_str = f"{rate:.0%}"
-    status  = (f"{C.LIME}{C.BOLD}✔ ALL PASS{C.RESET}"
-               if passed == total else f"{C.RED}{C.BOLD}✘ {total - passed} FAILED{C.RESET}")
-    print(f"  {colour}{C.BOLD}{suite:<14}{C.RESET}"
-          f"  {passed}/{total}  {bar}  {pct_str:>5}  {status}")
+def bullet_note(text: str) -> str:
+    return f"  {C.DIM}◦{C.RESET}  {C.DIM}{text}{C.RESET}"
 
 
 # =============================================================================
@@ -474,6 +506,7 @@ SENTINEL_CASES: List[Dict] = [
 # =============================================================================
 
 TRAJECTORY_CASES: List[Dict] = [
+    # ── Student Loan ──────────────────────────────────────────────────────────
     {
         "name":    "Student Loan -- APPROVED | NYSC corps member, solo account",
         "product": "Student Loan",
@@ -506,6 +539,7 @@ TRAJECTORY_CASES: List[Dict] = [
         "expected_result":         "NOT_ELIGIBLE",
         "expected_recommendation": "Student Loan",
     },
+    # ── Car Loan ──────────────────────────────────────────────────────────────
     {
         "name":    "Car Loan -- APPROVED | Lagos commuter, 14 ride-hailing trips",
         "product": "Car Loan",
@@ -538,6 +572,7 @@ TRAJECTORY_CASES: List[Dict] = [
         "expected_result":         "NOT_ELIGIBLE",
         "expected_recommendation": None,
     },
+    # ── Personal Loan ─────────────────────────────────────────────────────────
     {
         "name":    "Personal Loan -- APPROVED | Mid-career professional, salary earner",
         "product": "Personal Loan",
@@ -554,6 +589,7 @@ TRAJECTORY_CASES: List[Dict] = [
         "expected_result":         "APPROVED",
         "expected_recommendation": "Personal Loan",
     },
+    # ── Investment Plan ───────────────────────────────────────────────────────
     {
         "name":    "Investment Plan -- APPROVED | Entrepreneur, high inflow current account",
         "product": "Investment Plan",
@@ -586,6 +622,7 @@ TRAJECTORY_CASES: List[Dict] = [
         "expected_result":         "NOT_ELIGIBLE",
         "expected_recommendation": None,
     },
+    # ── Trust Fund ────────────────────────────────────────────────────────────
     {
         "name":    "Trust Fund -- APPROVED | HNI customer, high balance current account",
         "product": "Trust Fund",
@@ -662,24 +699,6 @@ CONFIDENCE_THRESHOLD = 0.85
 
 
 # =============================================================================
-# Banner
-# =============================================================================
-
-def print_banner() -> None:
-    lines = [
-        f"{C.CYAN}{'═' * WIDTH}{C.RESET}",
-        f"{C.CYAN}║{C.RESET}{C.BOLD}{C.WHITE}{'  ███████╗███████╗███╗   ██╗████████╗██╗███╗   ██╗███████╗██╗     ':^{WIDTH-2}}{C.RESET}{C.CYAN}║{C.RESET}",
-        f"{C.CYAN}║{C.RESET}{C.TEAL}{'  SENTINEL BANK  ·  RAG AGENT DEMO & TEST SUITE  ·  v2.2':^{WIDTH-2}}{C.RESET}{C.CYAN}║{C.RESET}",
-        f"{C.CYAN}║{C.RESET}{C.DIM}{'  Dispatcher  ·  Sentinel (Fraud)  ·  Trajectory  ·  Policy':^{WIDTH-2}}{C.RESET}{C.CYAN}║{C.RESET}",
-        f"{C.CYAN}{'═' * WIDTH}{C.RESET}",
-    ]
-    print()
-    for line in lines:
-        print(line)
-    print()
-
-
-# =============================================================================
 # Main Tester Class
 # =============================================================================
 
@@ -687,33 +706,34 @@ class AgentTester:
     """Runs automated tests and interactive demos for all four agents."""
 
     def __init__(self) -> None:
-        self.engine:  Optional[RAGQueryEngine] = None
-        self.results: List[Dict]               = []
+        self.engine:      Optional[RAGQueryEngine]  = None
+        self.results:     List[Dict]                = []
+        self.recommender: RecommendationEngine      = RecommendationEngine()
 
     # -------------------------------------------------------------------------
     # Initialization
     # -------------------------------------------------------------------------
 
     async def initialize(self) -> None:
-        print_banner()
+        """Initialize RAG engine with persistent ChromaDB client."""
+        print(f"\n{C.INDIGO}{'▓' * 70}{C.RESET}")
+        print(f"{C.INDIGO}▓{C.RESET}  {C.GOLD}{C.BOLD}{'Sentinel Bank RAG System — Agent Demo & Test Suite':^64}{C.RESET}  {C.INDIGO}▓{C.RESET}")
+        print(f"{C.INDIGO}{'▓' * 70}{C.RESET}\n")
 
-        print(f"  {C.DIM}Initializing ChromaDB and loading embedding model...{C.RESET}")
+        print(f"  {C.DIM}Initializing ChromaDB and loading embedding model ...{C.RESET}")
         start = time.time()
 
         client, config = initialize_chromadb()
         self.engine    = RAGQueryEngine(client, config)
 
         elapsed = time.time() - start
-        print(f"  {C.LIME}✔  Engine ready  {elapsed_tag(elapsed)}{C.RESET}")
+        print(f"  {C.BRIGHT_GREEN}✔  Engine ready{C.RESET}  {elapsed_str(elapsed)}\n")
 
         stats = self.engine.retrieval.get_collection_stats()
-        print()
-        print(f"  {C.CYAN}{'─'*40}{C.RESET}")
-        print(f"  {C.CYAN}{C.BOLD}Collection Stats{C.RESET}")
-        print(f"  {C.CYAN}{'─'*40}{C.RESET}")
-        key_val("Policy chunks", str(stats["policies"]), C.TEAL)
-        key_val("FAQ chunks",    str(stats["faqs"]),     C.TEAL)
-        key_val("Total chunks",  str(stats["total"]),    C.LIME)
+        print(f"  {C.CYAN}Collections:{C.RESET}")
+        print(f"    {C.TEAL}Policy chunks {C.RESET}: {C.BOLD}{stats['policies']:>4}{C.RESET}")
+        print(f"    {C.TEAL}FAQ chunks    {C.RESET}: {C.BOLD}{stats['faqs']:>4}{C.RESET}")
+        print(f"    {C.TEAL}Total chunks  {C.RESET}: {C.BOLD}{stats['total']:>4}{C.RESET}")
         print()
 
     # =========================================================================
@@ -721,12 +741,15 @@ class AgentTester:
     # =========================================================================
 
     async def run_dispatcher_tests(self) -> int:
-        section("DISPATCHER AGENT  —  Complaint Routing", "dispatcher")
+        """Run all Dispatcher Agent test cases. Returns pass count."""
+        section("DISPATCHER AGENT — Complaint Routing", C.BLUE)
 
         passed = 0
         for i, tc in enumerate(DISPATCHER_CASES, 1):
-            progress_header(i, len(DISPATCHER_CASES), tc["name"], C.BLUE)
-            print(f"  {C.DIM}Complaint: {tc['complaint']}{C.RESET}")
+            dept_colour = DEPT_COLOURS.get(tc["expected_dept"], C.CYAN)
+            print(f"  {C.BOLD}{C.WHITE}Test {i}/{len(DISPATCHER_CASES)}{C.RESET}"
+                  f"  {dept_colour}{C.BOLD}{tc['name']}{C.RESET}")
+            print(f"  {C.DIM}Complaint:{C.RESET} {C.ITALIC}{tc['complaint']}{C.RESET}")
 
             start   = time.time()
             result  = await self.engine.detect_complaint_category(tc["complaint"])
@@ -747,16 +770,19 @@ class AgentTester:
             if ok:
                 passed += 1
 
-            divider()
-            print(f"  {dept_badge(dept)}  {C.BOLD}{dept_name}{C.RESET}"
-                  f"  {C.DIM}(expected: {tc['expected_dept']}){C.RESET}"
-                  f"  {pass_fail(dept_ok)}")
-            print(f"  {priority_badge(priority)}  SLA: {C.BOLD}{sla}h{C.RESET}")
-            print()
-            print(f"  {'Confidence':<14}  {confidence_bar(confidence)}")
-            print(f"  {C.DIM}{'Method':<14}  {method}  |  Keywords: {keywords[:4]}{C.RESET}")
-            print(f"  {C.DIM}{'Time':<14}  {elapsed_tag(elapsed)}{C.RESET}")
-            print(f"\n  Overall   →  {pass_fail(ok)}")
+            dc = DEPT_COLOURS.get(dept, C.CYAN)
+            pc = PRIORITY_COLOURS.get(priority, C.WHITE)
+
+            print(f"  {C.DIM}{'─' * 62}{C.RESET}")
+            print(f"  {label('Department')}  {dc}{C.BOLD}{dept} — {dept_name}{C.RESET}"
+                  f"  {C.DIM}(expected: {tc['expected_dept']}){C.RESET}  {pass_fail(dept_ok)}")
+            print(f"  {label('Priority')}  {pc}{C.BOLD}{priority}{C.RESET}"
+                  f"  {C.DIM}SLA:{C.RESET} {C.GOLD}{C.BOLD}{sla}h{C.RESET}")
+            print(f"  {label('Confidence')}  {confidence_bar(confidence)}")
+            print(f"  {label('Method')}  {C.TEAL}{method}{C.RESET}"
+                  f"  {C.DIM}|  Keywords:{C.RESET} {C.SKY}{keywords[:4]}{C.RESET}")
+            print(f"  {label('Response time')}  {elapsed_str(elapsed)}"
+                  f"   {pass_fail(ok)}")
             print()
 
             self.results.append({
@@ -773,17 +799,19 @@ class AgentTester:
     # =========================================================================
 
     async def run_sentinel_tests(self) -> int:
-        section("SENTINEL AGENT  —  Fraud Risk Scoring", "sentinel")
+        """Run all Sentinel Agent test cases. Returns pass count."""
+        section("SENTINEL AGENT — Fraud Risk Scoring", C.CORAL)
 
         passed = 0
         for i, tc in enumerate(SENTINEL_CASES, 1):
             txn = tc["transaction"]
-            progress_header(i, len(SENTINEL_CASES), tc["name"], C.RED)
-            flags_str = txn["fraud_explainability_trace"]
-            print(f"  {C.DIM}Amount: {naira(txn['amount'])}"
-                  f"  |  Merchant: {txn['merchant_category']}"
-                  f"  |  Time: {txn['transaction_timestamp'].split()[1]}{C.RESET}")
-            print(f"  {C.DIM}Flags : {flags_str}{C.RESET}")
+            lc  = RISK_COLOURS.get(tc["expected_level"], C.WHITE)
+
+            print(f"  {C.BOLD}{C.WHITE}Test {i}/{len(SENTINEL_CASES)}{C.RESET}"
+                  f"  {lc}{C.BOLD}{tc['name']}{C.RESET}")
+            print(f"  {C.DIM}Amount:{C.RESET}  {naira(txn['amount'])}"
+                  f"  {C.DIM}Merchant:{C.RESET}  {C.TEAL}{txn['merchant_category']}{C.RESET}"
+                  f"  {C.DIM}Flags:{C.RESET}  {C.ORANGE}{txn['fraud_explainability_trace']}{C.RESET}")
 
             start   = time.time()
             result  = await self.engine.calculate_fraud_risk(txn)
@@ -799,46 +827,36 @@ class AgentTester:
 
             level_ok = level == tc["expected_level"]
             ok       = level_ok
-
             if ok:
                 passed += 1
 
-            divider()
+            rc = RISK_COLOURS.get(level, C.WHITE)
 
-            # Risk score bar
-            print(f"\n  {'Risk Score':<14}  {risk_score_bar(score)}")
-            print(f"  {'Risk Level':<14}  {risk_level_badge(level)}"
-                  f"  {C.DIM}(expected: {tc['expected_level']}){C.RESET}"
-                  f"  {pass_fail(level_ok)}")
+            print(f"  {C.DIM}{'─' * 62}{C.RESET}")
+            print(f"  {label('Risk Score')}  {risk_score_bar(score)}")
+            print(f"  {label('Risk Level')}  {rc}{C.BOLD}{level}{C.RESET}"
+                  f"  {C.DIM}(expected: {tc['expected_level']}){C.RESET}  {pass_fail(level_ok)}")
 
-            # Breakdown sub-bars
-            print()
-            sub_header("Score Breakdown", C.ORANGE)
-            bd_items = [
-                ("Flags",    breakdown.get("flag_score",     0), 40, C.RED),
-                ("Merchant", breakdown.get("merchant_risk",  0), 30, C.ORANGE),
-                ("Timing",   breakdown.get("timing_risk",    0), 20, C.YELLOW),
-            ]
-            for bd_label, bd_val, bd_max, bd_col in bd_items:
-                bd_ratio  = bd_val / bd_max if bd_max else 0
-                bd_filled = int(bd_ratio * 20)
-                bd_bar    = f"{bd_col}{'▪' * bd_filled}{C.DIM}{'·' * (20 - bd_filled)}{C.RESET}"
-                print(f"    {C.DIM}{bd_label:<10}{C.RESET}  {bd_bar}  "
-                      f"{bd_col}{bd_val}/{bd_max}{C.RESET}")
+            # Breakdown mini-bars
+            f_score = breakdown['flag_score']
+            m_risk  = breakdown['merchant_risk']
+            t_risk  = breakdown['timing_risk']
+            print(f"  {label('Breakdown')}"
+                  f"  flags {C.ORANGE}{f_score:>3}{C.RESET}"
+                  f"  merchant {C.CORAL}{m_risk:>3}{C.RESET}"
+                  f"  timing {C.YELLOW}{t_risk:>3}{C.RESET}")
 
-            print()
-            block_str    = f"{C.RED}{C.BOLD}BLOCK NOW{C.RESET}" if block else f"{C.LIME}No block{C.RESET}"
-            chall_str    = f"{C.YELLOW}Challenge required{C.RESET}" if challenge else f"{C.DIM}No challenge{C.RESET}"
-            print(f"  {'Action':<14}  {C.YELLOW}{action}{C.RESET}")
-            print(f"  {'Block?':<14}  {block_str}  |  {chall_str}")
-            print(f"  {'Confidence':<14}  {confidence_bar(confidence)}")
+            block_str     = f"{C.BRIGHT_RED}{C.BOLD}YES — immediate freeze{C.RESET}" if block else f"{C.DIM}No{C.RESET}"
+            challenge_str = f"{C.ORANGE}YES{C.RESET}" if challenge else f"{C.DIM}No{C.RESET}"
+            print(f"  {label('Action')}  {C.BRIGHT_YELLOW}{action}{C.RESET}")
+            print(f"  {label('Block?')}  {block_str}   {C.DIM}Challenge:{C.RESET}  {challenge_str}")
 
             if result.get("policy_explanation"):
-                expl = result["policy_explanation"][:130]
-                print(f"\n  {C.DIM}Policy: {expl}...{C.RESET}")
+                expl = result["policy_explanation"][:110]
+                print(f"  {label('Policy basis')}  {C.DIM}{expl}…{C.RESET}")
 
-            print(f"  {C.DIM}Time: {elapsed_tag(elapsed)}{C.RESET}")
-            print(f"\n  Overall   →  {pass_fail(ok)}")
+            print(f"  {label('Response time')}  {elapsed_str(elapsed)}"
+                  f"   {pass_fail(ok)}")
             print()
 
             self.results.append({
@@ -855,12 +873,23 @@ class AgentTester:
     # =========================================================================
 
     async def run_trajectory_tests(self) -> int:
-        section("TRAJECTORY AGENT  —  Eligibility + Recommendation", "trajectory")
+        """
+        Run all Trajectory Agent test cases.
+
+        Each test runs BOTH:
+          1. validate_product_recommendation() — eligibility gate (RAG-grounded)
+          2. recommend_product()               — proactive tailored suggestion
+
+        Returns:
+            pass count (int)
+        """
+        section("TRAJECTORY AGENT — Eligibility + Tailored Recommendation", C.MAGENTA)
 
         passed = 0
         for i, tc in enumerate(TRAJECTORY_CASES, 1):
             cd      = tc["customer_data"]
             product = tc["product"]
+            pc      = PRODUCT_COLOURS.get(product, C.CYAN)
 
             score   = cd.get("Loan_signal_score", 0)
             inflow  = cd.get("monthly_inflow", 0)
@@ -871,66 +900,57 @@ class AgentTester:
             balance = cd.get("current_balance", 0)
             desired = cd.get("desired_loan_amount", 0)
 
-            progress_header(i, len(TRAJECTORY_CASES), tc["name"], C.MAGENTA)
+            print(f"  {C.BOLD}{C.WHITE}Test {i}/{len(TRAJECTORY_CASES)}{C.RESET}"
+                  f"  {pc}{C.BOLD}{tc['name']}{C.RESET}")
 
-            # Profile summary panel
-            divider(C.MAGENTA, "─")
-            sub_header("Customer Profile", C.MAGENTA)
-            print(f"    {C.CYAN}Age{C.RESET}          {age}   "
-                  f"{C.CYAN}Account{C.RESET}  {acct.upper()}")
-            print(f"    {C.CYAN}Inflow{C.RESET}       {naira(inflow):<16}  "
-                  f"{C.CYAN}Balance{C.RESET}  {naira(balance)}")
-            salary_str = f"{C.LIME}✔ Yes{C.RESET}" if salary else f"{C.DIM}✘ No{C.RESET}"
-            uber_str    = f"{uber} "
-            uber_stars  = (f"{C.TEAL}{'●' * min(uber, 15)}{C.RESET}" if uber > 0
-                           else f"{C.DIM}no trips{C.RESET}")
-            print(f"    {C.CYAN}Salary{C.RESET}       {salary_str:<24}  "
-                  f"{C.CYAN}Uber trips{C.RESET}  {uber_str}{uber_stars}")
-            if desired > 0:
-                print(f"    {C.CYAN}Desired loan{C.RESET}  {naira(desired)}")
+            # Profile summary line
+            salary_tag = (f"{C.BRIGHT_GREEN}salary ✔{C.RESET}" if salary
+                          else f"{C.DIM}no salary{C.RESET}")
+            uber_tag   = (f"{C.ORANGE}🚗 {uber} trips{C.RESET}" if uber
+                          else f"{C.DIM}uber: 0{C.RESET}")
+            print(f"  {C.DIM}Profile :{C.RESET}"
+                  f"  age {C.LIME}{age}{C.RESET}"
+                  f"  acct {C.TEAL}{acct}{C.RESET}"
+                  f"  inflow {naira(inflow)}"
+                  f"  bal {naira(balance)}")
+            print(f"  {C.DIM}Signals :{C.RESET}"
+                  f"  {salary_tag}  {uber_tag}"
+                  + (f"  desired {naira(desired)}" if desired > 0 else ""))
 
-            # Score gauge
-            print()
-            print(f"    {C.CYAN}Signal score{C.RESET}  "
-                  + score_gauge(score, 0.0, 1.0, width=32)
-                  + f"  {C.GOLD}{C.BOLD}{score:.2f}{C.RESET}")
-
-            # ── VALIDATION ───────────────────────────────────────────────────
-            sub_header(f"[1]  VALIDATION  ←  {product}", C.PURPLE)
+            # ── 1. VALIDATION ─────────────────────────────────────────────────
             v_start   = time.time()
             val       = await self.engine.validate_product_recommendation(cd, product)
             v_elapsed = time.time() - v_start
 
-            eligible   = val["is_eligible"]
-            recommend  = val["recommendation"]
-            met        = val["met_criteria"]
-            unmet      = val["unmet_criteria"]
-            confidence = val["confidence"]
-            score_range= val.get("score_range")
-            policy     = val.get("policy_basis", "")
+            eligible    = val["is_eligible"]
+            recommend   = val["recommendation"]
+            met         = val["met_criteria"]
+            unmet       = val["unmet_criteria"]
+            confidence  = val["confidence"]
+            score_range = val.get("score_range")
+            policy      = val.get("policy_basis", "")
 
-            val_ok     = recommend == tc["expected_result"]
-            range_str  = (f"{score_range[0]:.2f} → {score_range[1]:.2f}"
-                          if score_range else "N/A")
+            val_ok   = recommend == tc["expected_result"]
+            r_lo, r_hi = (score_range if score_range else (0.0, 1.0))
 
-            print(f"\n    Result      {eligibility_badge(eligible, recommend)}"
-                  f"  {C.DIM}(expected: {tc['expected_result']}){C.RESET}"
-                  f"  {pass_fail(val_ok)}")
-            print(f"    Score range {C.DIM}{range_str}{C.RESET}")
-            print(f"    Confidence  {confidence_bar(confidence, width=22)}")
-            print(f"    {elapsed_tag(v_elapsed)}")
-
+            sub_section(f"① VALIDATION — {product}", pc)
+            print(f"  {label('Score range')}  {score_gradient_bar(score, r_lo, r_hi)}")
+            print(f"  {label('Eligibility')}  {result_badge(recommend, eligible)}"
+                  f"  {C.DIM}(expected: {tc['expected_result']}){C.RESET}  {pass_fail(val_ok)}")
+            print(f"  {label('RAG confidence')}  {confidence_bar(confidence)}")
             for m in met:
-                print(f"    {C.LIME}✔{C.RESET}  {m}")
+                print(bullet_ok(m))
             for u in unmet:
-                print(f"    {C.RED}✘{C.RESET}  {u}")
+                print(bullet_fail(u))
             if policy:
-                print(f"\n    {C.DIM}Policy: {policy[:120]}...{C.RESET}")
+                print(f"  {C.DIM}Policy:{C.RESET}  {C.DIM}{policy[:110]}…{C.RESET}")
+            print(f"  {label('Response time')}  {elapsed_str(v_elapsed)}")
 
-            # ── RECOMMENDATION ────────────────────────────────────────────────
-            sub_header("[2]  RECOMMENDATION  —  behavioral profile", C.PURPLE)
+            # ── 2. PROACTIVE RECOMMENDATION ───────────────────────────────────
+            sub_section("② RECOMMENDATION ENGINE — behavioral profile", C.SKY)
+
             r_start    = time.time()
-            rec_result = recommend_product(cd)
+            rec_result = await self.recommender.recommend(cd)
             r_elapsed  = time.time() - r_start
 
             primary   = rec_result["primary_product"]
@@ -945,48 +965,46 @@ class AgentTester:
             r_range   = rec_result.get("score_range")
 
             if primary:
-                p_range = (f"{r_range[0]:.2f} → {r_range[1]:.2f}" if r_range else "N/A")
-                print(f"\n    {C.LIME}{C.BOLD}▶  {primary}{C.RESET}"
-                      f"  {C.DIM}(range {p_range}  confidence: {r_conf}){C.RESET}")
+                rpc     = PRODUCT_COLOURS.get(primary, C.CYAN)
+                p_range = (f"{r_range[0]:.2f}–{r_range[1]:.2f}" if r_range else "N/A")
+                print(f"  {label('Recommended')}  {rpc}{C.BOLD}{primary}{C.RESET}"
+                      f"  {C.DIM}range {p_range}  conf {r_conf}{C.RESET}")
 
                 if emi > 0:
-                    dsr_col = C.RED if dsr_warn else C.LIME
-                    dsr_note = (" ⚠ EXCEEDS CBN 33.3% CAP — refer to credit officer"
-                                if dsr_warn else "  ✔ within CBN 33.3% cap")
-                    # EMI visual bar
-                    dsr_val  = float(str(dsr_ratio).replace("%", "")) / 100
-                    emi_bar  = confidence_bar(min(dsr_val, 1.0), width=20, label=False)
-                    print(f"    {'Monthly EMI':<14}  {C.BOLD}{naira(emi)}{C.RESET}"
-                          f"  over {tenure} months")
-                    print(f"    {'DSR':<14}  {dsr_col}{dsr_ratio}{C.RESET}"
-                          f"  {emi_bar}  {dsr_col}{dsr_note}{C.RESET}")
+                    print(f"  {label('Monthly EMI')}  {C.BOLD}{naira(emi)}{C.RESET}"
+                          f"  {C.DIM}over{C.RESET} {C.GOLD}{tenure} months{C.RESET}")
+                    dsr_warn_txt = (
+                        f"  {C.BRIGHT_RED}{C.BOLD}⚠  EXCEEDS 33.3% CBN CAP — refer to credit officer{C.RESET}"
+                        if dsr_warn else ""
+                    )
+                    print(f"  {label('DSR')}  {dsr_bar(dsr_ratio)}{dsr_warn_txt}")
                 else:
-                    print(f"    {'EMI / DSR':<14}  {C.DIM}N/A  (investment / wealth product){C.RESET}")
+                    print(f"  {label('EMI / DSR')}  {C.DIM}N/A  (investment or wealth product){C.RESET}")
 
                 if all_q and len(all_q) > 1:
-                    products_str = "  ".join(
-                        f"{C.TEAL}[{p}]{C.RESET}" for p in all_q
-                    )
-                    print(f"    {'Qualifying':<14}  {products_str}")
+                    all_coloured = [f"{PRODUCT_COLOURS.get(p, C.CYAN)}{p}{C.RESET}" for p in all_q]
+                    print(f"  {label('All qualifying')}  {', '.join(all_coloured)}")
 
                 for m in r_met:
-                    print(f"    {C.LIME}+{C.RESET}  {m}")
+                    print(bullet_ok(m))
                 for u in r_unmet:
-                    print(f"    {C.DIM}~  {u}{C.RESET}")
+                    print(bullet_note(u))
 
             else:
-                print(f"\n    {C.YELLOW}⚠  No product qualifies — "
-                      f"score {score:.2f} is below all product floors{C.RESET}")
+                print(f"  {C.BRIGHT_YELLOW}⚠  No product qualifies —"
+                      f" Loan_signal_score {C.BOLD}{score:.2f}{C.RESET}"
+                      f"{C.BRIGHT_YELLOW} is below all product floors{C.RESET}")
                 for r in rec_result.get("reasoning", []):
-                    print(f"    {C.DIM}  {r}{C.RESET}")
+                    print(bullet_note(r))
 
-            print(f"    {elapsed_tag(r_elapsed)}")
+            print(f"  {label('Calc time')}  {elapsed_str(r_elapsed)}")
 
+            # ── Overall ───────────────────────────────────────────────────────
             ok = val_ok
             if ok:
                 passed += 1
 
-            print(f"\n  Overall   →  {pass_fail(ok)}")
+            print(f"\n  {C.BOLD}Overall  {pass_fail(ok)}{C.RESET}")
             print()
 
             self.results.append({
@@ -999,16 +1017,18 @@ class AgentTester:
         return passed
 
     # =========================================================================
-    # POLICY TESTS
+    # POLICY QUERY TESTS
     # =========================================================================
 
     async def run_policy_tests(self) -> int:
-        section("POLICY AGENT  —  General Knowledge Queries", "policy")
+        """Run general policy query tests. Returns pass count."""
+        section("POLICY AGENT — General Knowledge Queries", C.TEAL)
 
         passed = 0
         for i, tc in enumerate(POLICY_CASES, 1):
-            progress_header(i, len(POLICY_CASES), tc["name"], C.CYAN)
-            print(f"  {C.DIM}Q: {tc['question']}{C.RESET}")
+            print(f"  {C.BOLD}{C.WHITE}Test {i}/{len(POLICY_CASES)}{C.RESET}"
+                  f"  {C.TEAL}{C.BOLD}{tc['name']}{C.RESET}")
+            print(f"  {C.DIM}Q:{C.RESET}  {C.ITALIC}{tc['question']}{C.RESET}")
 
             start   = time.time()
             result  = await self.engine.query(tc["question"])
@@ -1028,44 +1048,25 @@ class AgentTester:
             if ok:
                 passed += 1
 
-            source_str = sources[0]["source"] if sources else "None"
+            source_str   = sources[0]["source"] if sources else "None"
+            grnd_colour  = C.BRIGHT_GREEN if grounded else C.BRIGHT_RED
+            grnd_icon    = "✔" if grounded else "✘"
 
-            divider()
-            print(f"  {'Confidence':<14}  {confidence_bar(confidence)}")
+            print(f"  {C.DIM}{'─' * 62}{C.RESET}")
+            print(f"  {label('Confidence')}  {confidence_bar(confidence)}")
+            print(f"  {label('Grounded')}  {grnd_colour}{grnd_icon}  {grounded}{C.RESET}"
+                  f"  {C.DIM}|  Source:{C.RESET}  {C.SKY}{source_str}{C.RESET}")
 
-            grounded_str = (f"{C.LIME}✔ Grounded{C.RESET}"
-                            if grounded else f"{C.RED}✘ Not grounded{C.RESET}")
-            print(f"  {'Source':<14}  {source_str}  |  {grounded_str}")
+            hits_coloured = [f"{C.LIME}{kw}{C.RESET}" for kw in keyword_hits]
+            print(f"  {label('Keyword hits')}  {', '.join(hits_coloured) or C.DIM + 'none' + C.RESET}"
+                  f"   {pass_fail(keyword_ok)}")
 
-            # Keyword hits as tags
-            hits_display = "  ".join(
-                f"{C.LIME}[{kw}]{C.RESET}" for kw in keyword_hits
-            ) or f"{C.RED}none{C.RESET}"
-            missed = [kw for kw in tc["keywords"] if kw not in answer_lower]
-            miss_display = "  ".join(
-                f"{C.DIM}[{kw}]{C.RESET}" for kw in missed
-            )
-            print(f"  {'Keywords':<14}  Hit: {hits_display}"
-                  + (f"  Miss: {miss_display}" if missed else ""))
-
-            # Answer preview — wrapped
             if answer:
-                preview = answer[:220].replace("\n", " ")
-                print()
-                print(f"  {C.DIM}Answer preview:{C.RESET}")
-                words = preview.split()
-                line  = "  "
-                for w in words:
-                    if len(line) + len(w) + 1 > WIDTH - 2:
-                        print(f"  {C.DIM}{line.strip()}{C.RESET}")
-                        line = "    " + w
-                    else:
-                        line = line + (" " if line.strip() else "") + w
-                if line.strip():
-                    print(f"  {C.DIM}{line.strip()}...{C.RESET}")
+                preview = answer[:180].replace("\n", " ")
+                print(f"  {label('Answer')}  {C.DIM}{preview}…{C.RESET}")
 
-            print(f"\n  {elapsed_tag(elapsed)}")
-            print(f"  Overall   →  {pass_fail(ok)}")
+            print(f"  {label('Response time')}  {elapsed_str(elapsed)}"
+                  f"   {pass_fail(ok)}")
             print()
 
             self.results.append({
@@ -1082,6 +1083,7 @@ class AgentTester:
     # =========================================================================
 
     async def run_all_tests(self) -> None:
+        """Run complete automated test suite for all four agents."""
         self.results.clear()
         total_start = time.time()
 
@@ -1090,56 +1092,55 @@ class AgentTester:
         t_pass = await self.run_trajectory_tests()
         p_pass = await self.run_policy_tests()
 
-        # ── Final Summary ─────────────────────────────────────────────────────
-        section("FINAL  RESULTS", "default")
+        section("FINAL TEST RESULTS", C.GOLD)
 
         suites = [
-            ("Dispatcher", len(DISPATCHER_CASES), d_pass, C.BLUE),
-            ("Sentinel",   len(SENTINEL_CASES),   s_pass, C.RED),
-            ("Trajectory", len(TRAJECTORY_CASES), t_pass, C.MAGENTA),
-            ("Policy",     len(POLICY_CASES),      p_pass, C.CYAN),
+            ("Dispatcher",  len(DISPATCHER_CASES),  d_pass,  C.BLUE),
+            ("Sentinel",    len(SENTINEL_CASES),     s_pass,  C.CORAL),
+            ("Trajectory",  len(TRAJECTORY_CASES),   t_pass,  C.MAGENTA),
+            ("Policy",      len(POLICY_CASES),        p_pass,  C.TEAL),
         ]
 
         total_tests  = sum(n for _, n, _, _ in suites)
         total_passed = sum(p for _, _, p, _ in suites)
 
-        print(f"  {C.DIM}{'Agent Suite':<14}  {'P/T':<6}  {'Confidence bar':<34}  {'%':>5}  {'Status'}{C.RESET}")
-        divider(C.DIM)
+        # Per-suite summary rows
+        for suite, total, p, colour in suites:
+            rate   = p / total if total else 0
+            bar    = confidence_bar(rate, width=20)
+            status = (f"{C.BG_GREEN}{C.BLACK}{C.BOLD}  PASS  {C.RESET}"
+                      if p == total
+                      else f"{C.BG_RED}{C.WHITE}{C.BOLD}  FAIL  {C.RESET}")
+            print(f"  {colour}{C.BOLD}{suite:<12}{C.RESET}  {p}/{total}  {bar}  {status}")
 
-        for suite, total, p, col in suites:
-            summary_table_row(suite, p, total, col)
-
-        divider(C.DIM)
-
+        print()
         overall_rate = total_passed / total_tests if total_tests else 0
         elapsed      = time.time() - total_start
 
-        print(f"\n  {C.WHITE}{C.BOLD}{'Overall':<14}{C.RESET}  "
-              f"{total_passed}/{total_tests}  "
-              f"{confidence_bar(overall_rate, width=22)}  "
-              f"{overall_rate:.0%}")
-        print(f"  {C.DIM}Total time: {elapsed:.1f}s{C.RESET}")
-
-        # Per-suite average RAG confidence
+        print(f"  {C.BOLD}Overall    :{C.RESET}  {C.BOLD}{total_passed}/{total_tests} tests passed{C.RESET}")
+        print(f"  {C.BOLD}Success    :{C.RESET}  {confidence_bar(overall_rate, width=30)}")
+        print(f"  {C.BOLD}Total time :{C.RESET}  {elapsed_str(elapsed)}")
         print()
-        sub_header("Average RAG Confidence by Suite", C.TEAL)
+
+        # Average RAG confidence per suite
+        print(f"  {C.CYAN}Average RAG confidence by suite:{C.RESET}")
         by_suite: Dict[str, List[float]] = {}
         for r in self.results:
             by_suite.setdefault(r["suite"], []).append(r["confidence"])
-        for suite_name, col in [(s, c) for s, _, _, c in suites]:
-            scores = by_suite.get(suite_name, [])
-            avg = sum(scores) / len(scores) if scores else 0
-            print(f"    {col}{suite_name:<14}{C.RESET}  {confidence_bar(avg, width=22)}")
+
+        for suite, scores in by_suite.items():
+            avg    = sum(scores) / len(scores) if scores else 0
+            colour = dict((s, c) for s, _, _, c in suites).get(suite, C.CYAN)
+            print(f"    {colour}{C.BOLD}{suite:<12}{C.RESET}  {confidence_bar(avg, width=20)}")
 
         print()
         if total_passed == total_tests:
-            print(f"  {C.BG_GREEN}{C.BLACK}{C.BOLD}  ✔  ALL {total_tests} TESTS PASSED — AGENTS OPERATING CORRECTLY  {C.RESET}\n")
+            print(f"  {C.BG_GREEN}{C.BLACK}{C.BOLD}  ✔  ALL AGENTS WORKING CORRECTLY  {C.RESET}\n")
         else:
             failed = [r for r in self.results if not r["passed"]]
-            print(f"  {C.BG_RED}{C.WHITE}{C.BOLD}  ✘  {len(failed)} TEST(S) FAILED — REVIEW ABOVE  {C.RESET}")
-            print()
+            print(f"  {C.BG_RED}{C.WHITE}{C.BOLD}  ✘  Some tests failed — review above  {C.RESET}")
             for f in failed:
-                print(f"    {C.RED}✘{C.RESET}  [{f['suite']}]  {f['name']}")
+                print(f"    {C.BRIGHT_RED}✘{C.RESET}  {C.DIM}[{f['suite']}]{C.RESET}  {f['name']}")
             print()
 
     # =========================================================================
@@ -1147,9 +1148,11 @@ class AgentTester:
     # =========================================================================
 
     async def interactive_dispatcher(self) -> None:
-        section("INTERACTIVE  —  Dispatcher Agent", "dispatcher")
+        """Interactive Dispatcher Agent demo."""
+        section("INTERACTIVE — Dispatcher Agent", C.BLUE)
         print(f"  {C.DIM}Type a customer complaint and the Dispatcher Agent will route it.{C.RESET}")
-        print(f"  {C.DIM}Type {C.WHITE}'back'{C.DIM} to return to the menu.{C.RESET}\n")
+        print(f"  {C.DIM}Type 'back' to return to the menu.{C.RESET}\n")
+
         samples = [
             "I transferred N50,000 to my cousin yesterday but it hasn't arrived",
             "My debit card was blocked after I tried to use it at a POS terminal",
@@ -1158,17 +1161,16 @@ class AgentTester:
         ]
         print(f"  {C.TEAL}Sample complaints:{C.RESET}")
         for s in samples:
-            print(f"    {C.DIM}▸ {s}{C.RESET}")
+            print(f"    {C.DIM}•  {s}{C.RESET}")
         print()
 
         while True:
             try:
-                complaint = input(f"  {C.CYAN}▶  Complaint:{C.RESET} ").strip()
+                complaint = input(f"  {C.BRIGHT_CYAN}Enter complaint:{C.RESET} ").strip()
             except (EOFError, KeyboardInterrupt):
                 break
             if not complaint or complaint.lower() == "back":
                 break
-
             print()
             start   = time.time()
             result  = await self.engine.detect_complaint_category(complaint)
@@ -1183,65 +1185,60 @@ class AgentTester:
             method    = result.get("routing_method", "")
             keywords  = result.get("keyword_matches", [])
 
-            divider(C.BLUE)
-            print(f"  {dept_badge(dept)}  {C.BOLD}{dept_name}{C.RESET}")
-            print(f"  {priority_badge(priority)}  SLA: {C.BOLD}{sla}h{C.RESET}")
-            print()
-            print(f"  {'Confidence':<14}  {confidence_bar(conf)}")
-            print(f"  {C.DIM}{'Method':<14}  {method}  |  Keywords: {keywords[:5]}{C.RESET}")
+            dc = DEPT_COLOURS.get(dept, C.CYAN)
+            pc = PRIORITY_COLOURS.get(priority, C.WHITE)
+
+            print(f"  {C.DIM}{'─' * 62}{C.RESET}")
+            print(f"  {label('Department')}  {dc}{C.BOLD}{dept} — {dept_name}{C.RESET}")
+            print(f"  {label('Priority')}  {pc}{C.BOLD}{priority}{C.RESET}"
+                  f"  {C.DIM}|{C.RESET}  SLA {C.GOLD}{C.BOLD}{sla}h{C.RESET}")
+            print(f"  {label('Confidence')}  {confidence_bar(conf)}")
+            print(f"  {label('Method')}  {C.TEAL}{method}{C.RESET}"
+                  f"  {C.DIM}|  Keywords:{C.RESET}  {C.SKY}{keywords[:5]}{C.RESET}")
             if reasoning:
-                print(f"\n  {C.DIM}Policy basis: {reasoning[:220]}...{C.RESET}")
-            print(f"  {elapsed_tag(elapsed)}")
+                print(f"  {label('Policy basis')}  {C.DIM}{reasoning[:200]}…{C.RESET}")
+            print(f"  {elapsed_str(elapsed)}")
             print()
 
     async def interactive_sentinel(self) -> None:
-        section("INTERACTIVE  —  Sentinel Agent", "sentinel")
+        """Interactive Sentinel Agent demo with preset transactions."""
+        section("INTERACTIVE — Sentinel Agent", C.CORAL)
         print(f"  {C.DIM}Select a sample transaction to analyse.{C.RESET}\n")
 
         presets = [
             {
-                "label": "Low risk  — grocery, daytime, small amount",
-                "transaction": {
-                    "fraud_explainability_trace": "normal_pattern",
-                    "merchant_category": "grocery", "amount": 4_800,
-                    "transaction_timestamp": "2026-02-22 11:20:00",
-                },
+                "label": "1.  Low risk — grocery, daytime, small amount",
+                "transaction": {"fraud_explainability_trace": "normal_pattern",
+                                "merchant_category": "grocery", "amount": 4_800,
+                                "transaction_timestamp": "2026-02-22 11:20:00"},
             },
             {
-                "label": "High risk  — fintech, 2am, ₦450K",
-                "transaction": {
-                    "fraud_explainability_trace": "high_amount_spike,mobile_channel_risk",
-                    "merchant_category": "fintech", "amount": 450_000,
-                    "transaction_timestamp": "2026-02-22 02:15:00",
-                },
+                "label": "2.  High risk — fintech, 2am, N450K",
+                "transaction": {"fraud_explainability_trace": "high_amount_spike,mobile_channel_risk",
+                                "merchant_category": "fintech", "amount": 450_000,
+                                "transaction_timestamp": "2026-02-22 02:15:00"},
             },
             {
-                "label": "Critical  — multiple failures, 3am, ₦520K",
-                "transaction": {
-                    "fraud_explainability_trace": "multiple_failures,high_amount_spike",
-                    "merchant_category": "fintech", "amount": 520_000,
-                    "transaction_timestamp": "2026-02-23 03:05:00",
-                },
+                "label": "3.  Critical — multiple failures at 3am, N520K",
+                "transaction": {"fraud_explainability_trace": "multiple_failures,high_amount_spike",
+                                "merchant_category": "fintech", "amount": 520_000,
+                                "transaction_timestamp": "2026-02-23 03:05:00"},
             },
             {
-                "label": "Medium risk  — transport (Bolt), mobile channel",
-                "transaction": {
-                    "fraud_explainability_trace": "mobile_channel_risk",
-                    "merchant_category": "transport", "amount": 85_000,
-                    "transaction_timestamp": "2026-02-22 23:45:00",
-                },
+                "label": "4.  Medium risk — transport (Bolt), mobile channel",
+                "transaction": {"fraud_explainability_trace": "mobile_channel_risk",
+                                "merchant_category": "transport", "amount": 85_000,
+                                "transaction_timestamp": "2026-02-22 23:45:00"},
             },
         ]
-
-        for idx, p in enumerate(presets, 1):
-            risk_icons = {1: f"{C.LIME}✔", 2: f"{C.ORANGE}▲", 3: f"{C.RED}!!", 4: f"{C.YELLOW}~"}
-            icon = risk_icons.get(idx, "·")
-            print(f"  {icon}{C.RESET}  {C.CYAN}{idx}.{C.RESET}  {p['label']}")
-        print(f"  {C.DIM}   0.  Back to menu{C.RESET}\n")
+        level_colours_menu = [C.BRIGHT_GREEN, C.ORANGE, C.BRIGHT_RED, C.BRIGHT_YELLOW]
+        for p, lc in zip(presets, level_colours_menu):
+            print(f"  {lc}{p['label']}{C.RESET}")
+        print(f"  {C.DIM}0.  Back to menu{C.RESET}\n")
 
         while True:
             try:
-                choice = input(f"  {C.CYAN}▶  Select (0-{len(presets)}):{C.RESET} ").strip()
+                choice = input(f"  {C.BRIGHT_CYAN}Select (0–{len(presets)}):{C.RESET} ").strip()
             except (EOFError, KeyboardInterrupt):
                 break
             if choice == "0" or choice.lower() == "back":
@@ -1249,15 +1246,15 @@ class AgentTester:
             try:
                 idx = int(choice) - 1
                 if not 0 <= idx < len(presets):
-                    print(f"  {C.RED}Enter 0-{len(presets)}.{C.RESET}")
+                    print(f"  {C.RED}Enter 0–{len(presets)}.{C.RESET}")
                     continue
             except ValueError:
                 print(f"  {C.RED}Please enter a number.{C.RESET}")
                 continue
 
             txn   = presets[idx]["transaction"]
-            label = presets[idx]["label"]
-            print(f"\n  {C.DIM}Analysing: {label}...{C.RESET}\n")
+            label_txt = presets[idx]["label"].split(".", 1)[1].strip()
+            print(f"\n  {C.DIM}Analysing: {label_txt}…{C.RESET}\n")
 
             start   = time.time()
             result  = await self.engine.calculate_fraud_risk(txn)
@@ -1271,49 +1268,47 @@ class AgentTester:
             challenge  = result["requires_challenge"]
             explanation= result.get("policy_explanation", "")
 
-            divider(C.RED)
-            print(f"\n  {'Risk Score':<14}  {risk_score_bar(score)}")
-            print(f"  {'Risk Level':<14}  {risk_level_badge(level)}")
+            rc = RISK_COLOURS.get(level, C.WHITE)
 
-            print()
-            sub_header("Breakdown", C.ORANGE)
-            for bd_label, bd_val, bd_max, bd_col in [
-                ("Flags",    bd.get("flag_score",    0), 40, C.RED),
-                ("Merchant", bd.get("merchant_risk", 0), 30, C.ORANGE),
-                ("Timing",   bd.get("timing_risk",   0), 20, C.YELLOW),
-            ]:
-                bd_ratio  = bd_val / bd_max if bd_max else 0
-                bd_filled = int(bd_ratio * 18)
-                bd_bar    = f"{bd_col}{'▪' * bd_filled}{C.DIM}{'·' * (18 - bd_filled)}{C.RESET}"
-                print(f"    {C.DIM}{bd_label:<10}{C.RESET}  {bd_bar}  {bd_col}{bd_val}/{bd_max}{C.RESET}")
-
-            print()
-            print(f"  {'Action':<14}  {C.YELLOW}{action}{C.RESET}")
-            block_str = (f"{C.BG_RED}{C.WHITE}{C.BOLD}  FREEZE ACCOUNT  {C.RESET}"
-                         if block else f"{C.LIME}No block{C.RESET}")
-            chall_str = (f"{C.YELLOW}Challenge required{C.RESET}"
-                         if challenge else f"{C.DIM}No challenge{C.RESET}")
-            print(f"  {'Block?':<14}  {block_str}  {chall_str}")
+            print(f"  {C.DIM}{'─' * 62}{C.RESET}")
+            print(f"  {label('Risk Score')}  {risk_score_bar(score)}")
+            print(f"  {label('Risk Level')}  {rc}{C.BOLD}{level}{C.RESET}")
+            print(f"  {label('Breakdown')}"
+                  f"  flags {C.ORANGE}{bd['flag_score']}{C.RESET}"
+                  f"  merchant {C.CORAL}{bd['merchant_risk']}{C.RESET}"
+                  f"  timing {C.YELLOW}{bd['timing_risk']}{C.RESET}")
+            print(f"  {label('Action')}  {C.BRIGHT_YELLOW}{action}{C.RESET}")
+            block_s = f"{C.BRIGHT_RED}{C.BOLD}YES — freeze account{C.RESET}" if block else f"{C.DIM}No{C.RESET}"
+            chal_s  = f"{C.ORANGE}YES{C.RESET}" if challenge else f"{C.DIM}No{C.RESET}"
+            print(f"  {label('Block?')}  {block_s}   {C.DIM}Challenge:{C.RESET}  {chal_s}")
             if explanation:
-                print(f"\n  {C.DIM}Policy: {explanation[:220]}...{C.RESET}")
-            print(f"  {elapsed_tag(elapsed)}")
+                print(f"  {label('Policy')}  {C.DIM}{explanation[:200]}…{C.RESET}")
+            print(f"  {elapsed_str(elapsed)}")
             print()
 
     async def interactive_trajectory(self) -> None:
-        section("INTERACTIVE  —  Trajectory Agent", "trajectory")
+        """
+        Interactive Trajectory Agent demo.
+
+        Collects the full customer behavioral profile and runs BOTH:
+          - validate_product_recommendation()  (eligibility gate)
+          - recommend_product()                (proactive suggestion w/ EMI + DSR)
+        """
+        section("INTERACTIVE — Trajectory Agent", C.MAGENTA)
         print(f"  {C.DIM}Enter a full customer profile derived from transaction history.{C.RESET}")
-        print(f"  {C.DIM}Validates eligibility AND provides a proactive recommendation{C.RESET}")
-        print(f"  {C.DIM}with EMI, DSR, and behavioral reasoning.{C.RESET}\n")
+        print(f"  {C.DIM}The engine validates eligibility AND provides a proactive{C.RESET}")
+        print(f"  {C.DIM}recommendation with EMI and DSR calculation.{C.RESET}\n")
 
         products = ["Car Loan", "Investment Plan", "Personal Loan", "Student Loan", "Trust Fund"]
         for i, p in enumerate(products, 1):
-            print(f"  {C.MAGENTA}{i}.{C.RESET}  {p}")
-        print(f"  {C.DIM}0.  Back{C.RESET}\n")
+            pc = PRODUCT_COLOURS.get(p, C.CYAN)
+            print(f"  {pc}{i}. {p}{C.RESET}")
+        print(f"  {C.DIM}0. Back{C.RESET}\n")
 
         while True:
             try:
                 p_choice = input(
-                    f"  {C.MAGENTA}▶  Select product to validate (0-{len(products)}):{C.RESET} "
+                    f"  {C.BRIGHT_MAGENTA}Select product to validate (0–{len(products)}):{C.RESET} "
                 ).strip()
             except (EOFError, KeyboardInterrupt):
                 break
@@ -1322,7 +1317,7 @@ class AgentTester:
             try:
                 p_idx = int(p_choice) - 1
                 if not 0 <= p_idx < len(products):
-                    print(f"  {C.RED}Invalid. Enter 0-{len(products)}.{C.RESET}")
+                    print(f"  {C.RED}Invalid. Enter 0–{len(products)}.{C.RESET}")
                     continue
                 product = products[p_idx]
             except ValueError:
@@ -1332,19 +1327,19 @@ class AgentTester:
             print(f"\n  {C.DIM}Enter customer data (press Enter for defaults):{C.RESET}")
             try:
                 def _inp(prompt, default):
-                    v = input(f"  {C.DIM}{prompt}{C.RESET} [{C.CYAN}{default}{C.RESET}]: ").strip()
+                    v = input(f"  {C.SKY}{prompt}{C.RESET} [{C.DIM}{default}{C.RESET}]: ").strip()
                     return v if v else str(default)
 
-                loan_score     = float(_inp("Loan_signal_score (0.0-1.0)", "0.80"))
-                monthly_inflow = float(_inp("Monthly inflow (₦)", "500000"))
-                salary_str     = _inp("Salary detected? (y/n)", "y").lower()
-                salary_detected= salary_str != "n"
-                uber_tracker   = int(  _inp("Uber/Bolt trips in 90 days", "5"))
-                age            = int(  _inp("Customer age", "30"))
-                account_type   = _inp("Account type (savings/solo/current)", "savings")
-                current_balance= float(_inp("Current balance (₦)", "200000"))
-                desired_str    = _inp("Desired loan amount (₦, 0=auto)", "0")
-                desired_amount = float(desired_str)
+                loan_score      = float(_inp("Loan_signal_score (0.0–1.0)", "0.80"))
+                monthly_inflow  = float(_inp("Monthly inflow (N)", "500000"))
+                salary_str      = _inp("Salary detected? (y/n)", "y").lower()
+                salary_detected = salary_str != "n"
+                uber_tracker    = int(  _inp("Uber/Bolt trips in 90 days", "5"))
+                age             = int(  _inp("Customer age", "30"))
+                account_type    = _inp("Account type (savings/solo/current)", "savings")
+                current_balance = float(_inp("Current balance (N)", "200000"))
+                desired_str     = _inp("Desired loan amount (N, 0=auto)", "0")
+                desired_amount  = float(desired_str)
 
             except (EOFError, KeyboardInterrupt, ValueError) as e:
                 print(f"  {C.RED}Input error: {e}. Using defaults.{C.RESET}")
@@ -1365,86 +1360,81 @@ class AgentTester:
                 customer["desired_loan_amount"] = desired_amount
 
             print()
+            # ── VALIDATION ────────────────────────────────────────────────────
+            start      = time.time()
+            val        = await self.engine.validate_product_recommendation(customer, product)
+            elapsed    = time.time() - start
 
-            # Gauge display
-            print(f"  Signal score  " + score_gauge(loan_score, 0.0, 1.0, 32)
-                  + f"  {C.GOLD}{C.BOLD}{loan_score:.2f}{C.RESET}")
-            print()
+            eligible    = val["is_eligible"]
+            recommend   = val["recommendation"]
+            met         = val["met_criteria"]
+            unmet       = val["unmet_criteria"]
+            confidence  = val["confidence"]
+            score_range = val.get("score_range")
+            policy_b    = val.get("policy_basis", "")
 
-            # ── VALIDATION ──────────────────────────────────────────────────
-            sub_header(f"VALIDATION  ←  {product}", C.PURPLE)
-            start   = time.time()
-            val     = await self.engine.validate_product_recommendation(customer, product)
-            elapsed = time.time() - start
+            r_lo, r_hi  = (score_range if score_range else (0.0, 1.0))
+            pc          = PRODUCT_COLOURS.get(product, C.CYAN)
 
-            eligible   = val["is_eligible"]
-            recommend  = val["recommendation"]
-            met        = val["met_criteria"]
-            unmet      = val["unmet_criteria"]
-            confidence = val["confidence"]
-            score_range= val.get("score_range")
-            policy     = val.get("policy_basis", "")
-
-            range_str  = (f"{score_range[0]:.2f} → {score_range[1]:.2f}"
-                          if score_range else "N/A")
-
-            print(f"\n  {eligibility_badge(eligible, recommend)}"
-                  f"  Score range: {C.DIM}{range_str}{C.RESET}")
-            print(f"  {'Confidence':<14}  {confidence_bar(confidence)}")
+            sub_section(f"VALIDATION — {product}", pc)
+            print(f"  {label('Score range')}  {score_gradient_bar(loan_score, r_lo, r_hi)}")
+            print(f"  {label('Result')}  {result_badge(recommend, eligible)}")
+            print(f"  {label('Confidence')}  {confidence_bar(confidence)}")
             for m in met:
-                print(f"  {C.LIME}✔{C.RESET}  {m}")
+                print(bullet_ok(m))
             for u in unmet:
-                print(f"  {C.RED}✘{C.RESET}  {u}")
-            if policy:
-                print(f"\n  {C.DIM}Policy: {policy[:220]}...{C.RESET}")
-            print(f"  {elapsed_tag(elapsed)}")
+                print(bullet_fail(u))
+            if policy_b:
+                print(f"  {label('Policy basis')}  {C.DIM}{policy_b[:200]}…{C.RESET}")
+            print(f"  {elapsed_str(elapsed)}")
 
-            # ── RECOMMENDATION ───────────────────────────────────────────────
-            print()
-            sub_header("RECOMMENDATION  —  behavioral profile", C.PURPLE)
-            rec        = recommend_product(customer)
-            primary    = rec["primary_product"]
-            r_met      = rec["met_criteria"]
-            r_unmet    = rec["unmet_criteria"]
-            emi        = rec["monthly_emi"]
-            tenure     = rec["tenure_months"]
-            dsr_ratio  = rec["dsr_ratio"]
-            dsr_warn   = rec["dsr_warning"]
-            all_q      = rec["all_qualifying"]
-            r_range    = rec.get("score_range")
+            # ── RECOMMENDATION ─────────────────────────────────────────────────
+            sub_section("RECOMMENDATION — behavioral profile", C.SKY)
+            rec       = await self.recommender.recommend(customer)
+            primary   = rec["primary_product"]
+            r_met     = rec["met_criteria"]
+            r_unmet   = rec["unmet_criteria"]
+            emi       = rec["monthly_emi"]
+            tenure    = rec["tenure_months"]
+            dsr_ratio = rec["dsr_ratio"]
+            dsr_warn  = rec["dsr_warning"]
+            all_q     = rec["all_qualifying"]
+            r_range   = rec.get("score_range")
 
             if primary:
-                p_range = (f"{r_range[0]:.2f} → {r_range[1]:.2f}" if r_range else "N/A")
-                print(f"\n  {C.LIME}{C.BOLD}▶  {primary}{C.RESET}"
-                      f"  {C.DIM}(range {p_range}  confidence: {rec['confidence']}){C.RESET}")
+                rpc     = PRODUCT_COLOURS.get(primary, C.CYAN)
+                p_range = (f"{r_range[0]:.2f}–{r_range[1]:.2f}" if r_range else "N/A")
+                print(f"  {label('Primary')}  {rpc}{C.BOLD}{primary}{C.RESET}"
+                      f"  {C.DIM}range {p_range}  conf {rec['confidence']}{C.RESET}")
                 if emi > 0:
-                    dsr_col  = C.RED if dsr_warn else C.LIME
-                    dsr_note = (" ⚠ EXCEEDS CBN cap — credit officer review"
-                                if dsr_warn else "  ✔ within CBN 33.3% cap")
-                    dsr_val  = float(str(dsr_ratio).replace("%", "")) / 100
-                    print(f"  {'Monthly EMI':<14}  {C.BOLD}{naira(emi)}{C.RESET}  over {tenure} months")
-                    print(f"  {'DSR':<14}  {dsr_col}{dsr_ratio}{C.RESET}"
-                          + f"  {confidence_bar(min(dsr_val, 1.0), width=18, label=False)}"
-                          + f"  {dsr_col}{dsr_note}{C.RESET}")
+                    dsr_warn_txt = (
+                        f"  {C.BRIGHT_RED}{C.BOLD}⚠  EXCEEDS 33.3% — credit officer review{C.RESET}"
+                        if dsr_warn else ""
+                    )
+                    print(f"  {label('Monthly EMI')}  {C.BOLD}{naira(emi)}{C.RESET}"
+                          f"  {C.DIM}over{C.RESET} {C.GOLD}{tenure} months{C.RESET}")
+                    print(f"  {label('DSR')}  {dsr_bar(dsr_ratio)}{dsr_warn_txt}")
                 else:
-                    print(f"  {'EMI / DSR':<14}  {C.DIM}N/A  (investment / wealth product){C.RESET}")
+                    print(f"  {label('EMI / DSR')}  {C.DIM}N/A (investment or wealth product){C.RESET}")
+
                 if all_q and len(all_q) > 1:
-                    print(f"  {'Qualifying':<14}  "
-                          + "  ".join(f"{C.TEAL}[{p}]{C.RESET}" for p in all_q))
+                    all_coloured = [f"{PRODUCT_COLOURS.get(p, C.CYAN)}{p}{C.RESET}" for p in all_q]
+                    print(f"  {label('All qualify')}  {', '.join(all_coloured)}")
                 for m in r_met:
-                    print(f"  {C.LIME}+{C.RESET}  {m}")
+                    print(bullet_ok(m))
                 for u in r_unmet:
-                    print(f"  {C.DIM}~  {u}{C.RESET}")
+                    print(bullet_note(u))
             else:
-                print(f"\n  {C.YELLOW}⚠  No product qualifies for this profile.{C.RESET}")
+                print(f"  {C.BRIGHT_YELLOW}⚠  No product qualifies for this profile.{C.RESET}")
                 for r in rec.get("reasoning", []):
-                    print(f"  {C.DIM}  {r}{C.RESET}")
+                    print(bullet_note(r))
             print()
 
     async def interactive_policy(self) -> None:
-        section("INTERACTIVE  —  Policy Agent", "policy")
+        """Interactive Policy Agent demo."""
+        section("INTERACTIVE — Policy Agent", C.TEAL)
         print(f"  {C.DIM}Ask any question about Sentinel Bank policies.{C.RESET}")
-        print(f"  {C.DIM}Type {C.WHITE}'back'{C.DIM} to return to the menu.{C.RESET}\n")
+        print(f"  {C.DIM}Type 'back' to return to the menu.{C.RESET}\n")
 
         samples = [
             "What is the SLA for transaction disputes?",
@@ -1456,12 +1446,12 @@ class AgentTester:
         ]
         print(f"  {C.TEAL}Sample questions:{C.RESET}")
         for s in samples:
-            print(f"    {C.DIM}▸ {s}{C.RESET}")
+            print(f"    {C.DIM}•  {s}{C.RESET}")
         print()
 
         while True:
             try:
-                question = input(f"  {C.CYAN}▶  Question:{C.RESET} ").strip()
+                question = input(f"  {C.BRIGHT_CYAN}Your question:{C.RESET} ").strip()
             except (EOFError, KeyboardInterrupt):
                 break
             if not question or question.lower() == "back":
@@ -1472,33 +1462,33 @@ class AgentTester:
             result  = await self.engine.query(question)
             elapsed = time.time() - start
 
-            answer    = result.get("answer") or "No answer found."
-            confidence= result.get("confidence", 0.0)
-            sources   = result.get("sources",    [])
-            grounded  = result.get("grounded",   False)
-            chunks    = result.get("chunks_used", 0)
-            source_str= sources[0]["source"] if sources else "None"
+            answer     = result.get("answer") or "No answer found."
+            confidence = result.get("confidence", 0.0)
+            sources    = result.get("sources",    [])
+            grounded   = result.get("grounded",   False)
+            chunks     = result.get("chunks_used", 0)
+            source_str = sources[0]["source"] if sources else "None"
 
-            divider(C.CYAN)
-            print(f"  {'Confidence':<14}  {confidence_bar(confidence)}")
-            grnd = f"{C.LIME}✔ Grounded{C.RESET}" if grounded else f"{C.RED}✘ Not grounded{C.RESET}"
-            print(f"  {'Source':<14}  {source_str}  |  Chunks: {chunks}  |  {grnd}")
-            print()
+            grnd_colour = C.BRIGHT_GREEN if grounded else C.BRIGHT_RED
+            grnd_icon   = "✔" if grounded else "✘"
 
-            # Word-wrapped answer
-            print(f"  {C.TEAL}{C.BOLD}Answer:{C.RESET}")
-            words = answer.split()
-            line  = "  "
+            print(f"  {C.DIM}{'─' * 62}{C.RESET}")
+            print(f"  {C.GOLD}{C.BOLD}Answer:{C.RESET}")
+            words, line = answer.split(), "  "
             for w in words:
-                if len(line) + len(w) + 1 > WIDTH:
-                    print(f"  {line.strip()}")
+                if len(line) + len(w) + 1 > 72:
+                    print(line)
                     line = "    " + w
                 else:
                     line = line + (" " if line.strip() else "") + w
             if line.strip():
-                print(f"  {line.strip()}")
-
-            print(f"\n  {elapsed_tag(elapsed)}")
+                print(line)
+            print()
+            print(f"  {label('Confidence')}  {confidence_bar(confidence)}")
+            print(f"  {label('Grounded')}  {grnd_colour}{grnd_icon}  {grounded}{C.RESET}"
+                  f"  {C.DIM}Source:{C.RESET}  {C.SKY}{source_str}{C.RESET}"
+                  f"  {C.DIM}Chunks: {chunks}{C.RESET}")
+            print(f"  {elapsed_str(elapsed)}")
             print()
 
     # =========================================================================
@@ -1506,24 +1496,19 @@ class AgentTester:
     # =========================================================================
 
     async def main_menu(self) -> None:
+        """Show interactive main menu."""
         while True:
-            section("SENTINEL BANK  —  AGENT DEMO MENU", "default")
-
-            menu_items = [
-                ("1", "Run Automated Test Suite  (all agents)",   C.WHITE),
-                ("2", "Interactive Dispatcher    (complaint routing)", C.BLUE),
-                ("3", "Interactive Sentinel      (fraud risk scoring)",  C.RED),
-                ("4", "Interactive Trajectory    (eligibility + recommendation)", C.MAGENTA),
-                ("5", "Interactive Policy        (general queries)", C.CYAN),
-                ("0", "Exit",                                      C.DIM),
-            ]
-
-            for key, label, col in menu_items:
-                print(f"  {col}{C.BOLD}{key}{C.RESET}  {label}")
+            section("SENTINEL BANK — AGENT DEMO MENU", C.GOLD)
+            print(f"  {C.BLUE}{C.BOLD}  1  {C.RESET}  Run Automated Test Suite {C.DIM}(all agents){C.RESET}")
+            print(f"  {C.BLUE}{C.BOLD}  2  {C.RESET}  Interactive Dispatcher Demo  {C.DIM}(complaint routing){C.RESET}")
+            print(f"  {C.CORAL}{C.BOLD}  3  {C.RESET}  Interactive Sentinel Demo    {C.DIM}(fraud risk scoring){C.RESET}")
+            print(f"  {C.MAGENTA}{C.BOLD}  4  {C.RESET}  Interactive Trajectory Demo  {C.DIM}(eligibility + recommendation){C.RESET}")
+            print(f"  {C.TEAL}{C.BOLD}  5  {C.RESET}  Interactive Policy Demo      {C.DIM}(general queries){C.RESET}")
+            print(f"  {C.DIM}  0    Exit{C.RESET}")
             print()
 
             try:
-                choice = input(f"  {C.WHITE}{C.BOLD}▶  Select option:{C.RESET} ").strip()
+                choice = input(f"  {C.GOLD}{C.BOLD}Select option:{C.RESET} ").strip()
             except (EOFError, KeyboardInterrupt):
                 break
 
@@ -1541,7 +1526,7 @@ class AgentTester:
             elif choice == "5":
                 await self.interactive_policy()
             else:
-                print(f"  {C.RED}Invalid choice. Enter 0-5.{C.RESET}\n")
+                print(f"  {C.RED}Invalid choice. Enter 0–5.{C.RESET}\n")
 
 
 # =============================================================================
@@ -1549,11 +1534,12 @@ class AgentTester:
 # =============================================================================
 
 async def main() -> None:
+    """Initialize and launch the interactive demo / test runner."""
     tester = AgentTester()
     try:
         await tester.initialize()
     except Exception as e:
-        print(f"\n{C.RED}[ERROR] Failed to initialize RAG engine:{C.RESET} {e}")
+        print(f"\n{C.BRIGHT_RED}[ERROR] Failed to initialize RAG engine:{C.RESET}  {e}")
         print(f"{C.DIM}Make sure ingest_documents.py has been run first.{C.RESET}\n")
         sys.exit(1)
 

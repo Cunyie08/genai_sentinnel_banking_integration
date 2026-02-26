@@ -28,6 +28,11 @@ Key changes in v2.2:
   - uber_tracker removed as a hard gate for Car Loan.
   - v2.3 (class refactor): logic moved into RecommendationEngine class.
     Module-level helpers and constants unchanged for compatibility.
+  - v2.4 (async): async def recommend() added as the primary awaitable
+    method. Runs CPU-bound scoring in a ThreadPoolExecutor so it does
+    not block the asyncio event loop used by RAGQueryEngine and
+    test_agents.py. Sync path retained as recommend_sync() for
+    standalone / non-async callers.
 
 CBN-aligned interest rate benchmarks (February 2026):
   Personal Loan   : 30% APR (2.5% monthly)
@@ -40,6 +45,8 @@ Author: AI Engineer 2
 Date: February 2026
 """
 
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
 from typing import Dict, Any, List, Optional
 import math
 
@@ -160,15 +167,17 @@ class RecommendationEngine:
     and DSR calculation only. They do NOT gate the recommendation —
     consistent with the PRS-001 v2 behavioral-signals-as-context model.
 
-    Usage (standalone):
+    Usage (standalone — sync):
         engine = RecommendationEngine()
-        result = engine.recommend(customer_dict)
+        result = engine.recommend_sync(customer_dict)
 
-    Usage (via RAGQueryEngine — rag_querys.py):
-        # RAGQueryEngine instantiates RecommendationEngine internally:
-        self.recommender = RecommendationEngine()
-        # Then calls it for the proactive leg:
-        result = self.recommender.recommend(customer)
+    Usage (async — preferred in the RAG pipeline):
+        engine = RecommendationEngine()
+        result = await engine.recommend(customer_dict)   # non-blocking
+
+    Usage (via AgentTester — test_agents.py):
+        # AgentTester holds self.recommender = RecommendationEngine()
+        result = await self.recommender.recommend(customer)
 
     Result dict shape (identical to validate_product_recommendation()):
         primary_product   : str | None
@@ -189,6 +198,11 @@ class RecommendationEngine:
     POLICIES: Dict[str, Dict] = PRODUCT_POLICIES
     DSR_CAP:  float           = DSR_CAP
 
+    # Shared thread pool — reused across all recommend() calls so we don't
+    # spawn a new executor per request. max_workers=4 is sufficient for
+    # CPU-bound scoring that completes in < 1ms per customer.
+    _executor: ThreadPoolExecutor = ThreadPoolExecutor(max_workers=4)
+
     def __init__(self) -> None:
         # Products sorted by priority once at construction time
         self._ordered: List[tuple] = sorted(
@@ -197,10 +211,36 @@ class RecommendationEngine:
         )
 
     # -------------------------------------------------------------------------
-    # Public API
+    # Public API — async (primary, used by RAG pipeline and test_agents.py)
     # -------------------------------------------------------------------------
 
-    def recommend(self, customer: Dict[str, Any]) -> Dict[str, Any]:
+    async def recommend(self, customer: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Async wrapper around the scoring logic.
+
+        Offloads the CPU-bound product evaluation to a ThreadPoolExecutor
+        so it does not block the asyncio event loop. This keeps
+        RAGQueryEngine.validate_product_recommendation() and
+        AgentTester.run_trajectory_tests() fully concurrent.
+
+        Args:
+            customer: See recommend_sync() for full field list.
+
+        Returns:
+            Same structured dict as recommend_sync().
+        """
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(
+            self._executor,
+            self.recommend_sync,
+            customer,
+        )
+
+    # -------------------------------------------------------------------------
+    # Public API — sync (retained for non-async callers and __main__ demo)
+    # -------------------------------------------------------------------------
+
+    def recommend_sync(self, customer: Dict[str, Any]) -> Dict[str, Any]:
         """
         Proactively recommend the best Sentinel Bank product for a customer.
 
@@ -519,7 +559,7 @@ class RecommendationEngine:
 
 
 # =============================================================================
-# Convenience wrapper — backward compatibility
+# Convenience wrappers — backward compatibility
 # =============================================================================
 
 _default_engine = RecommendationEngine()
@@ -527,32 +567,36 @@ _default_engine = RecommendationEngine()
 
 def recommend_product(customer: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Module-level convenience function — wraps RecommendationEngine.recommend().
+    Module-level SYNC convenience function.
 
-    Preserved for backward compatibility with any callers that import
-    the function directly. Internally delegates to a shared engine instance.
-
-        from recommend_product import recommend_product
-        result = recommend_product(customer)           # unchanged call site
-
-    Prefer importing the class for new code:
-        from recommend_product import RecommendationEngine
-        engine = RecommendationEngine()
-        result = engine.recommend(customer)
+    Calls RecommendationEngine.recommend_sync() directly — safe to use in
+    scripts, unit tests, and __main__ demos where there is no running event
+    loop.  Must NOT be called from inside an asyncio coroutine; use
+    recommend_product_async() or await engine.recommend() there instead.
     """
-    return _default_engine.recommend(customer)
+    return _default_engine.recommend_sync(customer)
+
+
+async def recommend_product_async(customer: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Module-level ASYNC convenience function.
+
+    Awaitable drop-in for use inside coroutines:
+
+        result = await recommend_product_async(customer)
+
+    Offloads work to the shared ThreadPoolExecutor so the event loop is
+    never blocked.
+    """
+    return await _default_engine.recommend(customer)
 
 
 # =============================================================================
 # Simulation / Demo
 # =============================================================================
 
-if __name__ == "__main__":
-    print("\n" + "=" * 65)
-    print("  SENTINEL BANK — RECOMMENDATION ENGINE v2.3")
-    print("  PRS-001 Aligned | CBN DSR Validation | Class-Based")
-    print("=" * 65)
-
+async def _demo() -> None:
+    """Async demo — runs all sample customers through the engine."""
     engine = RecommendationEngine()
 
     demo_customers = [
@@ -610,10 +654,19 @@ if __name__ == "__main__":
         },
     ]
 
+    # Run all 5 customers concurrently — demonstrates async benefit
+    tasks = []
+    labels = []
+    customers = []
     for c in demo_customers:
-        label  = c.pop("label")
-        result = engine.recommend(c)
+        label = c.pop("label")
+        labels.append(label)
+        customers.append(c)
+        tasks.append(engine.recommend(c))
 
+    results = await asyncio.gather(*tasks)
+
+    for label, c, result in zip(labels, customers, results):
         print(f"\n  Customer  : {label}")
         print(f"  Score     : {c['Loan_signal_score']:.2f}  |  "
               f"Inflow: N{c['monthly_inflow']:,.0f}")
@@ -639,4 +692,11 @@ if __name__ == "__main__":
             print(f"  Product   : None")
             print(f"  Reason    : {result['reasoning'][0]}")
 
+
+if __name__ == "__main__":
+    print("\n" + "=" * 65)
+    print("  SENTINEL BANK — RECOMMENDATION ENGINE v2.4")
+    print("  PRS-001 Aligned | CBN DSR Validation | Async / Class-Based")
+    print("=" * 65)
+    asyncio.run(_demo())
     print("\n" + "=" * 65 + "\n")
