@@ -5,6 +5,8 @@ faker
 python-dateutil
 pydantic
 chromadb
-sentence_transformers
+sentence-transformers
 torch
 pandas
+google-genai
+dotenv
