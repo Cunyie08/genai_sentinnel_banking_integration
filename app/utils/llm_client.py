@@ -19,7 +19,7 @@ class LLMClient:
         self.response_schema = response_schema
         self._semaphore = asyncio.Semaphore(max_concurrent)
 
-# Genrate a response from the LLM
+# Generate a response from the LLM
 
     async def generate(self, system_prompt: str, user_input: str):
         async with self._semaphore:
