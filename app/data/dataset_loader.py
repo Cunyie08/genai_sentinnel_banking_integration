@@ -6,12 +6,23 @@ class DatasetLoader:
     Loads Sentinnel Bank CSV datasets into memory.
     """
 
-    # Read the dataset from the directory
-    def __init__(self, base_path: str = "dataset"):
-        self.customers = pd.read_csv(f"{base_path}/customers.csv")
-        self.accounts = pd.read_csv(f"{base_path}/accounts.csv")
-        self.transactions = pd.read_csv(f"{base_path}/transactions.csv")
-        self.complaints = pd.read_csv(f"{base_path}/complaints.csv")
+from pathlib import Path
+import pandas as pd
+
+
+class DatasetLoader:
+
+    def __init__(self):
+
+        # Project root
+        BASE_DIR = Path(__file__).resolve().parents[2]
+
+        data_path = BASE_DIR / "dataset"
+
+        self.customers = pd.read_csv(data_path / "customers.csv")
+        self.accounts = pd.read_csv(data_path / "accounts.csv")
+        self.transactions = pd.read_csv(data_path / "transactions.csv")
+        self.complaints = pd.read_csv(data_path / "complaints.csv")
 
     # Normalize timestamps
         if "transaction_timestamp" in self.transactions.columns:

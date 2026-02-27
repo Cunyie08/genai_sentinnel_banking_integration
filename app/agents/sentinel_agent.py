@@ -14,7 +14,7 @@ from app.rag.rag_system.chromadb_config import initialize_chromadb
 import asyncio
 from app.data.dataset_loader import DatasetLoader
 from app.data.repository import BankRepository
-from ml.fraud_model import MLScorer
+from app.ml.fraud_model import MLScorer
 from app.rag.rag_system.rag_querys import create_engine
 
 
@@ -30,10 +30,18 @@ class SentinelAgent(BaseAgent):
     """
 
     # Initialize the agent
-    def __init__(self, repo, rag_engine):
+    def __init__(
+        self,
+        repo: BankRepository,
+        rag_engine: RAGQueryEngine,
+        openai_llm: LLMClient,
+        gemini_llm: LLMClient,
+    ):
+       
         self.repo = repo
         self.rag_engine = rag_engine
-
+        self.openai_llm = openai_llm
+        self.gemini_llm = gemini_llm
 
         # Load the Dataset for the customers, accounts, transactions, complaints
         self.dataset_loader = DatasetLoader()
@@ -190,11 +198,25 @@ async def main():
 
     rag_engine = await create_engine()
 
+    openai_llm = LLMClient(
+    client= AsyncOpenAI(api_key=OPENAI_API_KEY),
+    model_name="gpt-4o",
+    response_schema=FraudResponse,
+    )
+
+    gemini_llm = LLMClient(     
+    client=genai.Client(api_key=GEMINI_API_KEY),
+    model_name="gemini-2.5-flash",
+    response_schema=FraudResponse
+
+    )
 
     agent = SentinelAgent(
-        repo=repo,
-        rag_engine=rag_engine
-        )
+    repo=repo,
+    rag_engine=rag_engine,
+    openai_llm=openai_llm,
+    gemini_llm=gemini_llm
+    )
 
     # Select a real transaction ID from the dataset
     transaction_id = agent.repo.dataset_loader.transactions.iloc[9]["transaction_id"]

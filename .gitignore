@@ -10,3 +10,6 @@ system_architecture_banking_.pdf
 __pycache__/
 *.pyc
 *.log
+app\__pycache__
+app\rag\knowledge_base\__pycache__
+app\rag\rag_system\__pycache__
