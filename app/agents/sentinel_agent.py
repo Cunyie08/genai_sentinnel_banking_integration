@@ -14,7 +14,8 @@ from app.rag.rag_system.chromadb_config import initialize_chromadb
 import asyncio
 from app.data.dataset_loader import DatasetLoader
 from app.data.repository import BankRepository
-from app.ml.fraud_model import MLScorer
+from ml.fraud_model import MLScorer
+from app.rag.rag_system.rag_querys import create_engine
 
 
 # Create a class that assess fraud/risk and explains why transaction was flagged
@@ -29,8 +30,10 @@ class SentinelAgent(BaseAgent):
     """
 
     # Initialize the agent
-    def __init__(self):
-        super().__init__(name="SentinelAgent")
+    def __init__(self, repo, rag_engine):
+        self.repo = repo
+        self.rag_engine = rag_engine
+
 
         # Load the Dataset for the customers, accounts, transactions, complaints
         self.dataset_loader = DatasetLoader()
@@ -59,7 +62,7 @@ class SentinelAgent(BaseAgent):
         )
     
     # Fraud assessment flow
-    async def run(self, input_data: Dict[str, Any]) -> Dict[str, Any]:
+    async def run(self, payload: Dict[str, Any]) -> Dict[str, Any]:
 
         """
         Performs fraud detection and enforcement logic.
@@ -75,7 +78,7 @@ class SentinelAgent(BaseAgent):
         8. Log decision
         """
         # Validate transaction
-        transaction_id: str | None = input_data.get("transaction_id")
+        transaction_id: str | None = payload.get("transaction_id")
 
         if transaction_id is None:
             raise ValueError("transaction_id is required.")
@@ -167,11 +170,11 @@ class SentinelAgent(BaseAgent):
         )
 
         # Tag the Agent
-        result["agent"] = self.name
+        result["agent"] = "SentinelAgent"
 
         # Log reasoning trace
         ReasoningLogger.log(
-            agent_name=self.name,
+            agent_name="SentinelAgent",
             payload=result
         )
 
@@ -180,7 +183,18 @@ class SentinelAgent(BaseAgent):
 
 # Testing
 async def main():
-    agent = SentinelAgent()
+    # Infrastructure Setup (Same as Orchestrator)
+
+    dataset_loader = DatasetLoader()
+    repo = BankRepository(dataset_loader)
+
+    rag_engine = await create_engine()
+
+
+    agent = SentinelAgent(
+        repo=repo,
+        rag_engine=rag_engine
+        )
 
     # Select a real transaction ID from the dataset
     transaction_id = agent.repo.dataset_loader.transactions.iloc[9]["transaction_id"]

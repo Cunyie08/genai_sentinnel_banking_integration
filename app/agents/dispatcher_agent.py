@@ -13,14 +13,17 @@ from app.utils.llm_client import LLMClient
 from app.settings import OPENAI_API_KEY, GEMINI_API_KEY
 from app.data.dataset_loader import DatasetLoader
 from app.data.repository import BankRepository
+from app.rag.rag_system.rag_querys import create_engine
 
-    
 
 
 class DispatcherAgent(BaseAgent):
 
-    def __init__(self):
-        super().__init__(name="DispatcherAgent")
+    def __init__(self, repo, rag_engine, openai_llm, gemini_llm):
+        self.repo = repo
+        self.rag_engine = rag_engine
+        self.openai_llm = openai_llm
+        self.gemini_llm = gemini_llm
 
         # Initialize the RAG
         self.client, self.config = initialize_chromadb()
@@ -45,12 +48,12 @@ class DispatcherAgent(BaseAgent):
             model_name="gemini-2.5-flash",
             response_schema=RoutingResponse
         )
-        if not OPENAI_API_KEY:
+        if not GEMINI_API_KEY:
             raise ValueError("GEMINI_API_KEY is not set.")
 
 
-    async def run(self, input_data: Dict[str, Any]) -> Dict[str, Any]:
-        complaint_id: str | None = input_data.get("complaint_id")
+    async def run(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        complaint_id: str | None = payload.get("complaint_id")
 
 
         # Validate before calling the repository
@@ -123,19 +126,44 @@ class DispatcherAgent(BaseAgent):
               f"Policy Basis:\n{base_result['reasoning']}\n\n"
               f"Explanation: \n{result.get('reasoning', '')}") # To extracting grounded policy, LLM explanation and audit traceability
         
-        result['agent'] = self.name
+        result['agent'] = "DispatcherAgent"
 
 
         # Logging
         ReasoningLogger.log(
-            agent_name=self.name,
+            agent_name="DispatcherAgent",
             payload=result
         )
 
         return result
 
 async def main():
-    agent = DispatcherAgent()
+
+    # Infrastructure Setup (Same as Orchestrator)
+
+    dataset_loader = DatasetLoader()
+    repo = BankRepository(dataset_loader)
+
+    rag_engine = await create_engine()
+
+    openai_llm = LLMClient(
+        client=AsyncOpenAI(api_key=OPENAI_API_KEY),
+        model_name="gpt-4o",
+        response_schema=RoutingResponse
+    )
+
+    gemini_llm = LLMClient(
+        client=genai.Client(api_key=GEMINI_API_KEY),
+        model_name="gemini-2.5-flash",
+        response_schema=RoutingResponse
+    )
+
+    agent = DispatcherAgent(
+        repo=repo,
+        rag_engine=rag_engine,
+        openai_llm=openai_llm,
+        gemini_llm=gemini_llm,
+        )
 
     # Get a real complaint ID from dataset
     complaint_id = agent.repo.dataset_loader.complaints.iloc[25]["complaint_id"]
@@ -152,14 +180,6 @@ if __name__ == "__main__":
     import asyncio
     asyncio.run(main())
 
-# async def main():
-#     dispatcher = DispatcherAgent()
-#     complaint_text = """I transferred money to a friend of mine who in turn
-#     complained that he hasn't been credited. Please look into this"""
-#     result = await dispatcher.run(input_data={"complaint_text": complaint_text})
-#     print(result)
 
-# if __name__ == "__main__":
-#     asyncio.run(main())
 
 
