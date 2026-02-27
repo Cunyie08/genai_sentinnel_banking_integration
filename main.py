@@ -3,46 +3,64 @@ import asyncio
 
 
 
+
+
+# Complaint Routing
 async def main():
+        orchestrator = Orchestrator()
+        await orchestrator.initialize()
+        
+        complaint_id = (
+            orchestrator.repo.dataset_loader.complaints
+            .iloc[20]["complaint_id"]
+        )
 
-    orchestrator = Orchestrator()
-    await orchestrator.initialize()
+        complaint_request = {
+            "type": "complaints",
+            "complaint_id": complaint_id
+        }
 
-  
-    # Complaint Routing
- 
-    complaint_request = {
-        "type": "complaint",
-        "complaint_id": "COMP_0025"
-    }
+        result1 = await orchestrator.handle_request(complaint_request)
+        print("\n=== DISPATCHER OUTPUT ===")
+        print(result1)
 
-    result1 = await orchestrator.handle_request(complaint_request)
-    print("\n=== DISPATCHER OUTPUT ===")
-    print(result1)
+        # Fraud Detection
 
-    # Fraud Detection
+        transaction_id = (
+            orchestrator.repo.dataset_loader.transactions
+            .iloc[20]["transaction_id"]
+        )
 
-    transaction_request = {
-        "type": "transaction",
-        "transaction_id": "TXN_0100"
-    }
+        transaction_request = {
+            "type": "transactions",
+            "transaction_id": transaction_id
+        }
 
-    result2 = await orchestrator.handle_request(transaction_request)
-    print("\n=== SENTINEL OUTPUT ===")
-    print(result2)
+        result2 = await orchestrator.handle_request(transaction_request)
+        print("\n=== SENTINEL OUTPUT ===")
+        print(result2)
 
-    
-    # Product Recommendation
+        
+        # Product Recommendation
 
-    recommendation_request = {
-        "type": "recommendation",
-        "customer_id": "CUST_0045"
-    }
+        recommendation_id = (
+            orchestrator.repo.dataset_loader.transactions
+            .iloc[20]["customer_id"]
+        )
 
-    result3 = await orchestrator.handle_request(recommendation_request)
-    print("\n=== TRAJECTORY OUTPUT ===")
-    print(result3)
+        recommendation_request = {
+            "type": "recommendations",
+            "customer_id": recommendation_id
+        }
+
+        result3 = await orchestrator.handle_request(recommendation_request)
+        print("\n=== TRAJECTORY OUTPUT ===")
+        print(result3)
 
 
 if __name__ == "__main__":
     asyncio.run(main())
+
+
+
+
