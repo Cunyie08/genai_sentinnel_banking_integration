@@ -8,9 +8,10 @@ import asyncio
 from app.agents.abstract_agent import BaseAgent
 from app.data.dataset_loader import DatasetLoader
 from app.data.repository import BankRepository
-from app.rag.rag_system import recommend_product
+from app.rag.rag_system.recommend_product import RecommendationEngine
 from app.rag.rag_system.rag_querys import RAGQueryEngine
 from app.rag.rag_system.chromadb_config import initialize_chromadb
+from app.rag.rag_system.rag_querys import create_engine
 
 
 class TrajectoryAgent(BaseAgent):
@@ -24,8 +25,10 @@ class TrajectoryAgent(BaseAgent):
     4. Validate recommendation using RAG grounding
     5. Return structured decision
     """
-    def __init__(self):
-        super().__init__(name="TrajectoryAgent")
+    # Initialize the agent
+    def __init__(self, repo, rag_engine):
+        self.repo = repo
+        self.rag_engine = rag_engine
 
         # Dataset + repository
         self.dataset_loader = DatasetLoader()
@@ -34,12 +37,14 @@ class TrajectoryAgent(BaseAgent):
         # RAG Engine (for validation grounding)
         client, config = initialize_chromadb()
         self.rag_engine = RAGQueryEngine(client, config)
+        self.recommender= RecommendationEngine()
+
 
 
     # Main execution
-    async def run(self, input_data: Dict[str, Any]) -> Dict[str, Any]:
+    async def run(self, payload: Dict[str, Any]) -> Dict[str, Any]:
 
-        customer_id = input_data.get("customer_id")
+        customer_id = payload.get("customer_id")
         if not customer_id:
             raise ValueError("customer_id is required.")
 
@@ -85,13 +90,21 @@ class TrajectoryAgent(BaseAgent):
             "current_balance": float(profile.get("current_balance", 0.0)),
         }
 
+      
+
         # Proactive Recommendation (Policy Engine)
 
-        recommendation = recommend_product(policy_input)
-        primary_product = recommendation.get("primary_product")
+        recommendation = self.recommender.recommend(policy_input)
+
+        # If no product qualifies, return immediately
+        if not recommendation["primary_product"]:
+            recommendation["agent"] = "TrajectoryAgent"
+            recommendation["validation"] = None
+            return recommendation
+
+        primary_product  = recommendation["primary_product"]
 
         # Validate With RAG (Grounding Layer)
- 
         if primary_product:
 
             validation = await self.rag_engine.validate_product_recommendation(
@@ -101,14 +114,25 @@ class TrajectoryAgent(BaseAgent):
 
             recommendation["validation"] = validation
 
-        recommendation["agent"] = self.name
+        recommendation["agent"] ="TrajectoryAgent"
 
         return recommendation
 
 
 # Demo
 async def main():
-    agent = TrajectoryAgent()
+    # Infrastructure Setup (Same as Orchestrator)
+
+    dataset_loader = DatasetLoader()
+    repo = BankRepository(dataset_loader)
+
+    rag_engine = await create_engine()
+
+
+    agent = TrajectoryAgent(
+        repo=repo,
+        rag_engine=rag_engine
+    )
 
     # Pick first customer from dataset
     customer_id = agent.repo.dataset_loader.customers.iloc[0]["customer_id"]
