@@ -15,9 +15,11 @@ class DatasetLoader:
     def __init__(self):
 
         # Project root
-        BASE_DIR = Path(__file__).resolve().parents[2]
+        # BASE_DIR = Path(__file__).resolve().parents[2]
+        # data_path = BASE_DIR / "dataset"
+        data_path = Path(r"C:\Users\USER\Documents\Final_Sentinel_Integrations\genai_sentinel_banking_integration\sentinnel_banking_dataset")
 
-        data_path = BASE_DIR / "dataset"
+        
 
         self.customers = pd.read_csv(data_path / "customers.csv")
         self.accounts = pd.read_csv(data_path / "accounts.csv")
