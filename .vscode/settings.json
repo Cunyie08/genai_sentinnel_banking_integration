@@ -1,3 +1,0 @@
-{
-  "python.analysis.extraPaths": ["./app/rag/knowledge_base"]
-}
