@@ -10,11 +10,10 @@ from Backend.email_templates import (
 
 load_dotenv()
 
-# Pre-requisite: RESEND_API_KEY must be in .env
 # Environment config
-resend.api_key = os.getenv("RESEND_API_KEY")
-APP_URL = os.getenv("APP_URL", "https://sentinnelbanking.com")
-EMAIL_FROM = os.getenv("EMAIL_FROM", "Sentinel Bank <onboarding@sentinnelbanking.com>")
+from app.settings import APP_URL, EMAIL_FROM, RESEND_API_KEY
+
+resend.api_key = RESEND_API_KEY
 
 
 async def send_otp_email(to_email: str, otp_code: str):

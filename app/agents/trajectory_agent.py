@@ -69,9 +69,10 @@ class TrajectoryAgent(BaseAgent):
          # Fetch transactions
         transactions = self.repo.get_customer_transactions(customer_id)
 
-        # Extract Loan_signal_score from transactions (pre-assigned per product)
-        if not transactions.empty:
-            loan_signal_score = float(transactions.iloc[0]["Loan_signal_score"])
+        # Extract car_loan_signal_score from transactions (pre-assigned per product)
+        if not transactions.empty and "car_loan_signal_score" in transactions.columns:
+            loan_val = transactions.iloc[0].get("car_loan_signal_score", 0.0)
+            loan_signal_score = float(loan_val) if loan_val is not None else 0.0
         else:
             loan_signal_score = 0.0
 
@@ -83,29 +84,33 @@ class TrajectoryAgent(BaseAgent):
             monthly_inflow = float(credits["amount"].sum())
 
         # Salary proxy
-        salary_detected = bool(
-            transactions["merchant_category"]
-            .str.contains("salary", case=False, na=False)
-            .any()
-        )
+        salary_detected = False
+        if not transactions.empty and "merchant_category" in transactions.columns:
+            salary_detected = bool(
+                transactions["merchant_category"]
+                .str.contains("salary", case=False, na=False)
+                .any()
+            )
 
         # Uber frequency
-        uber_tracker = int(
-            transactions[
-                transactions["merchant_name"].isin(["Uber", "Bolt", "LagRide"])
-            ].shape[0]
-        )
+        uber_tracker = 0
+        if not transactions.empty and "merchant_name" in transactions.columns:
+            uber_tracker = int(
+                transactions[
+                    transactions["merchant_name"].isin(["Uber", "Bolt", "LagRide", "uber", "bolt", "lagride"])
+                ].shape[0]
+            )
 
         # Prepare policy input
 
         policy_input = {
-            "Loan_signal_score":loan_signal_score,
+            "Loan_signal_score": loan_signal_score,
             "monthly_inflow": monthly_inflow,
             "salary_detected": salary_detected,
             "uber_tracker": uber_tracker,
-            "age": int(profile.get("age", 0)),
+            "age": int(profile.get("age") or 0),
             "account_type": profile.get("account_type", "savings"),
-            "current_balance": float(profile.get("current_balance", 0.0)),
+            "current_balance": float(profile.get("current_balance") or 0.0),
         }
 
       

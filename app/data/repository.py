@@ -33,8 +33,9 @@ class BankRepository:
         return txn.iloc[0].to_dict()
     
     def get_customer_profile(self, customer_id: str):  
+        # Ensure string comparison
         customer = self.dataset_loader.customers[
-            self.dataset_loader.customers["customer_id"] == customer_id
+            self.dataset_loader.customers["customer_id"].astype(str) == str(customer_id)
         ]
 
         if customer.empty:
@@ -43,6 +44,14 @@ class BankRepository:
         return customer.iloc[0].to_dict()
 
     def get_customer_transactions(self, customer_id: str):
+        if self.dataset_loader.accounts.empty or self.dataset_loader.transactions.empty:
+            import pandas as pd
+            return pd.DataFrame()
+            
+        customer_accounts = self.dataset_loader.accounts[
+            self.dataset_loader.accounts["customer_id"].astype(str) == str(customer_id)
+        ]["account_id"].tolist()
+
         return self.dataset_loader.transactions[
-            self.dataset_loader.transactions["customer_id"] == customer_id
+            self.dataset_loader.transactions["account_id"].isin(customer_accounts)
         ]

@@ -43,18 +43,15 @@ class SentinelAgent(BaseAgent):
         self.openai_llm = openai_llm
         self.gemini_llm = gemini_llm
 
-        # Load the Dataset for the customers, accounts, transactions, complaints
-        self.dataset_loader = DatasetLoader()
-
         # Repository abstracts dataset access
-        self.repo = BankRepository(self.dataset_loader)
+        self.repo = repo
     
         # Initialize the RAG engine for fraud scoring + policy explanation grounding
         self.client, self.config = initialize_chromadb()
         self.rag_engine = RAGQueryEngine(self.client, self.config)
 
         # Initialize the MLScorer
-        self.ml_scorer = MLScorer(self.dataset_loader)
+        self.ml_scorer = MLScorer(self.repo.dataset_loader)
     
         # Initialize OpenAI client
         self.openai_llm = LLMClient(
@@ -85,17 +82,26 @@ class SentinelAgent(BaseAgent):
         7. Add LLM explanation overlay
         8. Log decision
         """
-        # Validate transaction
-        transaction_id: str | None = payload.get("transaction_id")
+        # Validate transaction payload
+        if not payload:
+            raise ValueError("Transaction payload is required.")
 
-        if transaction_id is None:
-            raise ValueError("transaction_id is required.")
-
-        # Fetch transaction from the repository
-        transaction = self.repo.get_transactions(transaction_id)
-        print("Transaction ID:", transaction_id)
-        print("Transaction fetched:", transaction)
-
+        # If a transaction_id is passed and it's not a live test payload from app.py, try fetching it.
+        # Otherwise, we use the payload itself as the transaction dictionary.
+        transaction_id = payload.get("transaction_id")
+        
+        # Determine if this is a live incoming transaction or an existing one
+        # Checking for necessary keys to consider it a "full" transaction object
+        if "amount" in payload and "account_number" in payload:
+            transaction = payload
+            print("Processing live transaction payload:", transaction)
+        else:
+            if not transaction_id:
+                raise ValueError("transaction_id is required if full transaction payload is not provided.")
+            # Fetch transaction from the repository
+            transaction = self.repo.get_transactions(transaction_id)
+            print("Transaction ID:", transaction_id)
+            print("Transaction fetched:", transaction)
 
         # Deterministic fraud scoring engine
         fraud_result = await self.rag_engine.calculate_fraud_risk(transaction)
@@ -134,6 +140,47 @@ class SentinelAgent(BaseAgent):
 
         
 
+        # Gather Historical Context
+        account_num = transaction.get("account_number")
+        if account_num:
+            # Check how repository stores transactions. They store either `account_number` or `account_id`.
+            # We filter the raw dataset loader dataframe directly to get past behavior for this specific account
+            history_df = self.repo.dataset_loader.transactions
+
+            filters = []
+            if "account_number" in history_df.columns:
+                filters.append(history_df["account_number"] == account_num)
+            if "account_id" in history_df.columns and transaction.get("account_id"):
+                filters.append(history_df["account_id"] == transaction.get("account_id"))
+
+            if filters:
+                # Combine filters with logical OR
+                import pandas as pd
+                import numpy as np
+                combined_filter = np.logical_or.reduce(filters)
+                history_df = history_df[combined_filter]
+            else:
+                history_df = history_df.head(0) # Empty dataframe if no matching columns
+            # Remove the current transaction from history if it exists
+            # (By comparing transaction_id if present)
+            txn_id = transaction.get("transaction_id")
+            if txn_id:
+                history_df = history_df[history_df["transaction_id"] != txn_id]
+            
+            # Take last 5 transactions for context
+            historical_txns = history_df.tail(5).to_dict('records')
+        else:
+            historical_txns = []
+
+        history_context = ""
+        if historical_txns:
+            history_context = "User's Last 5 Transactions:\n"
+            for t in historical_txns:
+                history_context += f"- {t.get('transaction_timestamp')}: {t.get('amount')} via {t.get('channel')} (Status: {t.get('transaction_status')})\n"
+        else:
+            history_context = "User has NO prior transaction history (Cold Start). IMPORTANT: Do not automatically penalize this transaction or assume fraud strictly due to lack of history."
+
+
         # LLM Explanation
         explanation_payload = f"""
             Transaction:
@@ -142,8 +189,11 @@ class SentinelAgent(BaseAgent):
             Risk Level: {base_result['risk_level']}
             Total Score: {base_result['total_risk_score']}
             Action: {base_result['recommended_action']}
+            
+            Historical Context:
+            {history_context}
 
-            Provide a clear audit-ready explanation.
+            Provide a clear audit-ready explanation considering the transaction against their historical behavior.
             """
         
         try:
@@ -194,6 +244,7 @@ async def main():
     # Infrastructure Setup (Same as Orchestrator)
 
     dataset_loader = DatasetLoader()
+    await dataset_loader.load()
     repo = BankRepository(dataset_loader)
 
     rag_engine = await create_engine()

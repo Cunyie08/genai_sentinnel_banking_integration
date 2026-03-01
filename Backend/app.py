@@ -26,6 +26,13 @@ from Backend.models import Complaint, Account, Transaction, Customer, User, User
 from Backend.middleware import get_current_user
 from app.agents.dispatcher_agent import DispatcherAgent
 from app.agents.sentinel_agent import SentinelAgent
+from app.agents.trajectory_agent import TrajectoryAgent
+from app.data.dataset_loader import DatasetLoader
+from app.data.repository import BankRepository
+from app.rag.rag_system.rag_querys import create_engine
+from app.utils.llm_client import LLMClient
+from openai import AsyncOpenAI
+from google import genai
 from Backend.api import router as auth_router
 from Backend.services import router as services_router
 from Backend.admin import router as admin_router
@@ -34,8 +41,7 @@ from Backend.cards import router as cards_router
 from Backend.notifications import router as notifications_router
 from Backend.settings_routes import router as settings_router
 from Backend.email import send_complaint_confirmation_email
-from app.settings import RESEND_WEBHOOK_SECRET
-from app.utils.schemas import DispatcherQuery, SentinelQuery, ComplaintQuery
+from app.settings import RESEND_WEBHOOK_SECRET, OPENAI_API_KEY, GEMINI_API_KEY
 from Backend.schemas import (
     TransactionRequest,
     CustomerCreate,
@@ -47,7 +53,16 @@ from Backend.schemas import (
     AccountResponse,
     ReportFailedRequest,
     InternalTransferRequest,
+    RoutingResponse,
+    FraudResponse
 )
+
+class ComplaintQuery(BaseModel):
+    account_number: str
+    complaint_channel: str
+    complaint_text: str
+    linked_transaction_id: Optional[str] = None
+    linked_reference: Optional[str] = None
 
 logger = logging.getLogger(__name__)
 
@@ -343,9 +358,30 @@ async def process_complaint_routing(complaint_id: str, complaint_text: str):
     """Background task to route complaints using the AI Agent."""
     async with SessionLocal() as db:
         try:
-            agent = DispatcherAgent()
+            # Initialize required components
+            dataset_loader = DatasetLoader()
+            await dataset_loader.load()
+            repo = BankRepository(dataset_loader)
+            rag_engine = await create_engine()
+            openai_llm = LLMClient(
+                client=AsyncOpenAI(api_key=OPENAI_API_KEY),
+                model_name="gpt-4o",
+                response_schema=RoutingResponse
+            )
+            gemini_llm = LLMClient(
+                client=genai.Client(api_key=GEMINI_API_KEY),
+                model_name="gemini-2.5-flash",
+                response_schema=RoutingResponse
+            )
+
+            agent = DispatcherAgent(
+                repo=repo,
+                rag_engine=rag_engine,
+                openai_llm=openai_llm,
+                gemini_llm=gemini_llm
+            )
             routing_result = await agent.run(
-                input_data={"complaint_text": complaint_text}
+                payload={"complaint_id": complaint_id}
             )
 
             stmt = select(Complaint).filter(Complaint.complaint_id == complaint_id)
@@ -354,8 +390,8 @@ async def process_complaint_routing(complaint_id: str, complaint_text: str):
 
             if complaint:
                 complaint.department_code = routing_result.get("department_code")
-                complaint.department_name = routing_result.get("department")
-                complaint.priority_level = routing_result.get("priority")
+                complaint.department_name = routing_result.get("department_name")
+                complaint.priority_level = routing_result.get("priority_level")
                 complaint.sentiment = routing_result.get("sentiment")
 
                 await db.commit()
@@ -363,7 +399,6 @@ async def process_complaint_routing(complaint_id: str, complaint_text: str):
                     f"Successfully routed complaint {complaint_id} to {complaint.department_name}"
                 )
 
-                # 4. Get the user email for confirmation
                 user_stmt = select(User).filter(
                     User.customer_id == complaint.customer_id
                 )
@@ -405,8 +440,8 @@ async def make_complaint(
         new_complaint = Complaint(
             complaint_id=new_complaint_id,
             customer_id=user.customer_id,
-            linked_transaction_id=query.linked_transaction_id,
-            linked_reference=query.linked_reference,
+            linked_transaction_id=query.linked_transaction_id if query.linked_transaction_id and query.linked_transaction_id != "string" else None,
+            linked_reference=query.linked_reference if query.linked_reference and query.linked_reference != "string" else None,
             complaint_timestamp=datetime.now(),
             complaint_status="open",
             complaint_channel=query.complaint_channel,
@@ -524,11 +559,37 @@ async def make_transaction(
         if not account:
             raise HTTPException(status_code=403, detail="Unauthorized account access")
 
-        agent = SentinelAgent()
-        fraud_result = await agent.run(request.model_dump())
-        risk_score = fraud_result.get("risk_score", 0)
+        # Initialize required components
+        dataset_loader = DatasetLoader()
+        await dataset_loader.load()
+        repo = BankRepository(dataset_loader)
+        rag_engine = await create_engine()
+        openai_llm = LLMClient(
+            client=AsyncOpenAI(api_key=OPENAI_API_KEY),
+            model_name="gpt-4o",
+            response_schema=FraudResponse
+        )
+        gemini_llm = LLMClient(
+            client=genai.Client(api_key=GEMINI_API_KEY),
+            model_name="gemini-2.5-flash",
+            response_schema=FraudResponse
+        )
 
-        if risk_score > 0.8:
+        agent = SentinelAgent(
+            repo=repo,
+            rag_engine=rag_engine,
+            openai_llm=openai_llm,
+            gemini_llm=gemini_llm
+        )
+        
+        # Build payload with mock transaction_id for initial scoring
+        payload = request.model_dump()
+        payload["transaction_id"] = f"TXN-{uuid.uuid4().hex[:10].upper()}"
+
+        fraud_result = await agent.run(payload=payload)
+        risk_score = fraud_result.get("total_risk_score", 0)
+
+        if risk_score > 80:
             return {
                 "status": "blocked",
                 "message": "Transaction flagged as risk",
@@ -548,11 +609,12 @@ async def make_transaction(
             transaction_reference_number=f"REF-{uuid.uuid4().hex[:10].upper()}",
             account_id=account.account_id,
             channel=request.channel,
+            counterparty_bank=request.counterparty_bank,
             amount=safe_amount,
             transaction_type=request.transaction_type,
             transaction_balance=new_balance,
             transaction_status="completed",
-            is_fraud_score=int(risk_score * 100),
+            is_fraud_score=int(risk_score),
             transaction_timestamp=datetime.now(),
         )
 
@@ -564,8 +626,133 @@ async def make_transaction(
             "status": "approved",
             "transaction_reference": transaction.transaction_reference_number,
         }
+    except HTTPException:
+        await db.rollback()
+        raise
     except Exception as e:
         await db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+@app.get("/trajectory/popup_recommendations", tags=["Agents"])
+async def get_trajectory_popup(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        dataset_loader = DatasetLoader()
+        await dataset_loader.load()
+        repo = BankRepository(dataset_loader)
+        rag_engine = await create_engine()
+        openai_llm = LLMClient(
+            client=AsyncOpenAI(api_key=OPENAI_API_KEY),
+            model_name="gpt-4o",
+            response_schema=dict
+        )
+        gemini_llm = LLMClient(
+            client=genai.Client(api_key=GEMINI_API_KEY),
+            model_name="gemini-2.5-flash",
+            response_schema=dict
+        )
+        agent = TrajectoryAgent(
+            repo=repo,
+            rag_engine=rag_engine,
+            openai_llm=openai_llm,
+            gemini_llm=gemini_llm
+        )
+
+        # Force fetch the user from DB to ensure customer_id is mapped just in case the JWT middleware detached it
+        stmt = select(User).filter(User.email == user.email)
+        res = await db.execute(stmt)
+        active_user = res.scalars().first()
+        
+        customer_id = active_user.customer_id if active_user else user.customer_id
+        if not customer_id:
+            raise HTTPException(status_code=400, detail="Authenticated user is not linked to a customer profile.")
+
+        payload = {"customer_id": customer_id}
+        recommendation_result = await agent.run(payload=payload)
+
+        return {
+            "status": "success",
+            "recommendations": recommendation_result
+        }
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+from Backend.email import send_auth_email
+
+@app.post("/trajectory/email_recommendations", tags=["Agents"])
+async def post_trajectory_email(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        dataset_loader = DatasetLoader()
+        await dataset_loader.load()
+        repo = BankRepository(dataset_loader)
+        rag_engine = await create_engine()
+        openai_llm = LLMClient(
+            client=AsyncOpenAI(api_key=OPENAI_API_KEY),
+            model_name="gpt-4o",
+            response_schema=dict
+        )
+        gemini_llm = LLMClient(
+            client=genai.Client(api_key=GEMINI_API_KEY),
+            model_name="gemini-2.5-flash",
+            response_schema=dict
+        )
+        agent = TrajectoryAgent(
+            repo=repo,
+            rag_engine=rag_engine,
+            openai_llm=openai_llm,
+            gemini_llm=gemini_llm
+        )
+
+        # Force fetch the user from DB to ensure customer_id is mapped just in case the JWT middleware detached it
+        stmt = select(User).filter(User.email == user.email)
+        res = await db.execute(stmt)
+        active_user = res.scalars().first()
+        
+        customer_id = active_user.customer_id if active_user else user.customer_id
+        if not customer_id:
+            raise HTTPException(status_code=400, detail="Authenticated user is not linked to a customer profile.")
+
+        payload = {"customer_id": customer_id}
+        recommendation_result = await agent.run(payload=payload)
+        
+        # If there's a primary recommendation, send it via email
+        primary_product = recommendation_result.get("primary_product")
+        if primary_product and primary_product != "None":
+            # Format appealing HTML email
+            email_html = f"""
+            <h2>Special Offer Just for You!</h2>
+            <p>Based on your recent activity, we think you'd love our <strong>{primary_product}</strong>.</p>
+            <p><strong>Benefits:</strong> {recommendation_result.get('reasoning', 'Tailored to your financial journey.')}</p>
+            <p>Log in to your Sentinel Banking app to claim this offer.</p>
+            """
+            
+            # Send the email 
+            await send_auth_email(
+                to_email=user.email,
+                subject="Your Exclusive Sentinel Bank Recommendation",
+                html_content=email_html
+            )
+            
+            return {
+                "status": "success",
+                "message": "Recommendation email sent successfully.",
+                "primary_product": primary_product
+            }
+        else:
+             return {
+                "status": "success",
+                "message": "No specific product recommended to email at this time."
+            }
+            
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -578,14 +765,14 @@ async def list_accounts(
     return result.scalars().all()
 
 
-@app.get("/accounts/{accountId}", tags=["Accounts"], response_model=AccountResponse)
+@app.get("/accounts/{accountNumber}", tags=["Accounts"], response_model=AccountResponse)
 async def get_account_details(
-    accountId: str,
+    accountNumber: str,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
     stmt = select(Account).filter(
-        Account.account_id == accountId, Account.customer_id == user.customer_id
+        Account.account_number == accountNumber, Account.customer_id == user.customer_id
     )
     result = await db.execute(stmt)
     account = result.scalars().first()
@@ -594,46 +781,46 @@ async def get_account_details(
     return account
 
 
-@app.get("/accounts/{accountId}/balance", tags=["Accounts"])
+@app.get("/accounts/{accountNumber}/balance", tags=["Accounts"])
 async def get_account_balance(
-    accountId: str,
+    accountNumber: str,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
     stmt = select(Account).filter(
-        Account.account_id == accountId, Account.customer_id == user.customer_id
+        Account.account_number == accountNumber, Account.customer_id == user.customer_id
     )
     result = await db.execute(stmt)
     account = result.scalars().first()
     if not account:
         raise HTTPException(status_code=404, detail="Account not found")
-    return {"account_id": accountId, "current_balance": float(account.current_balance)}
+    return {"account_number": accountNumber, "current_balance": float(account.current_balance)}
 
 
-@app.get("/accounts/{accountId}/status", tags=["Accounts"])
+@app.get("/accounts/{accountNumber}/status", tags=["Accounts"])
 async def get_account_status(
-    accountId: str,
+    accountNumber: str,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
     stmt = select(Account).filter(
-        Account.account_id == accountId, Account.customer_id == user.customer_id
+        Account.account_number == accountNumber, Account.customer_id == user.customer_id
     )
     result = await db.execute(stmt)
     account = result.scalars().first()
     if not account:
         raise HTTPException(status_code=404, detail="Account not found")
-    return {"account_id": accountId, "status": account.account_status}
+    return {"account_number": accountNumber, "status": account.account_status}
 
 
-@app.patch("/accounts/{accountId}/freeze", tags=["Accounts"])
+@app.patch("/accounts/{accountNumber}/freeze", tags=["Accounts"])
 async def freeze_account(
-    accountId: str,
+    accountNumber: str,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
     stmt = select(Account).filter(
-        Account.account_id == accountId, Account.customer_id == user.customer_id
+        Account.account_number == accountNumber, Account.customer_id == user.customer_id
     )
     result = await db.execute(stmt)
     account = result.scalars().first()
@@ -645,14 +832,14 @@ async def freeze_account(
     return {"message": "Account frozen successfully", "status": account.account_status}
 
 
-@app.patch("/accounts/{accountId}/activate", tags=["Accounts"])
+@app.patch("/accounts/{accountNumber}/activate", tags=["Accounts"])
 async def activate_account(
-    accountId: str,
+    accountNumber: str,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
     stmt = select(Account).filter(
-        Account.account_id == accountId, Account.customer_id == user.customer_id
+        Account.account_number == accountNumber, Account.customer_id == user.customer_id
     )
     result = await db.execute(stmt)
     account = result.scalars().first()
@@ -712,23 +899,24 @@ async def get_transaction_details(
     return transaction
 
 
-@app.get("/transactions/account/{accountId}", tags=["Transactions"])
+@app.get("/transactions/account/{accountNumber}", tags=["Transactions"])
 async def list_transactions_for_account(
-    accountId: str,
+    accountNumber: str,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
     # Verify account ownership
     acc_stmt = select(Account).filter(
-        Account.account_id == accountId, Account.customer_id == user.customer_id
+        Account.account_number == accountNumber, Account.customer_id == user.customer_id
     )
     acc_result = await db.execute(acc_stmt)
-    if not acc_result.scalars().first():
+    account = acc_result.scalars().first()
+    if not account:
         raise HTTPException(status_code=403, detail="Unauthorized account access")
 
     stmt = (
         select(Transaction)
-        .filter(Transaction.account_id == accountId)
+        .filter(Transaction.account_id == account.account_id)
         .order_by(Transaction.transaction_timestamp.desc())
     )
     result = await db.execute(stmt)
@@ -870,6 +1058,51 @@ async def internal_transfer(
     amount = Decimal(str(request.amount))
     if from_account.current_balance < amount:
         raise HTTPException(status_code=400, detail="Insufficient funds")
+
+    # Initialize SentinelAgent for Fraud Assessment
+    dataset_loader = DatasetLoader()
+    await dataset_loader.load()
+    repo = BankRepository(dataset_loader)
+    rag_engine = await create_engine()
+    openai_llm = LLMClient(
+        client=AsyncOpenAI(api_key=OPENAI_API_KEY),
+        model_name="gpt-4o",
+        response_schema=FraudResponse
+    )
+    gemini_llm = LLMClient(
+        client=genai.Client(api_key=GEMINI_API_KEY),
+        model_name="gemini-2.5-flash",
+        response_schema=FraudResponse
+    )
+
+    agent = SentinelAgent(
+        repo=repo,
+        rag_engine=rag_engine,
+        openai_llm=openai_llm,
+        gemini_llm=gemini_llm
+    )
+    
+    # Build a simulated payload for the Sentinel Agent
+    sentinel_payload = {
+        "transaction_id": f"TXN-{uuid.uuid4().hex[:10].upper()}",
+        "account_number": request.from_account_number,
+        "amount": float(amount),
+        "transaction_type": "debit",
+        "channel": "in-app",
+        "counterparty_bank": "Sentinel",
+        "narration": request.narration or "Internal Transfer"
+    }
+
+    fraud_result = await agent.run(payload=sentinel_payload)
+    risk_score = fraud_result.get("risk_score", 0)
+
+    if risk_score > 0.8:
+        return {
+            "status": "blocked",
+            "message": "Internal transfer flagged as risk",
+            "fraud_analysis": fraud_result,
+        }
+
 
     # Process transfer
     from_new_balance = from_account.current_balance - amount

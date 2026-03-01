@@ -52,8 +52,8 @@ from Backend.auth import (
 from Backend.email import send_otp_email, send_password_reset_email
 import uvicorn
 from fastapi.responses import HTMLResponse
-
-APP_URL = os.getenv("APP_URL", "https://sentinnelbanking.com")
+from app.settings import APP_URL
+# APP_URL = os.getenv("APP_URL", "https://sentinnelbanking.com")
 
 router = APIRouter(tags=["Authentication"])
 

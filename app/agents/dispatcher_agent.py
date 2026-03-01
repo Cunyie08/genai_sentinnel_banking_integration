@@ -30,8 +30,7 @@ class DispatcherAgent(BaseAgent):
         self.rag_engine = RAGQueryEngine(self.client, self.config)
 
         # Initialize the Dataset repository
-        self.dataset_loader = DatasetLoader()
-        self.repo = BankRepository(self.dataset_loader)
+        self.repo = repo
 
         # OpenAI LLM (Explanation Layer)
         self.openai_llm = LLMClient(
@@ -142,6 +141,7 @@ async def main():
     # Infrastructure Setup (Same as Orchestrator)
 
     dataset_loader = DatasetLoader()
+    await dataset_loader.load()
     repo = BankRepository(dataset_loader)
 
     rag_engine = await create_engine()
