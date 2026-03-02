@@ -1,4 +1,4 @@
- # Utilities Layer - Sentinel Banking AI
+ # Utilities Layer - Sentinnel Banking AI
 
 This directory contains reusable system utilities.
 
