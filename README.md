@@ -2,7 +2,7 @@
 
 ## Executive Summary
 
-Sentinel Banking is a multi-agent artificial intelligence system designed to enhance operational efficiency, risk management, and customer experience within a digital banking environment.
+Sentinnel Banking is a multi-agent artificial intelligence system designed to enhance operational efficiency, risk management, and customer experience within a digital banking environment.
 
 The system automates three core banking functions:
 
@@ -16,7 +16,7 @@ The system automates three core banking functions:
 |                      | structured eligibility rules, affordability     |
 |                      | checks, and policy validation.                  |
 
-Sentinel Banking is built with a governance-first architecture. Decision-making is handled by deterministic engines and structured rules. Machine learning enhances fraud detection but does not override policy safeguards. Language models are used strictly to generate clear, audit-ready explanations, not to make financial decisions.
+Sentinnel Banking is built with a governance-first architecture. Decision-making is handled by deterministic engines and structured rules. Machine learning enhances fraud detection but does not override policy safeguards. Language models are used strictly to generate clear, audit-ready explanations, not to make financial decisions.
 
 Key characteristics of the system include:
 
@@ -27,14 +27,14 @@ Key characteristics of the system include:
 - Modular multi-agent orchestration
 
 All data used in development is synthetic and designed to simulate real banking workflows without exposing sensitive information.
-Sentinel Banking demonstrates how artificial intelligence can be deployed responsibly within financial systems; balancing automation, explainability, and governance.
+Sentinnel Banking demonstrates how artificial intelligence can be deployed responsibly within financial systems; balancing automation, explainability, and governance.
 
 
 # 1. Overview
 
 ## Multi-Agent AI System for Intelligent Banking Operations
 
-Sentinel Banking is a modular multi-agent AI system designed to automate core banking workflows using deterministic logic, machine learning, and policy-grounded reasoning.
+Sentinnel Banking is a modular multi-agent AI system designed to automate core banking workflows using deterministic logic, machine learning, and policy-grounded reasoning.
 
 The system is structured around three operational domains:
 
@@ -54,7 +54,7 @@ It combines structured decision engines with governance-safe explanation layers.
 
 # 3. Core Design Philosophy
 
-Sentinel Banking is built on a layered architecture:
+Sentinnel Banking is built on a layered architecture:
 
 1. Deterministic Decision Engines
 2. Machine Learning (Fraud Probability)
@@ -289,7 +289,7 @@ Supported request types:
 
 # Summary
 
-Sentinel Banking demonstrates and reflects a modular, explainable approach to intelligent banking automation through:
+Sentinnel Banking demonstrates and reflects a modular, explainable approach to intelligent banking automation through:
 
 * Multi-agent orchestration
 * Hybrid ML + deterministic fraud detection
