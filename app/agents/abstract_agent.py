@@ -5,26 +5,39 @@ from typing import Dict, Any
 
 class BaseAgent(ABC): # Parent class for all agents in sentinnel bank
     """
-    Enforces a consistent interface to ensure all agent predicts well within theorchestration system, also to prevent breakable code
+    Enforces a unified async interface to ensure the orchestrator can call all agents consistently.
     """
-    # Initialize the agent
-    def __init__(self, name:str): # string for human-readble identifier for the agent
-        self.name: str = name
-
-    @abstractmethod # Catching errors early
-
-    # Execute the agent's logic
-    def run(self, input_data:Dict[str, Any]) -> Dict[str, Any]: # keys - strings, values - flexible
-    
+    ""
+    @abstractmethod
+    async def run(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         """
+        Execute agent logic.
+
         Args:
-            input_data (Dict[str, Any]): For structured input payload
+            payload: structured dictionary
 
         Returns:
-             Dict[str, Any]: The Agent decision 
-
-        Raises:
-            NotImplementedError: If not implemented by subclass
+            structured response dictionary
         """
         pass
+    # # Initialize the agent
+    # def __init__(self, name:str = "gpt-4o"): # string for human-readable identifier for the agent
+    #     self.name: str = name
+
+    # @abstractmethod # Catching errors early
+
+    # # Execute the agent's logic
+    # def run(self, input_data:Dict[str, Any]) -> Dict[str, Any]: # keys - strings, values - flexible
+    
+    #     """
+    #     Args:
+    #         input_data (Dict[str, Any]): For structured input payload
+
+    #     Returns:
+    #          Dict[str, Any]: The Agent decision 
+
+    #     Raises:
+    #         NotImplementedError: If not implemented by subclass
+    #     """
+    #     pass
     

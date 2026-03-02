@@ -1,3 +1,13 @@
 langgraph
 langchain_openai
 langchain_core
+faker
+python-dateutil
+pydantic
+chromadb
+sentence-transformers
+torch
+pandas
+genai
+google-genai
+dotenv

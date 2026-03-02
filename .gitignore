@@ -1,3 +1,19 @@
+app/.env
+.venv
+a_venv
+app\logs\reasoning.log
+sentinnel_banking_dataset\test.ipynb
+app\rag\chroma_db
+dataset
+ignore_folder
+system_architecture_banking_.pdf
+__pycache__/
+*.pyc
+*.log
+app\__pycache__
+app\rag\knowledge_base\__pycache__
+app\rag\rag_system\__pycache__
+=======
 # ─── Python ───────────────────────────────────────────────────
 __pycache__/
 *.py[cod]
@@ -92,3 +108,4 @@ complaints.csv
 customers.csv
 transactions.csv
 chroma_db/
+
