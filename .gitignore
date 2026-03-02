@@ -13,3 +13,99 @@ __pycache__/
 app\__pycache__
 app\rag\knowledge_base\__pycache__
 app\rag\rag_system\__pycache__
+=======
+# ─── Python ───────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+*.pyd
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+eggs/
+parts/
+var/
+sdist/
+wheels/
+*.spec
+pip-log.txt
+pip-delete-this-directory.txt
+.Python
+
+# ─── Virtual Environments ─────────────────────────────────────
+.venv/
+venv/
+env/
+ENV/
+a_venv/
+.python-version
+
+# ─── Environment Variables ────────────────────────────────────
+.env
+.env.*
+!.env.example
+
+# ─── Logs ─────────────────────────────────────────────────────
+*.log
+logs/
+app/logs/
+
+# ─── Database ─────────────────────────────────────────────────
+*.db
+*.sqlite
+*.sqlite3
+database/*.sql
+
+# ─── Test & Coverage ──────────────────────────────────────────
+.coverage
+.coverage.*
+htmlcov/
+.pytest_cache/
+.tox/
+nosetests.xml
+coverage.xml
+*.cover
+
+# ─── Node / Vite / Frontend ───────────────────────────────────
+node_modules/
+dist/
+.vite/
+*.local
+
+# ─── VS Code ──────────────────────────────────────────────────
+.vscode/
+
+# ─── OS Files ─────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ─── Project-Specific ─────────────────────────────────────────
+system_architecture_banking_.pdf
+schema.pgerd
+sentinnel_banking_dataset/
+.env.bak
+
+# ─── Test Files & Scripts ─────────────────────────────────────
+test_*.py
+*_test.py
+scripts/
+setup_test_db_user.py
+find_test_accounts.py
+end_to_end_test.py
+verify_ai_routing_flow.py
+create_schema.py
+ONBOARDING.md
+PLANNING.md
+PRODUCTION_READY.md
+PROGRESS.md
+SWAGGER_TEST_GUIDE.md
+WORK_DISTRIBUTION.md
+complaints.csv
+customers.csv
+transactions.csv
+chroma_db/
+
