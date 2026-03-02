@@ -10,7 +10,6 @@ from typing import Dict, Any, Optional
 
 # Create a class that handles strutured logging of agents decisions
 
-
 class BaseLogger:
     LOG_DIR = "app/logs"
 
