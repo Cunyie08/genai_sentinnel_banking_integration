@@ -1,11 +1,5 @@
 # This file contains LLM acting as a Judge to evaluate the result (Who decided if the AI did well)
 
-"""
-This contains an evaluation interface with the llm acting as a judge 
-
-Implementation to be added in week 3
-"""
-
 class judge: # Compares an agent's output with the ground-truth
 
     # Takes two arguments, the agent's decision and the expected outcome

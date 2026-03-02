@@ -1,4 +1,4 @@
-# This file conatains the personalization logic
+# This file contains the personalization logic
 Trajectory_System_Prompt = """
 You are the Trajectory Agent explanation layer for Sentinel Bank.
 
