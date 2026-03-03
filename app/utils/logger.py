@@ -26,13 +26,15 @@ class BaseLogger:
             f.write(json.dumps(data) + "\n")
 
 
-class ReasoningLogger:
+class ReasoningLogger(BaseLogger):
 
     Log_File = "app/logs/reasoning.log"
 
     @classmethod #
     # Write a reasoning log entry
-    def log(cls, agent_name:str, payload: Dict[str, Any]) -> None:
+    def log(cls, agent_name:str, payload: Dict[str, Any], 
+            request_id: Optional[str] = None         
+            ):
 
         """ 
         Args: agent_name: Agent producing the log
@@ -42,7 +44,8 @@ class ReasoningLogger:
         log_entry = {
         "timestamp": datetime.utcnow().isoformat(),
         "agent": agent_name,
-        "payload": payload
+        "payload": payload,
+        "request_id": request_id
         }
 
         # Add the log entry as a JSON

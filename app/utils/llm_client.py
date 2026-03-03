@@ -1,9 +1,7 @@
 import asyncio
 from openai import AsyncOpenAI
 from google import genai
-import asyncio
-from openai import AsyncOpenAI
-from google import genai
+
 
 
 
@@ -33,6 +31,7 @@ class LLMClient:
                         timeout=30,
                     )
                     return result.choices[0].message.parsed
+                
                 elif isinstance(self.client, genai.Client):
                     response = await self.client.aio.models.generate_content(
                         model=self.model_name,
