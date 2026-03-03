@@ -14,6 +14,16 @@ from collections import defaultdict
 fake = Faker()
 CURRENT_YEAR = 2026
 NUM_CUSTOMERS = 3000
+TARGET_SOLO_CUSTOMERS = 1000
+
+PRODUCT_CLASSES = [
+    "Student Loan",
+    "Car Loan",
+    "Investment Plan",
+    "Trust Fund",
+    "Personal Loan"
+]
+
 
 # ==========================================================
 # UNIQUE TRACKERS
@@ -194,6 +204,7 @@ def generate_reference():
 # ==========================================================
 
 customers=[]
+solo_counter=0
 
 for _ in range(NUM_CUSTOMERS):
 
@@ -203,12 +214,19 @@ for _ in range(NUM_CUSTOMERS):
             used_customer_ids.add(customer_id)
             break
 
-    gender=random.choice(["male","female"])
+    # ✅ Proper SOLO enforcement (outside UUID loop)
+    if solo_counter < TARGET_SOLO_CUSTOMERS:
+        age=random.randint(18,25)
+        solo_flag=True
+        solo_counter+=1
+    else:
+        age=random.randint(26,70)
+        solo_flag=False
 
+    gender=random.choice(["male","female"])
     first=random.choice(MALE_NAMES if gender=="male" else FEMALE_NAMES)
     last=random.choice(LAST_NAMES)
 
-    age=random.randint(18,70)
     dob=datetime(CURRENT_YEAR-age,random.randint(1,12),random.randint(1,28))
 
     bvn=generate_unique_number(used_bvns)
@@ -218,7 +236,6 @@ for _ in range(NUM_CUSTOMERS):
     email=generate_email(first,last)
 
     customers.append({
-
         "customer_id":customer_id,
         "first_name":first,
         "last_name":last,
@@ -234,6 +251,7 @@ for _ in range(NUM_CUSTOMERS):
         "state_of_origin":random.choice(STATES),
         "residential_state":random.choice(STATES),
         "banking_branch":random.choice(STATES),
+        "solo_candidate":solo_flag,
         "onboarding_date":fake.date_between("-5y","today")
     })
 
@@ -258,9 +276,9 @@ for _,cust in customers_df.iterrows():
     for acc_type in acc_types:
 
         if acc_type=="solo":
-            balance=random.uniform(1000,200000)
+            balance=random.uniform(10000,250000)
         elif acc_type=="savings":
-            balance=random.uniform(5000,2000000)
+            balance=random.uniform(30000,2000000)
         else:
             balance=random.uniform(500000,10000000)
 
@@ -276,6 +294,23 @@ for _,cust in customers_df.iterrows():
         })
 
 accounts_df=pd.DataFrame(accounts)
+
+# ==========================================================
+# BALANCED PRODUCT ASSIGNMENT (CUSTOMER LEVEL)
+# ==========================================================
+
+customer_ids = customers_df["customer_id"].tolist()
+random.shuffle(customer_ids)
+
+assert len(customer_ids) == 3000
+
+customer_product_map = {}
+
+for i, product in enumerate(PRODUCT_CLASSES):
+    start = i * 600
+    end = (i + 1) * 600
+    for cid in customer_ids[start:end]:
+        customer_product_map[cid] = product
 
 # ==========================================================
 # FRAUD PROFILE
@@ -320,8 +355,11 @@ transactions=[]
 for _,acc in accounts_df.iterrows():
 
     balance=acc["current_balance"]
+    customer_id=acc["customer_id"]
+    assigned_product=customer_product_map[customer_id]
 
-    for _ in range(random.randint(15,40)):
+
+    for _ in range(random.randint(20,40)):
 
         channel=random.choice(CHANNELS)
         device=generate_device(channel)
@@ -333,41 +371,44 @@ for _,acc in accounts_df.iterrows():
         merchant_category = random.choice(list(MERCHANTS.keys()))
         merchant_name = random.choice(MERCHANTS[merchant_category])
 
+        # Personalization trackers
         if txn_type == "credit":
             monthly_inflow_tracker[acc["customer_id"]] += amount
     
-        # Salary detection pattern (recurring large credit)
-        if amount > 200000 and merchant_category == "fintech":
-            salary_tracker[acc["customer_id"]] += 1
+        else:
+            monthly_outflow_tracker[customer_id] += amount
 
-        salary_detected = salary_tracker[acc["customer_id"]] >= 2
+        if txn_type == "credit" and amount > 200000 and merchant_category == "fintech":
+            salary_tracker[customer_id] += 1
 
-        # Uber usage tracking
+        salary_detected = salary_tracker[customer_id] >= 2
+
         if merchant_name in ["Uber","Bolt","LagRide"]:
-            uber_tracker[acc["customer_id"]] += 1
+            uber_tracker[customer_id] += 1
 
-        car_loan_score = 0
 
-        if uber_tracker[acc["customer_id"]] >= 6:
-            car_loan_score += 0.4
+        # LOCKED PRODUCT-ALIGNED SCORE (NO REASSIGNMENT)
 
-        if salary_detected:
-            car_loan_score += 0.3
+        if assigned_product == "Car Loan":
+            loan_score = round(random.uniform(0.75,0.95),2)
 
-        if monthly_inflow_tracker[acc["customer_id"]] > 500000:
-            car_loan_score += 0.3
+        elif assigned_product == "Investment Plan":
+            loan_score = round(random.uniform(0.70,0.90),2)
 
-        recommended_product = None
+        elif assigned_product == "Trust Fund":
+            loan_score = round(random.uniform(0.65,0.85),2)
 
-        if car_loan_score >= 0.7:
-            recommended_product = "Car Loan"
-        elif salary_detected and monthly_inflow_tracker[acc["customer_id"]] > 300000:
-            recommended_product = "Personal Loan"
-        elif monthly_inflow_tracker[acc["customer_id"]] > 2000000:
-            recommended_product = "Investment Plan"
+        elif assigned_product == "Personal Loan":
+            loan_score = round(random.uniform(0.70,0.92),2)
 
+        elif assigned_product == "Student Loan":
+            loan_score = round(random.uniform(0.80,0.98),2)
+
+        recommended_product = assigned_product
+
+        # BALANCE UPDATE
         if txn_type=="debit":
-            amount=min(amount,balance*0.8)
+            amount=min(amount,balance*0.7)
             new_balance=balance-amount
         else:
             new_balance=balance+amount
@@ -377,28 +418,27 @@ for _,acc in accounts_df.iterrows():
         if status in ["failed","reversed"]:
             new_balance=balance
 
-        fraud = fraud_logic(acc["customer_id"])
+        # FRAUD LOGIC (UNCHANGED)
 
-        fraud_trace = []
+        fraud=fraud_logic(customer_id)
+        fraud_trace=[]
 
         if fraud:
-            if channel == "mobile_app":
+            if channel=="mobile_app":
                 fraud_trace.append("mobile_channel_risk")
-
-            if amount > (balance * 0.6):
+            if amount > (balance*0.6):
                 fraud_trace.append("high_amount_spike")
-
-            if status == "failed":
+            if status=="failed":
                 fraud_trace.append("multiple_failures")
 
-        fraud_explainability_trace = ",".join(fraud_trace) if fraud_trace else "normal_pattern"
-
+        fraud_explainability_trace=",".join(fraud_trace) if fraud_trace else "normal_pattern"
 
         transactions.append({
 
             "transaction_id":str(uuid.uuid4()),
             "transaction_reference_number":generate_reference(),
             "account_id":acc["account_id"],
+            "customer_id":acc["customer_id"],
             "channel":channel,
             "device_id":device,
             "counterparty_bank":random.choice(BANKS),
@@ -410,12 +450,12 @@ for _,acc in accounts_df.iterrows():
             "transaction_status":status,
             "failure_reason":generate_failure(status),
             "is_fraud_score":int(fraud),
-            "fraud_explainability_trace": fraud_explainability_trace,
-            "merchant_category": merchant_category,
-            "merchant_name": merchant_name,
-            "salary_detected": salary_detected,
-            "car_loan_signal_score": car_loan_score,
-            "recommended_product": recommended_product,
+            "fraud_explainability_trace":fraud_explainability_trace,
+            "merchant_category":merchant_category,
+            "merchant_name":merchant_name,
+            "salary_detected":salary_detected,
+            "Loan_signal_score":loan_score,
+            "recommended_product":recommended_product,
             "transaction_timestamp":fake.date_time_between(acc["opened_date"],"now")
         })
 
@@ -494,6 +534,11 @@ def map_transaction_to_department(txn):
 
     return "TSU", "Medium"
 
+
+account_to_customer = dict(
+    zip(accounts_df["account_id"], accounts_df["customer_id"])
+)
+
 # ==========================================================
 # COMPLAINT TEXT GENERATOR (LLM + Dispatcher Ready)
 # ==========================================================
@@ -547,18 +592,16 @@ def generate_complaint_text(txn, dept_code, sentiment):
 
     return text
 
-
 # ==========================================================
 # GENERATE COMPLAINTS
 # ==========================================================
 
 complaints = []
-
 complaint_counter = 1
 
 for _, txn in transactions_df.iterrows():
 
-    # 15% normal complaint rate
+    # 15% baseline complaint probability
     complaint_probability = 0.15
 
     # Fraud auto-trigger
@@ -568,69 +611,88 @@ for _, txn in transactions_df.iterrows():
     if random.random() > complaint_probability:
         continue
 
+    # ✅ FIX: Resolve correct customer_id
+    customer_id = account_to_customer.get(txn["account_id"])
+
+    # Safety check (should never fail)
+    if customer_id not in set(customers_df["customer_id"]):
+        continue
+
     dept_code, priority = map_transaction_to_department(txn)
     dept = DEPARTMENTS[dept_code]
 
     # Sentiment logic
-    if priority == "Critical":
-        sentiment = "angry"
-    else:
-        sentiment = random.choices(SENTIMENTS, weights=[0.3,0.4,0.3])[0]
+    sentiment = "angry" if priority == "Critical" else random.choices(
+        SENTIMENTS, weights=[0.3, 0.4, 0.3]
+    )[0]
 
-    # Complaint timestamps
     complaint_time = txn["transaction_timestamp"] + timedelta(
         minutes=random.randint(5, 720)
     )
 
-    # Resolution time simulation
     resolution_hours = random.randint(2, dept["sla_hours"] + 48)
     resolution_time = complaint_time + timedelta(hours=resolution_hours)
 
-    # SLA breach detection
-    sla_breach = 1 if resolution_hours > dept["sla_hours"] else 0
-
-    # Agent assignment simulation
+    sla_breach = int(resolution_hours > dept["sla_hours"])
     assigned_agent = random.choice(dept["agents"])
 
-    # Generate the complaint text
     complaint_text = generate_complaint_text(txn, dept_code, sentiment)
 
     complaints.append({
         "complaint_id": f"CMP-{str(complaint_counter).zfill(6)}",
-        "customer_id": txn["account_id"],   # linked through account
+
+        #FIXED
+        "customer_id": customer_id,
+
+        "account_id": txn["account_id"],  # keep for traceability
         "linked_transaction_id": txn["transaction_id"],
         "linked_reference": txn["transaction_reference_number"],
+
         "department_code": dept_code,
         "department_name": dept["name"],
         "priority_level": priority,
         "sentiment": sentiment,
         "complaint_channel": random.choice(COMPLAINT_CHANNELS),
         "assigned_agent_id": assigned_agent,
+
         "complaint_timestamp": complaint_time,
         "resolution_timestamp": resolution_time,
         "resolution_time_hours": resolution_hours,
         "sla_hours_limit": dept["sla_hours"],
         "sla_breach_flag": sla_breach,
+
         "complaint_status": random.choice(["open","resolved","escalated"]),
         "fraud_related": int(txn["is_fraud_score"]),
-        "complaint_text": complaint_text,
-        "complaint_narration": f"Customer reported issue regarding transaction {txn['transaction_reference_number']}"
+        "complaint_text": complaint_text
     })
 
     complaint_counter += 1
 
 complaints_df = pd.DataFrame(complaints)
 
-
-
 # ==========================================================
-# EXPORT
+# TIMESTAMP NORMALIZATION (FIX ALPHANUMERIC ISSUE)
 # ==========================================================
 
-customers_df.to_csv("customers.csv",index=False)
-accounts_df.to_csv("accounts.csv",index=False)
-transactions_df.to_csv("transactions.csv",index=False)
+timestamp_columns = [
+    "complaint_timestamp",
+    "resolution_timestamp"
+]
+
+for col in timestamp_columns:
+    complaints_df[col] = pd.to_datetime(
+        complaints_df[col],
+        errors="coerce"
+    )
+
+# ==========================================================
+# EXPORT (CLEAN TIMESTAMPS)
+# ==========================================================
+
+customers_df.to_csv("customers.csv", index=False)
+accounts_df.to_csv("accounts.csv", index=False)
+transactions_df.to_csv("transactions.csv", index=False)
 complaints_df.to_csv("complaints.csv", index=False)
 
-print("complaints.csv generated with dispatcher-aligned intelligence.")
+print("complaints.csv exported with clean datetime fields.")
 print("Fully integrated Nigerian banking dataset generated successfully.")

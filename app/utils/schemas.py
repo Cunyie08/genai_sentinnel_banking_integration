@@ -1,8 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import Literal, Dict
-
-from pydantic import BaseModel, Field
-from typing import Dict, List, Literal
+from typing import Literal, Dict, List
 
 
 # Dispatcher Schema (Aligned with new detect_complaint_category)

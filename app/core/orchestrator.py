@@ -10,17 +10,20 @@ from app.data.repository import BankRepository
 from app.agents.dispatcher_agent import DispatcherAgent
 from app.agents.sentinel_agent import SentinelAgent
 from app.agents.trajectory_agent import TrajectoryAgent
-from app.core.graph import AgentGraph
 from app.utils.logger import ReasoningLogger, SystemLogger
 from openai import AsyncOpenAI
 from google import genai
 import traceback
 from app.utils.llm_client import LLMClient
 from app.settings import OPENAI_API_KEY, GEMINI_API_KEY
-from app.utils.logger import ReasoningLogger
 from app.utils.schemas import RoutingResponse, TrajectoryResponse, FraudResponse
 from app.core.graph import AgentGraph
 from app.evaluation.metrics import Metrics
+from app.evaluation.llm_evaluation import LLMJudge
+import uuid
+from datetime import datetime
+import time
+
 
 
 # Central coordinator class for agent execution
@@ -129,49 +132,137 @@ class Orchestrator:
         Expected request format:
 
         {
-            "type": "complaints" | "transactions" | "recommendations",
+            "type": "complaint" | "transaction" | "recommendation",
             ...payload...
         }
         """
+
         if not self._initialized:
             raise RuntimeError(
                 "Orchestrator not initialized. Call await initialize() first."
             )
+        
+        request_id = str(uuid.uuid4())  # Unique ID for tracing this request through logs
+        start_time = time.time()
+
+        # Validate basic request
 
         if not request or "type" not in request:
+            SystemLogger.log_event(
+                event_type="invalid_request",
+                message="Request received, no 'type' field.",
+                request_id=request_id,
+                metadata={"request": request},
+            )
             return {
                 "status": "error",
                 "message": "Request must include a 'type' field.",
+                "request_id": request.get("request_id"),
             }
 
 
         agent_name = self.graph.get_next_agent(request)
-        try: 
+
+        try:
+            # Request Received Log
+            SystemLogger.log_event(
+                event_type="Request_received",
+                message=f"Routing to {agent_name}",
+                request_id=request_id,
+                metadata=request
+            )
+
+            # Agent Execution
             if agent_name == "DispatcherAgent":
                 result = await self.dispatcher.run(request)
-                return {**result, **Metrics.evaluate_triage(result)}
+                metrics= Metrics.evaluate_triage(result)              
 
             elif agent_name == "SentinelAgent":
                 result = await self.sentinel.run(request)
-                return {**result, **Metrics.evaluate_fraud(result)} 
+                metrics= Metrics.evaluate_fraud(result)  
 
             elif agent_name == "TrajectoryAgent":
                 result = await self.trajectory.run(request)
-                return {**result, **Metrics.evaluate_product_recommendation(result)}
+                metrics= Metrics.evaluate_product_recommendation(result)  
+                        
 
             else:
+                SystemLogger.log_event(
+                event_type="Unknown_Agent",
+                message=f"Unknown agent name: {agent_name}",
+                request_id=request_id
+                    )
+               
                 return {
+                    "status": "error",
                     "error": f"Unknown agent name: {agent_name}",
-                    "supported_agents": ["DispatcherAgent","SentinelAgent","TrajectoryAgent"]
+                    "supported_agents": [
+                        "DispatcherAgent",
+                        "SentinelAgent",
+                        "TrajectoryAgent"
+                    ],
+                    "request_id": request_id,
                 }
+
+                # Reasoning Log
+            ReasoningLogger.log(
+                agent_name=agent_name,
+                payload=result,
+                request_id=request_id
+            )
+
+
+            # LLM Evaluation
+            llm_evaluation = LLMJudge.evaluate(
+                agent_name=agent_name,
+                result=result
+            )
+
+            SystemLogger.log_event(
+                event_type="LLM_evaluation completed",
+                message="LLM evaluation executed",
+                request_id=request_id,
+                metadata=llm_evaluation
+            )
+
+            # Metrics log
+            SystemLogger.log_event(
+                event_type="Metrics_completed",
+                message="Metrics evaluation executed",
+                request_id=request_id,
+                metadata=metrics
+            )
+
+            duration = round(time.time() - start_time, 3)
+
+            SystemLogger.log_event(
+                event_type="Request_completed",
+                message="Request processed successfully",
+                request_id=request_id,
+                metadata={
+                    "agent": agent_name,
+                    "duration_seconds": duration
+                }
+            )
+
+            return {
+                **result,
+                **metrics,
+                **llm_evaluation,
+                "request_id": request_id,
+                "processing_time_seconds": duration
+            }
+
+
         except Exception as e:
             # Production-safe error response
             return {
                 "status": "error",
                 "message": str(e),
-                "trace": traceback.format_exc(),
                 "agent": agent_name,
+                "request_id": request_id
             }
+    
 
 
        
