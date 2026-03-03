@@ -1,4 +1,4 @@
-# Evaluation Layer - Sentinel Banking AI
+# Evaluation Layer - Sentinnel Banking AI
 
 This directory contains performance tracking utilities.
 

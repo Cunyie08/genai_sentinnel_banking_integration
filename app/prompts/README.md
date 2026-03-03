@@ -1,4 +1,4 @@
-# Prompt Layer - Sentinel Banking AI
+# Prompt Layer - Sentinnel Banking AI
 
 This directory contains structured system prompts for each agent.
 

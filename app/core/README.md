@@ -1,4 +1,4 @@
-# Core Layer - Sentinel Banking Orchestration
+# Core Layer - Sentinnel Banking Orchestration
 
 This directory contains the system control plane.
 

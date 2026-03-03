@@ -1,6 +1,6 @@
-# Agents Layer - Sentinel Banking AI System
+# Agents Layer - Sentinnel Banking AI System
 
-This directory contains all autonomous decision-making agents in the Sentinel Banking AI architecture.
+This directory contains all autonomous decision-making agents in the Sentinnel Banking AI architecture.
 
 Each agent is responsible for a distinct banking workflow and operates under strict governance rules.
 

@@ -1,3 +1,4 @@
+
 app/.env
 .venv
 a_venv
@@ -13,6 +14,10 @@ app\rag\knowledge_base\__pycache__
 app\rag\rag_system\__pycache__
 =======
 # ─── Python ───────────────────────────────────────────────────
+=======
+# ─────────────────────────────────────────
+# PYTHON
+# ─────────────────────────────────────────
 __pycache__/
 *.py[cod]
 *$py.class
@@ -33,7 +38,7 @@ pip-log.txt
 pip-delete-this-directory.txt
 .Python
 
-# ─── Virtual Environments ─────────────────────────────────────
+# Virtual Environments
 .venv/
 venv/
 env/
@@ -41,23 +46,24 @@ ENV/
 a_venv/
 .python-version
 
-# ─── Environment Variables ────────────────────────────────────
+# Environment Variables
 .env
 .env.*
 !.env.example
+.env.bak
 
-# ─── Logs ─────────────────────────────────────────────────────
+# Logs
 *.log
 logs/
 app/logs/
 
-# ─── Database ─────────────────────────────────────────────────
+# Database
 *.db
 *.sqlite
 *.sqlite3
 database/*.sql
 
-# ─── Test & Coverage ──────────────────────────────────────────
+# Test & Coverage
 .coverage
 .coverage.*
 htmlcov/
@@ -67,27 +73,46 @@ nosetests.xml
 coverage.xml
 *.cover
 
-# ─── Node / Vite / Frontend ───────────────────────────────────
+# ─────────────────────────────────────────
+# NODE / VITE / FRONTEND
+# ─────────────────────────────────────────
 node_modules/
 dist/
+dist-ssr/
 .vite/
 *.local
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
 
-# ─── VS Code ──────────────────────────────────────────────────
-.vscode/
+# ─────────────────────────────────────────
+# EDITORS
+# ─────────────────────────────────────────
+.vscode/*
+!.vscode/extensions.json
+.idea
 
-# ─── OS Files ─────────────────────────────────────────────────
+# ─────────────────────────────────────────
+# OS FILES
+# ─────────────────────────────────────────
 .DS_Store
 Thumbs.db
 desktop.ini
 
-# ─── Project-Specific ─────────────────────────────────────────
+# ─────────────────────────────────────────
+# PROJECT SPECIFIC
+# ─────────────────────────────────────────
 system_architecture_banking_.pdf
 schema.pgerd
 sentinnel_banking_dataset/
-.env.bak
+dataset/
+ignore_folder/
+chroma_db/
+app/rag/chroma_db/
 
-# ─── Test Files & Scripts ─────────────────────────────────────
+# Test Scripts
 test_*.py
 *_test.py
 scripts/
@@ -96,14 +121,16 @@ find_test_accounts.py
 end_to_end_test.py
 verify_ai_routing_flow.py
 create_schema.py
+
+# Documentation
 ONBOARDING.md
 PLANNING.md
 PRODUCTION_READY.md
 PROGRESS.md
 SWAGGER_TEST_GUIDE.md
 WORK_DISTRIBUTION.md
+
+# CSV Data
 complaints.csv
 customers.csv
 transactions.csv
-chroma_db/
-
