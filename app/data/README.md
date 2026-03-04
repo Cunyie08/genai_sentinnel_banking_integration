@@ -80,3 +80,79 @@ All datasets are:
 - Generated via data_generator.py
 - Designed to simulate realistic banking operations
 - Free of real customer data
+
+# Dataset Layer - Sentinel Banking Synthetic Data
+
+This directory contains synthetic datasets used for:
+
+- Fraud modeling
+- Product recommendation
+- Complaint routing
+- Behavioral signal extraction
+
+---
+
+## Files
+
+### data_generator.py
+
+Generates synthetic banking data including:
+
+- customers.csv
+- accounts.csv
+- transactions.csv
+- complaints.csv
+
+All datasets are internally consistent.
+
+---
+
+## Data Structure
+
+### Customers
+- customer_id
+- age
+- account_type
+- Loan_signal_score
+
+---
+
+### Transactions
+- transaction_id
+- customer_id
+- transaction_type
+- amount
+- merchant_category
+- fraud_explainability_trace
+
+---
+
+### Complaints
+- complaint_id
+- customer_id
+- complaint_text
+
+---
+
+## Behavioral Signals Derived
+
+Trajectory Agent computes:
+
+- monthly_inflow
+- salary_detected
+- uber_tracker
+- DSR
+
+Sentinel Agent computes:
+
+- fraud flags
+- merchant risk
+- timing risk
+
+---
+
+## Important Notes
+
+- Data is synthetic.
+- No real customer data is used.
+- Designed for testing policy-based AI systems.
