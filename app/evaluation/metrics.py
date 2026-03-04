@@ -1,13 +1,11 @@
-# This file conatins the Precision , latency and efficiency ( what measurements we care about?)
+# This file conatins the Precision , latency and efficiency (what measurements we care about?)
 
 
 """
 Defining the evaluation metrics for Sentinnel Banking
 
 This file contains what is measured. 
-Actual computation is measured later.
-
-"""
+Metrics are defined as functions that take in the agent's output and return a dictionary of metric names and values."""
 
 from typing import Dict, Any
 

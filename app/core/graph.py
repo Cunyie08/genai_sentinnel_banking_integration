@@ -13,9 +13,9 @@ class AgentGraph:
 
         # Mapping between department labels and agent identifiers
         self.routing_table = {
-            "DispatcherAgent": "complaints",
-            "SentinelAgent": "transactions",
-            "TrajectoryAgent": "recommendations",
+                "complaint": "DispatcherAgent",   
+                "transaction": "SentinelAgent",   
+                "recommendation": "TrajectoryAgent" 
         }
 
     # Define the agent to handle the next request

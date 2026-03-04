@@ -9,7 +9,6 @@ from typing import Dict, Any, Optional
 
 # Create a class that handles strutured logging of agents decisions
 
-
 class BaseLogger:
     LOG_DIR = "app/logs"
 
@@ -27,19 +26,37 @@ class BaseLogger:
 
 
 class ReasoningLogger(BaseLogger):
+<<<<<<< HEAD
     Log_File = "reasoning.log"
+=======
+>>>>>>> f54b56f1e5309bc861498ceffd38728d9d5dff51
 
     @classmethod  #
     # Write a reasoning log entry
+<<<<<<< HEAD
     def log(cls, agent_name: str, payload: Dict[str, Any]) -> None:
         """
+=======
+    def log(cls, agent_name:str, payload: Dict[str, Any], 
+            request_id: Optional[str] = None         
+            ):
+
+        """ 
+>>>>>>> f54b56f1e5309bc861498ceffd38728d9d5dff51
         Args: agent_name: Agent producing the log
         Returns: Decision data to be logged
         """
         log_entry = {
+<<<<<<< HEAD
             "timestamp": datetime.now().isoformat(),
             "agent": agent_name,
             "payload": payload,
+=======
+        "timestamp": datetime.utcnow().isoformat(),
+        "agent": agent_name,
+        "payload": payload,
+        "request_id": request_id
+>>>>>>> f54b56f1e5309bc861498ceffd38728d9d5dff51
         }
         cls._write(cls.Log_File, log_entry)
 

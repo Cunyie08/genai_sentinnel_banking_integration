@@ -4,8 +4,10 @@ from pathlib import Path
 class DatasetLoader:
     """
     Loads Sentinnel Bank CSV datasets into memory.
+
     """
 
+<<<<<<< HEAD
 from pathlib import Path
 import pandas as pd
 
@@ -22,6 +24,8 @@ class DatasetLoader:
         await loader.load()
     """
 
+=======
+>>>>>>> f54b56f1e5309bc861498ceffd38728d9d5dff51
     def __init__(self):
         # Initialize empty dataframes to preserve API contract
         self.customers = pd.DataFrame()
@@ -43,6 +47,7 @@ class DatasetLoader:
             else:
                 self.customers = pd.DataFrame(columns=["customer_id", "first_name", "last_name", "age", "account_type", "current_balance"])
 
+<<<<<<< HEAD
             # 2. Fetch Accounts
             acc_stmt = select(Account)
             acc_res = await db.execute(acc_stmt)
@@ -53,6 +58,9 @@ class DatasetLoader:
                 self.accounts = pd.DataFrame(accounts_list)
             else:
                 self.accounts = pd.DataFrame(columns=["account_id", "customer_id", "account_number"])
+=======
+        data_path = BASE_DIR
+>>>>>>> f54b56f1e5309bc861498ceffd38728d9d5dff51
 
             # 3. Fetch Transactions
             txn_stmt = select(Transaction)
@@ -65,6 +73,7 @@ class DatasetLoader:
             else:
                 self.transactions = pd.DataFrame(columns=["transaction_id", "account_id", "transaction_type", "amount", "merchant_category", "merchant_name", "car_loan_signal_score"])
 
+<<<<<<< HEAD
             # 4. Fetch Complaints
             comp_stmt = select(Complaint)
             comp_res = await db.execute(comp_stmt)
@@ -77,6 +86,9 @@ class DatasetLoader:
                 self.complaints = pd.DataFrame(columns=["complaint_id", "customer_id"])
 
         # Normalize timestamps for downstream processing exactly as originally expected
+=======
+        # Normalize timestamps
+>>>>>>> f54b56f1e5309bc861498ceffd38728d9d5dff51
         if "transaction_timestamp" in self.transactions.columns:
             self.transactions["transaction_timestamp"] = pd.to_datetime(
                 self.transactions["transaction_timestamp"], errors="coerce"

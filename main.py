@@ -2,9 +2,6 @@ from app.core.orchestrator import Orchestrator
 import asyncio
 
 
-
-
-
 # Complaint Routing
 async def main():
         orchestrator = Orchestrator()
@@ -12,12 +9,14 @@ async def main():
         
         complaint_id = (
             orchestrator.repo.dataset_loader.complaints
-            .iloc[20]["complaint_id"]
+            .iloc[250]["complaint_id"]
         )
 
         complaint_request = {
-            "type": "complaints",
-            "complaint_id": complaint_id
+            "type": "complaint",
+            "department": "complaint",
+            "complaint_id": complaint_id,
+            "agent": "DispatcherAgent" 
         }
 
         result1 = await orchestrator.handle_request(complaint_request)
@@ -28,12 +27,14 @@ async def main():
 
         transaction_id = (
             orchestrator.repo.dataset_loader.transactions
-            .iloc[20]["transaction_id"]
+            .iloc[250]["transaction_id"]
         )
 
         transaction_request = {
-            "type": "transactions",
-            "transaction_id": transaction_id
+            "type": "transaction",
+            "department": "transaction",
+            "transaction_id": transaction_id,
+            "agent": "SentinelAgent"
         }
 
         result2 = await orchestrator.handle_request(transaction_request)
@@ -45,12 +46,14 @@ async def main():
 
         recommendation_id = (
             orchestrator.repo.dataset_loader.transactions
-            .iloc[20]["customer_id"]
+            .iloc[250]["customer_id"]
         )
 
         recommendation_request = {
-            "type": "recommendations",
-            "customer_id": recommendation_id
+            "type": "recommendation",
+            "department": "recommendation",
+            "customer_id": recommendation_id,
+            "agent": "TrajectoryAgent"
         }
 
         result3 = await orchestrator.handle_request(recommendation_request)
