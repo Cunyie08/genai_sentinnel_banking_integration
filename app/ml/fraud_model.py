@@ -29,11 +29,17 @@ class MLScorer:
         Returns fraud probability between 0 and 1.
         """
 
-        # Fetch transaction history for same account
-        history = self.dataset_loader.transactions[
-            self.dataset_loader.transactions["account_id"] ==
-            transaction["account_id"]
-        ]
+        # Fetch transaction history for same account safely
+        account_id = transaction.get("account_id")
+        
+        if account_id:
+            history = self.dataset_loader.transactions[
+                self.dataset_loader.transactions["account_id"] == account_id
+            ]
+        else:
+            # If this is a live payload that only provides account_number, we can fall back to empty history
+            # The builder will handle the empty dataframe.
+            history = pd.DataFrame()
 
         # Build feature vector
         features = self.builder.build(transaction, history)
