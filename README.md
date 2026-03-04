@@ -119,3 +119,9 @@ API docs available at: [http://localhost:8000/docs](http://localhost:8000/docs)
 | **[David Ekpo](https://github.com/david4129)** | Backend Foundation + Trajectory Agent           |
 
 See [`WORK_DISTRIBUTION.md`](WORK_DISTRIBUTION.md) for full task breakdown and [`ONBOARDING.md`](ONBOARDING.md) for setup instructions.
+
+---
+
+## Branch Documentation
+
+- [`db-branch` guide](docs/BRANCH_db-branch.md)
