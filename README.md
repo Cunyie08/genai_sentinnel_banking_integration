@@ -1,427 +1,158 @@
-<<<<<<< HEAD
-# Sentinel Bank — AI-Powered Banking System
-
-A full-stack banking backend powered by FastAPI, PostgreSQL, and AI agents for fraud detection, complaint routing, and financial personalization.
-
----
-
-### AI-Driven Agents
-
-| Agent                | Role                                                       |
-| -------------------- | ---------------------------------------------------------- |
-| **Sentinel Agent**   | Real-time Fraud/Risk assessment for every transaction      |
-| **Dispatcher Agent** | Routes complaints using AI sentiment & priority analysis   |
-| **Trajectory Agent** | AI-Powered financial advisor & spending future-forecasting |
+﻿# Sentinnel Banking Platform
 
-### Core Banking Features
+Branch: `final_backend_integrations`
 
-- **Authentication**: JWT-based login with OTP verification and Magic Link support.
-- **Transactions**: Secure internal transfers with database-level locking and risk scoring.
-- **Reporting**: Ability to report failed transactions and track status via unique IDs.
-- **Profile**: Full user profile management, security preferences, and theme settings.
+This branch delivers an end-to-end integration of the AI-enabled banking backend (FastAPI) with the React frontend, plus governance-focused agent orchestration (Sentinel, Dispatcher, Trajectory), RAG grounding, and operational modules such as admin, notifications, cards, settings, and audit.
 
----
+## Branch Status
 
-## Tech Stack
+- Active branch: `final_backend_integrations`
+- Latest branch commit at time of documentation: `7393c7b`
+- Scope versus `master`: large integration branch with backend + frontend consolidation and AI workflow wiring.
 
-| Layer         | Technology                         |
-| ------------- | ---------------------------------- |
-| API Framework | FastAPI (Python)                   |
-| Database      | PostgreSQL on Aiven (cloud-hosted) |
-| ORM           | SQLAlchemy (async)                 |
-| AI Agents     | LangChain + LangGraph              |
-| Auth          | JWT (Jose) + bcrypt                |
-| Vector Store  | ChromaDB (RAG pipeline)            |
+## Architecture At A Glance
 
----
+- `Backend/`: FastAPI API surface, auth, user profile, transactions, quick services, admin, cards, notifications, settings, and audit modules.
+- `app/`: AI/ML orchestration stack (agents, orchestrator, RAG system, prompts, utils, data loaders).
+- `Frontend/`: React + Vite customer web application.
+- `database/`: database notes and schema setup guidance.
+- `docs/architecture.svg`: architecture diagram.
 
-## Project Structure
+## Core Capabilities In This Branch
 
-```
-Sentinnel_bank_project/
-├── Backend/               ← API layer (endpoints, models, auth)
-│   ├── app.py             ← Main FastAPI app
-│   ├── api.py             ← Auth routes
-│   ├── models.py          ← SQLAlchemy DB models
-│   ├── schemas.py         ← Pydantic request/response schemas
-│   ├── database.py        ← Async DB connection
-│   ├── middleware.py      ← JWT token guard
-│   └── auth.py            ← Password hashing & JWT helpers
-│
-├── app/
-│   ├── agents/            ← AI agents (sentinel, dispatcher, trajectory)
-│   ├── prompts/           ← LLM system prompts
-│   └── core/              ← LangGraph orchestrator
-│
-├── database/
-│   ├── create_schema.py   ← Creates all DB tables on Aiven
-│   └── README.md          ← Database setup guide
-│
-├── WORK_DISTRIBUTION.md   ← Team task assignments
-├── ONBOARDING.md          ← Setup guide for new teammates
-├── .env.example           ← Environment variable template
-└── requirements.txt       ← Python dependencies
-=======
- <!-- HEAD -->
-# Sentinnel Banking
+1. Authentication and account-linked user access
+- JWT login, OTP verification flow, password reset/change endpoints.
+- Middleware-based protected routes and role checks (including admin-only operations).
 
-## Executive Summary
+2. AI-assisted banking workflows
+- `SentinelAgent`: fraud assessment for transaction scenarios.
+- `DispatcherAgent`: complaint routing, priority and sentiment classification.
+- `TrajectoryAgent`: product recommendation flows for eligible users.
 
-Sentinnel Banking is a multi-agent artificial intelligence system designed to enhance operational efficiency, risk management, and customer experience within a digital banking environment.
+3. Customer operations
+- Profile and preference updates.
+- Account listing, balances, status, freeze/activate actions.
+- Transaction listing, filtering, status checks, failure reporting.
+- Internal transfer endpoint with fraud check gate.
 
-The system automates three core banking functions:
+4. Quick services and operational modules
+- Airtime, data, bills, and internal transfer under `/services`.
+- Cards lifecycle endpoints under `/cards`.
+- Notifications under `/notifications`.
+- Settings controls under `/settings`.
+- Admin control-plane endpoints under `/admin`.
+- Audit trail access under `/audit`.
 
-| Agent                | Function                                        |
-| -------------------- | ----------------------------------------------- |
-| **Dispatcher Agent** | Complaint classification & department routing   |
-| **Sentinel Agent**   | Evaluates transactions using a hybrid model that| 
-|                      | combines machine learning with policy-based risk| 
-|                      | controls and channel-aware safeguards.          |
-| **Trajectory Agent** | Recommends eligible financial products based on |
-|                      | structured eligibility rules, affordability     |
-|                      | checks, and policy validation.                  |
+5. Frontend integration
+- React app with protected routes (`/dashboard`, `/history`, `/transfer`, etc.).
+- Axios client with JWT auto-attach and 401 redirect handling.
+- Configurable backend URL via `VITE_API_URL`.
 
-Sentinnel Banking is built with a governance-first architecture. Decision-making is handled by deterministic engines and structured rules. Machine learning enhances fraud detection but does not override policy safeguards. Language models are used strictly to generate clear, audit-ready explanations, not to make financial decisions.
+## Quick Start
 
-Key characteristics of the system include:
+### Prerequisites
 
-- Policy-aligned decision frameworks
-- Hybrid fraud detection (machine learning + rule-based controls)
-- Channel-aware risk assessment
-- Structured logging for audit traceability
-- Modular multi-agent orchestration
+- Python 3.11+ (3.13 currently used in project artifacts)
+- Node.js 20+
+- PostgreSQL (Aiven or compatible)
 
-All data used in development is synthetic and designed to simulate real banking workflows without exposing sensitive information.
-Sentinnel Banking demonstrates how artificial intelligence can be deployed responsibly within financial systems; balancing automation, explainability, and governance.
-
-
-# 1. Overview
-
-## Multi-Agent AI System for Intelligent Banking Operations
-
-Sentinnel Banking is a modular multi-agent AI system designed to automate core banking workflows using deterministic logic, machine learning, and policy-grounded reasoning.
-
-The system is structured around three operational domains:
-
-* Complaint Routing
-* Fraud Detection
-* Product Recommendation
-
-It combines structured decision engines with governance-safe explanation layers.
-
----
-
-# 2. System Architecture
-
-![Architecture](docs/architecture.svg)
-
----
-
-# 3. Core Design Philosophy
-
-Sentinnel Banking is built on a layered architecture:
-
-1. Deterministic Decision Engines
-2. Machine Learning (Fraud Probability)
-3. Policy Grounding via RAG
-4. Schema-Constrained LLM Explanations
-5. Structured Logging
-
-LLMs do not make decisions.
-They explain decisions made by deterministic engines.
-
----
-
-# 4. Agents
-
-## Dispatcher Agent
-
-Purpose: Complaint classification and department routing.
-
-* Semantic + keyword routing
-* SLA classification
-* Department mapping
-* Policy-grounded explanation
-
----
-
-## Sentinel Agent
-
-Purpose: Fraud risk scoring and action mapping.
-
-Sentinel uses a hybrid fraud architecture:
-
-### Fraud Pipeline
-
-Transaction
-→ Behavioral Feature Engineering
-→ ML Fraud Probability
-→ Policy Risk Scoring
-→ Channel Risk Assessment
-→ Final Risk Score
-→ Action (Approve / Challenge / Block)
-
-### ML Integration
-
-The fraud model:
-
-* Learns behavioral transaction patterns
-* Outputs `ml_probability`
-* Detects anomalies beyond static rules
-* Contributes to hybrid risk score
-
-### Channel Risk Layer
-
-After ML scoring, Sentinel evaluates transaction channel:
-
-* ATM
-* POS
-* Web
-* Mobile
-
-Channel context can escalate actions even when ML probability is moderate.
-
-This ensures channel-aware fraud governance.
-
----
-
-## Trajectory Agent
-
-Purpose: Product recommendation and eligibility validation.
-
-Trajectory uses:
-
-* Deterministic recommendation engine
-* Loan signal score thresholds
-* DSR validation (33.3% cap)
-* Policy validation via RAG
-* Structured LLM explanation
-
-It does not rely on ML.
-
----
-
-# 5. RAG Policy Engine
-
-The system uses:
-
-* ChromaDB
-* SentenceTransformers embeddings
-* Policy chunk retrieval
-* Grounded validation
-
-RAG is used to validate:
-
-* Complaint routing categories
-* Product eligibility compliance
-
-RAG does not override deterministic logic.
-
----
-
-# 6. Machine Learning Component
-
-ML is integrated only in the Sentinel Agent.
-
-Model outputs:
-
-* Fraud probability (0-1)
-
-Used to:
-
-* Enhance anomaly detection
-* Influence hybrid risk scoring
-* Improve fraud sensitivity
-
-Final decision remains policy-controlled.
-
----
-
-# 7. Logging & Traceability
-
-Every agent decision is logged in structured JSON format:
-
-* reasoning.log
-* system.log
-
-Each entry includes:
-
-* Timestamp
-* Agent name
-* Full decision payload
-
-This enables audit traceability.
-
----
-
-# 8. Project Structure
-
-```
-app/
-├── agents/
-├── core/
-├── dataset/
-├── evaluation/
-├── logs/
-├── prompts/
-├── rag/
-├── utils/
->>>>>>> f54b56f1e5309bc861498ceffd38728d9d5dff51
-```
-
----
-
-<<<<<<< HEAD
-## Getting Started
-
-### 1. Clone and set up environment
+### 1) Clone and install backend dependencies
 
 ```bash
-git clone https://github.com/Cunyie08/genai_sentinel_banking_integration.git
-cd genai_sentinel_banking_integration
-
+git clone <repo-url>
+cd Sentinnel_bank_project
 python -m venv .venv
-.venv\Scripts\activate        # Windows
-source .venv/bin/activate     # Mac/Linux
-
+.venv\Scripts\activate   # Windows
 pip install -r requirements.txt
 ```
 
-### 2. Configure environment variables
+### 2) Configure backend environment
+
+Create `.env` from `.env.example` and fill:
+
+- `DATABASE_URL`
+- `SECRET_KEY`
+- `OPENAI_API_KEY`
+- `GEMINI_API_KEY`
+- `RESEND_API_KEY`
+- `RESEND_WEBHOOK_SECRET`
+
+### 3) Run backend
 
 ```bash
-cp .env.example .env
-```
-
-Fill in your credentials (get from TunjiPaul privately):
-
-- `DB_PASSWORD` — Aiven database password
-- `DATABASE_URL` — Full asyncpg connection string
-- `SECRET_KEY` — JWT signing key
-
-### 3. Run the server
-
-```bash
-# Start the backend server
 python -m Backend.app
 ```
 
-API docs available at: [http://localhost:8000/docs](http://localhost:8000/docs)
+Backend default runtime in this branch:
+- Host: `127.0.0.1`
+- Port: `8080`
 
----
+Health check:
+- `GET http://127.0.0.1:8080/health`
 
-## Database
-
-16 tables on Aiven PostgreSQL. See [`database/README.md`](database/README.md) for the full schema and setup instructions.
-
----
-
-## Team
-
-| Person             | Role                                            |
-| ------------------ | ----------------------------------------------- |
-| **[TunjiPaul](https://github.com/tunjipaul)** | Database Schema + Auth + User Profile endpoints |
-| **[Mr Opnex](https://github.com/opnex)** | Accounts + Cards + Notifications                |
-| **[Halimat](https://github.com/halimahAkinoso)** | Transactions (Extended) + Settings              |
-| **[Barrister Femi](https://github.com/Femilearnsai)** | Quick Services + Admin + Audit                  |
-| **[David Ekpo](https://github.com/david4129)** | Backend Foundation + Trajectory Agent           |
-
-See [`WORK_DISTRIBUTION.md`](WORK_DISTRIBUTION.md) for full task breakdown and [`ONBOARDING.md`](ONBOARDING.md) for setup instructions.
-=======
-# 9. Technology Stack
-
-* Python 3.13
-* AsyncIO
-* ChromaDB
-* SentenceTransformers
-* OpenAI API
-* Gemini API
-* Pydantic
-* Structured logging
-
----
-
-# 10. Synthetic Data Engine
-
-Synthetic datasets include:
-
-* Customers
-* Accounts
-* Transactions
-* Complaints
-
-Used to simulate:
-
-* Behavioral fraud patterns
-* Loan signal scoring
-* Eligibility scenarios
-
-No real customer data is used.
-
----
-
-# 11. Running the System
+### 4) Install and run frontend
 
 ```bash
-python -m main
+cd Frontend
+npm install
+npm run dev
 ```
 
-Supported request types:
+Optional frontend env (`Frontend/.env`):
 
-```json
-{
-  "type": "complaint",
-  "complaint_id": "..."
-}
+```bash
+VITE_API_URL=http://127.0.0.1:8080
 ```
 
-```json
-{
-  "type": "transaction",
-  "transaction_id": "..."
-}
-```
+## API Module Map
 
-```json
-{
-  "type": "recommendation",
-  "customer_id": "..."
-}
-```
+- Auth: `/auth/*` from `Backend/api.py`
+- Core app and agent flows: `Backend/app.py`
+- Quick services: `/services/*`
+- Admin: `/admin/*`
+- Audit: `/audit/*`
+- Cards: `/cards/*`
+- Notifications: `/notifications/*`
+- Settings: `/settings/*`
 
----
+Use interactive API docs when backend is running:
+- `http://127.0.0.1:8080/docs`
 
-# 12. Meet the Team
+## Frontend Route Map
 
-### AI Engineers
+Public:
+- `/onboarding`
+- `/signup`
+- `/verify-otp`
+- `/login`
+- `/forgot-password`
 
-* Kanyisola Fagbayi
-* Blessing James
-* David Ekpo
-* Hassan Majaro
+Protected:
+- `/dashboard`
+- `/history`
+- `/transfer`
+- `/cards`
+- `/services`
+- `/profile`
+- `/notifications`
+- `/settings`
 
-### AI Developers
+## Branch-Specific Risks / Notes
 
-* Tunji Paul Ogor
-* Reuben Mulero
-* Itunu Bisayo
-* Opeyemi Thomas
-* Halimah Akinoso
+- Root `README.md` previously had unresolved merge conflict markers. This has now been replaced with a clean document.
+- Several generated/binary artifacts exist in-branch (for example `Frontend/node_modules`, RAG/chroma files, model binary). Keep release packaging and CI filtering in mind.
+- Some legacy docs may refer to older run commands or old folder layouts. Prefer this README and `docs/BRANCH_final_backend_integrations.md`.
 
----
+## Additional Branch Documentation
 
-# Summary
+For a deeper branch dossier (diff summary, integration notes, merge checklist), see:
 
-Sentinnel Banking demonstrates and reflects a modular, explainable approach to intelligent banking automation through:
+- `docs/BRANCH_final_backend_integrations.md`
 
-* Multi-agent orchestration
-* Hybrid ML + deterministic fraud detection
-* Policy-grounded validation
-* Channel-aware risk assessment
-* Governance-safe explanation architecture
-* Structured audit logging
+## Team Notes
 
+This branch integrates contributions from backend, AI, and frontend workflows. For handover context, refer to:
 
-![glass screen](image.png)
- 843f8a6 (updated functional client interface)
->>>>>>> f54b56f1e5309bc861498ceffd38728d9d5dff51
+- `DAVID_HANDOVER.md`
+- `STANDUP_REPORT_2026_02_27.md`
+- `COMPLETE_ME.md`
