@@ -1,12 +1,39 @@
+# --- Core Backend & API ---
+fastapi
+uvicorn[standard]
+pydantic[email]
+python-multipart
+python-dotenv
+
+# --- Database & ORM ---
+sqlalchemy
+asyncpg
+
+# --- Security & Authentication ---
+bcrypt
+PyJWT
+
+# --- AI & Agent Frameworks ---
+openai
+google-genai
 langgraph
-langchain_openai
-langchain_core
-faker
-python-dateutil
-pydantic
-chromadb
+langchain-openai
+langchain-core>
+
+# --- Data, RAG & Utilities ---
+chromadb>=0.6.0
 sentence-transformers
 torch
+<<<<<<< HEAD
+pandas
+faker
+python-dateutil
+resend
+svix
+email-validator
+scikit-learn
+=======
 google-genai
 python-dotenv
 pandas
+>>>>>>> f54b56f1e5309bc861498ceffd38728d9d5dff51

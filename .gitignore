@@ -1,8 +1,64 @@
+<<<<<<< HEAD
+# Environment
+.env
+.env.bak
+=======
 
+>>>>>>> f54b56f1e5309bc861498ceffd38728d9d5dff51
 app/.env
+.env.example
+
+# Virtual env
 .venv
 a_venv
+
+# Logs
 app\logs\reasoning.log
+<<<<<<< HEAD
+*.log
+
+# Python cache
+__pycache__/
+*.pyc
+app\__pycache__
+app\rag\knowledge_base\__pycache__
+app\rag\rag_system\__pycache__
+
+# RAG / ChromaDB
+app\rag\chroma_db
+app/rag/chroma_db
+chroma_db/
+
+# Large datasets
+complaints.csv
+customers.csv
+transactions.csv
+app/data/complaints.csv
+app/data/customers.csv
+app/data/transactions.csv
+sentinnel_banking_dataset/accounts.csv
+sentinnel_banking_dataset/transactions.csv
+sentinnel_banking_dataset/customers.csv
+sentinnel_banking_dataset/complaints.csv
+
+# Sensitive / internal docs
+DAVID_HANDOVER.md
+STANDUP_REPORT_2026_02_27.md
+
+# VS Code
+.vscode/
+
+# Misc
+sentinnel_banking_dataset\test.ipynb
+dataset
+ignore_folder
+system_architecture_banking_.pdf
+schema.pgerd
+test.sql
+create_schema.py
+
+
+=======
 app\rag\chroma_db
 accounts.csv
 system_architecture_banking_.pdf
@@ -134,3 +190,4 @@ WORK_DISTRIBUTION.md
 complaints.csv
 customers.csv
 transactions.csv
+>>>>>>> f54b56f1e5309bc861498ceffd38728d9d5dff51
