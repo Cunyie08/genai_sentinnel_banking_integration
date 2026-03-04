@@ -164,7 +164,7 @@ Sentinnel_bank_project/
 │   ├── prompts/                    ← LLM system prompts per agent
 │   ├── rag/                        ← ChromaDB RAG pipeline + 6 policy documents
 │   ├── ml/                         ← RandomForest model + feature engineering
-│   ├── data/                       ← BankRepository + DatasetLoader (4 CSVs)
+│   ├── data/                       ← BankRepository + DatasetLoader + Dataset Generator(4 CSVs)
 │   ├── evaluation/                 ← Metrics + LLM Judge evaluation harness
 │   ├── logs/                       ← reasoning.log + system.log
 │   └── utils/                      ← LLMClient, schemas, logger, policy generator
