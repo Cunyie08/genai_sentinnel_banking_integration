@@ -11,10 +11,11 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update
+from datetime import datetime
 
 from Backend.database import get_db
 from Backend.middleware import get_current_user
-from Backend.models import Account, ServiceTransaction
+from Backend.models import Account, ServiceTransaction, Transaction
 from Backend.schemas import (
     AirtimePurchaseRequest,
     DataPurchaseRequest,
@@ -22,6 +23,7 @@ from Backend.schemas import (
     ServiceTransactionResponse,
     ProviderOut,
     BillCategoryOut,
+    InternalTransferRequest,
 )
 
 router = APIRouter(prefix="/services", tags=["Quick Services"])
@@ -71,7 +73,9 @@ async def _verify_account_ownership(
     result = await db.execute(select(Account).filter(Account.account_id == account_id))
     account = result.scalars().first()
     if not account:
-        raise HTTPException(status_code=404, detail="Account not found")
+        raise HTTPException(
+            status_code=400, detail="The selected account was not found."
+        )
     if account.customer_id != user.customer_id:
         raise HTTPException(status_code=403, detail="Account does not belong to you")
     return account
@@ -208,3 +212,104 @@ async def pay_bill(
     await db.commit()
     await db.refresh(txn)
     return txn
+
+
+# ═══════════════════════════════════════════════════════════════
+#  INTERNAL TRANSFERS
+# ═══════════════════════════════════════════════════════════════
+
+
+@router.post("/internal-transfer")
+async def internal_transfer(
+    payload: InternalTransferRequest,
+    db: AsyncSession = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    """
+    Perform a transfer between two accounts within Sentinel Bank.
+    """
+    # 1. Verify source account
+    stmt_src = select(Account).filter(
+        Account.account_number == payload.from_account_number
+    )
+    res_src = await db.execute(stmt_src)
+    src_acc = res_src.scalars().first()
+
+    if not src_acc:
+        raise HTTPException(status_code=400, detail="Source account not found.")
+
+    if src_acc.customer_id != user.customer_id:
+        raise HTTPException(
+            status_code=403, detail="You do not have permission to debit this account."
+        )
+
+    # 2. Check balance
+    if float(src_acc.current_balance) < payload.amount:
+        raise HTTPException(status_code=400, detail="Insufficient balance.")
+
+    # 3. Verify recipient account
+    stmt_dest = select(Account).filter(
+        Account.account_number == payload.to_account_number
+    )
+    res_dest = await db.execute(stmt_dest)
+    dest_acc = res_dest.scalars().first()
+
+    if not dest_acc:
+        raise HTTPException(
+            status_code=400, detail="The recipient account number does not exist."
+        )
+
+    if src_acc.account_id == dest_acc.account_id:
+        raise HTTPException(
+            status_code=400, detail="Source and destination accounts must be different."
+        )
+
+    # 4. Perform atomic transfer
+    try:
+        # Update Balances
+        src_acc.current_balance = float(src_acc.current_balance) - payload.amount
+        dest_acc.current_balance = float(dest_acc.current_balance) + payload.amount
+
+        # Record Transaction for Sender
+        sender_txn = Transaction(
+            transaction_id=uuid.uuid4().hex,
+            transaction_reference_number=f"TRF-OUT-{uuid.uuid4().hex[:10].upper()}",
+            account_id=src_acc.account_id,
+            channel="web",
+            transaction_type="debit",
+            amount=payload.amount,
+            narration=payload.narration or f"Transfer to {dest_acc.account_number}",
+            transaction_status="completed",
+            transaction_timestamp=datetime.now(),
+            transaction_balance=src_acc.current_balance,
+        )
+
+        # Record Transaction for Recipient
+        receiver_txn = Transaction(
+            transaction_id=uuid.uuid4().hex,
+            transaction_reference_number=f"TRF-IN-{uuid.uuid4().hex[:10].upper()}",
+            account_id=dest_acc.account_id,
+            channel="web",
+            transaction_type="credit",
+            amount=payload.amount,
+            narration=payload.narration or f"Transfer from {src_acc.account_number}",
+            transaction_status="completed",
+            transaction_timestamp=datetime.now(),
+            transaction_balance=dest_acc.current_balance,
+        )
+
+        db.add(sender_txn)
+        db.add(receiver_txn)
+
+        await db.commit()
+
+        return {
+            "message": "Transfer successfully completed!",
+            "reference": sender_txn.transaction_reference_number,
+        }
+
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(
+            status_code=500, detail=f"An error occurred during transfer: {str(e)}"
+        )

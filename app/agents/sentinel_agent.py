@@ -20,6 +20,7 @@ from app.rag.rag_system.rag_querys import create_engine
 
 # Create a class that assess fraud/risk and explains why transaction was flagged
 
+
 class SentinelAgent(BaseAgent):
     """
     SentinelAgent performs fraud assessment using:
@@ -37,7 +38,7 @@ class SentinelAgent(BaseAgent):
         openai_llm: LLMClient,
         gemini_llm: LLMClient,
     ):
-       
+
         self.repo = repo
         self.rag_engine = rag_engine
         self.openai_llm = openai_llm
@@ -45,30 +46,34 @@ class SentinelAgent(BaseAgent):
 
         # Repository abstracts dataset access
         self.repo = repo
-    
+
         # Initialize the RAG engine for fraud scoring + policy explanation grounding
         self.client, self.config = initialize_chromadb()
         self.rag_engine = RAGQueryEngine(self.client, self.config)
 
         # Initialize the MLScorer
         self.ml_scorer = MLScorer(self.repo.dataset_loader)
-    
-        # Initialize OpenAI client
-        self.openai_llm = LLMClient(
+
+        # Initialize OpenAI client only if key is set
+        if OPENAI_API_KEY:
+            self.openai_llm = LLMClient(
                 client=AsyncOpenAI(api_key=OPENAI_API_KEY),
                 model_name="gpt-4o",
-                response_schema=FraudResponse
+                response_schema=FraudResponse,
             )
-        # Fallback
+        else:
+            self.openai_llm = None
+            print("SentinelAgent: OPENAI_API_KEY missing. OpenAI features disabled.")
+
+        # Fallback Gemini (Primary if OpenAI missing)
         self.gemini_llm = LLMClient(
             client=genai.Client(api_key=GEMINI_API_KEY),
-            model_name="gemini-2.5-flash",
-            response_schema=FraudResponse
+            model_name="gemini-2.0-flash",
+            response_schema=FraudResponse,
         )
-    
+
     # Fraud assessment flow
     async def run(self, payload: Dict[str, Any]) -> Dict[str, Any]:
-
         """
         Performs fraud detection and enforcement logic.
 
@@ -89,7 +94,7 @@ class SentinelAgent(BaseAgent):
         # If a transaction_id is passed and it's not a live test payload from app.py, try fetching it.
         # Otherwise, we use the payload itself as the transaction dictionary.
         transaction_id = payload.get("transaction_id")
-        
+
         # Determine if this is a live incoming transaction or an existing one
         # Checking for necessary keys to consider it a "full" transaction object
         if "amount" in payload and "account_number" in payload:
@@ -97,7 +102,9 @@ class SentinelAgent(BaseAgent):
             print("Processing live transaction payload:", transaction)
         else:
             if not transaction_id:
-                raise ValueError("transaction_id is required if full transaction payload is not provided.")
+                raise ValueError(
+                    "transaction_id is required if full transaction payload is not provided."
+                )
             # Fetch transaction from the repository
             transaction = self.repo.get_transactions(transaction_id)
             print("Transaction ID:", transaction_id)
@@ -106,20 +113,19 @@ class SentinelAgent(BaseAgent):
         # Deterministic fraud scoring engine
         fraud_result = await self.rag_engine.calculate_fraud_risk(transaction)
 
-        
         # Extract structured result
         base_result = {
-        "total_risk_score": fraud_result["total_risk_score"],
-        "risk_level": fraud_result["risk_level"],
-        "recommended_action": fraud_result["recommended_action"],
-        "requires_challenge": fraud_result["requires_challenge"],
-        "should_block": fraud_result["should_block"],
-        "confidence": fraud_result["confidence"],
-        "risk_breakdown": fraud_result["risk_breakdown"],
-        "policy_explanation": fraud_result["policy_explanation"]
+            "total_risk_score": fraud_result["total_risk_score"],
+            "risk_level": fraud_result["risk_level"],
+            "recommended_action": fraud_result["recommended_action"],
+            "requires_challenge": fraud_result["requires_challenge"],
+            "should_block": fraud_result["should_block"],
+            "confidence": fraud_result["confidence"],
+            "risk_breakdown": fraud_result["risk_breakdown"],
+            "policy_explanation": fraud_result["policy_explanation"],
         }
 
-        # ML Fraud Probability 
+        # ML Fraud Probability
         ml_probability = self.ml_scorer.predict(transaction)
 
         base_result["ml_probability"] = round(ml_probability, 3)
@@ -127,18 +133,19 @@ class SentinelAgent(BaseAgent):
         # Only escalate LOW → MEDIUM if ML strongly indicates anomaly
         if ml_probability > 0.85 and base_result["risk_level"] == "LOW":
             base_result["risk_level"] = "MEDIUM"
-            base_result["recommended_action"] = \
-                        "Escalated to MEDIUM risk due to ML anomaly signal"
+            base_result["recommended_action"] = (
+                "Escalated to MEDIUM risk due to ML anomaly signal"
+            )
 
-        # Card-Channel Mandatory Override 
+        # Card-Channel Mandatory Override
         # All ATM / POS transactions must require push-to-app
-        card_channels = ['pos', 'atm']
+        card_channels = ["pos", "atm"]
 
-        if transaction.get('channel') in card_channels:
-             base_result["requires_challenge"] = True
-             base_result['recommended_action'] = "Mandatory push-to-app biometric challenge (Card channel policy override)"
-
-        
+        if transaction.get("channel") in card_channels:
+            base_result["requires_challenge"] = True
+            base_result["recommended_action"] = (
+                "Mandatory push-to-app biometric challenge (Card channel policy override)"
+            )
 
         # Gather Historical Context
         account_num = transaction.get("account_number")
@@ -151,24 +158,29 @@ class SentinelAgent(BaseAgent):
             if "account_number" in history_df.columns:
                 filters.append(history_df["account_number"] == account_num)
             if "account_id" in history_df.columns and transaction.get("account_id"):
-                filters.append(history_df["account_id"] == transaction.get("account_id"))
+                filters.append(
+                    history_df["account_id"] == transaction.get("account_id")
+                )
 
             if filters:
                 # Combine filters with logical OR
                 import pandas as pd
                 import numpy as np
+
                 combined_filter = np.logical_or.reduce(filters)
                 history_df = history_df[combined_filter]
             else:
-                history_df = history_df.head(0) # Empty dataframe if no matching columns
+                history_df = history_df.head(
+                    0
+                )  # Empty dataframe if no matching columns
             # Remove the current transaction from history if it exists
             # (By comparing transaction_id if present)
             txn_id = transaction.get("transaction_id")
             if txn_id:
                 history_df = history_df[history_df["transaction_id"] != txn_id]
-            
+
             # Take last 5 transactions for context
-            historical_txns = history_df.tail(5).to_dict('records')
+            historical_txns = history_df.tail(5).to_dict("records")
         else:
             historical_txns = []
 
@@ -179,7 +191,6 @@ class SentinelAgent(BaseAgent):
                 history_context += f"- {t.get('transaction_timestamp')}: {t.get('amount')} via {t.get('channel')} (Status: {t.get('transaction_status')})\n"
         else:
             history_context = "User has NO prior transaction history (Cold Start). IMPORTANT: Do not automatically penalize this transaction or assume fraud strictly due to lack of history."
-
 
         # LLM Explanation
         explanation_payload = f"""
@@ -195,22 +206,37 @@ class SentinelAgent(BaseAgent):
 
             Provide a clear audit-ready explanation considering the transaction against their historical behavior.
             """
-        
-        try:
-            llm_response = await self.openai_llm.generate(
-            system_prompt=Sentinel_System_Prompt,
-            user_input=explanation_payload
-            )
-        except RateLimitError:
-                print("OpenAI rate limited. Falling back to Gemini...")
 
-                llm_response = await self.gemini_llm.generate(
-                system_prompt=Sentinel_System_Prompt,
-                user_input=explanation_payload
+        llm_response = None
+        if self.openai_llm:
+            try:
+                llm_response = await self.openai_llm.generate(
+                    system_prompt=Sentinel_System_Prompt, user_input=explanation_payload
                 )
+            except Exception as e:
+                print(f"OpenAI error: {e}. Falling back to Gemini...")
 
-        # Extract structured LLM output
-        result = llm_response.model_dump()
+        if not llm_response:
+            llm_response = await self.gemini_llm.generate(
+                system_prompt=Sentinel_System_Prompt, user_input=explanation_payload
+            )
+
+        # Extract structured LLM output or use RAG fallback
+        if llm_response:
+            result = llm_response.model_dump()
+            explanation_text = result.get("policy_explanation", "")
+            risk_summary = result.get("risk_summary", "AI Analysis Complete.")
+        else:
+            # Fallback if both LLMs fail (e.g. Quota Exceeded)
+            print(
+                "Both LLMs unavailable or quota exceeded. Falling back to RAG/ML decision."
+            )
+            result = {
+                "risk_summary": "Security analysis service is currently under high load. Using automated safeguards.",
+                "risk_score_logic": "Standard behavioral analysis applied.",
+                "governance_note": "Governance-approved fallback mechanism activated.",
+            }
+            explanation_text = "AI explanation service temporarily unavailable. Transaction analyzed using primary safety protocols."
 
         # Preserve deterministic fraud engine decisions
         result["total_risk_score"] = base_result["total_risk_score"]
@@ -224,17 +250,14 @@ class SentinelAgent(BaseAgent):
         # Merge policy_explanation safely with LLM Explanation
         result["policy_explanation"] = (
             f"Policy Basis:\n{base_result['policy_explanation']}\n\n"
-            f"LLM Explanation:\n{result.get('policy_explanation', '')}"
+            f"Explanation:\n{explanation_text}"
         )
 
         # Tag the Agent
         result["agent"] = "SentinelAgent"
 
         # Log reasoning trace
-        ReasoningLogger.log(
-            agent_name="SentinelAgent",
-            payload=result
-        )
+        ReasoningLogger.log(agent_name="SentinelAgent", payload=result)
 
         return result
 
@@ -250,34 +273,28 @@ async def main():
     rag_engine = await create_engine()
 
     openai_llm = LLMClient(
-    client= AsyncOpenAI(api_key=OPENAI_API_KEY),
-    model_name="gpt-4o",
-    response_schema=FraudResponse,
+        client=AsyncOpenAI(api_key=OPENAI_API_KEY),
+        model_name="gpt-4o",
+        response_schema=FraudResponse,
     )
 
-    gemini_llm = LLMClient(     
-    client=genai.Client(api_key=GEMINI_API_KEY),
-    model_name="gemini-2.5-flash",
-    response_schema=FraudResponse
-
+    gemini_llm = LLMClient(
+        client=genai.Client(api_key=GEMINI_API_KEY),
+        model_name="gemini-2.5-flash",
+        response_schema=FraudResponse,
     )
 
     agent = SentinelAgent(
-    repo=repo,
-    rag_engine=rag_engine,
-    openai_llm=openai_llm,
-    gemini_llm=gemini_llm
+        repo=repo, rag_engine=rag_engine, openai_llm=openai_llm, gemini_llm=gemini_llm
     )
 
     # Select a real transaction ID from the dataset
     transaction_id = agent.repo.dataset_loader.transactions.iloc[9]["transaction_id"]
 
-    result = await agent.run({
-        "transaction_id": transaction_id
-    })
+    result = await agent.run({"transaction_id": transaction_id})
     print("\n=== SENTINEL OUTPUT ===")
     print(result)
 
-if __name__ == "__main__":
-     asyncio.run(main())
 
+if __name__ == "__main__":
+    asyncio.run(main())

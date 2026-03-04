@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Sign Up | Sentinel Bank</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#0000ff",
+                        "primary-light": "#4a86e8",
+                        "primary-dark": "#1414ff",
+                        "background-light": "#f5f5f8",
+                        "background-dark": "#0f0f23",
+                    },
+                    fontFamily: {
+                        "display": ["Manrope", "sans-serif"]
+                    },
+                    borderRadius: {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                },
+            },
+        }
+    </script>
+<style>
+        body {
+            font-family: 'Manrope', sans-serif;
+        }
+        .gradient-bg {
+            background: linear-gradient(135deg, #4a86e8 0%, #0000ff 50%, #1414ff 100%);
+        }
+    </style>
+</head>
+<body class="bg-background-light dark:bg-background-dark min-h-screen flex items-center justify-center p-4 md:p-8">
+<div class="max-w-6xl w-full bg-white dark:bg-slate-900 rounded-xl shadow-2xl overflow-hidden flex flex-col md:flex-row min-h-[800px]">
+<div class="hidden md:flex md:w-5/12 gradient-bg p-12 text-white flex-col justify-between relative overflow-hidden">
+<div class="absolute top-0 left-0 w-full h-full opacity-10 pointer-events-none">
+<svg height="100%" width="100%" xmlns="http://www.w3.org/2000/svg">
+<defs>
+<pattern height="40" id="grid" patternunits="userSpaceOnUse" width="40">
+<path d="M 40 0 L 0 0 0 40" fill="none" stroke="white" stroke-width="1"></path>
+</pattern>
+</defs>
+<rect fill="url(#grid)" height="100%" width="100%"></rect>
+</svg>
+</div>
+<div class="relative z-10">
+<div class="flex items-center gap-3 mb-12">
+<div class="bg-white p-2 rounded-lg">
+<span class="material-symbols-outlined text-primary text-3xl">shield</span>
+</div>
+<h1 class="text-2xl font-extrabold tracking-tight">Sentinel Bank</h1>
+</div>
+<h2 class="text-4xl font-black leading-tight mb-6">Secure Banking Starts Here</h2>
+<p class="text-lg text-blue-100 font-medium leading-relaxed">Join over 2 million customers who trust Sentinel Bank for their financial future. Our world-class security protocols ensure your assets are protected 24/7.</p>
+</div>
+<div class="relative z-10 space-y-6">
+<div class="flex items-center gap-4">
+<div class="size-10 rounded-full bg-white/20 flex items-center justify-center">
+<span class="material-symbols-outlined text-white">verified_user</span>
+</div>
+<div>
+<p class="font-bold">Institutional Grade Security</p>
+<p class="text-sm text-blue-100">Multi-layer encryption for every transaction.</p>
+</div>
+</div>
+<div class="flex items-center gap-4">
+<div class="size-10 rounded-full bg-white/20 flex items-center justify-center">
+<span class="material-symbols-outlined text-white">account_balance</span>
+</div>
+<div>
+<p class="font-bold">Fully Licensed</p>
+<p class="text-sm text-blue-100">Regulated and compliant with global standards.</p>
+</div>
+</div>
+</div>
+<div class="relative z-10 pt-8 border-t border-white/20">
+<p class="text-sm text-blue-200">© 2024 Sentinel Bank Corp. All rights reserved.</p>
+</div>
+</div>
+<div class="w-full md:w-7/12 p-8 md:p-16 flex flex-col justify-center bg-white dark:bg-slate-900">
+<div class="mb-10 text-center md:text-left">
+<h3 class="text-3xl font-bold text-slate-900 dark:text-slate-100 mb-2">Create Your Account</h3>
+<p class="text-slate-500 dark:text-slate-400">Enter your details to get started with a premium banking experience.</p>
+</div>
+<form class="space-y-5">
+<div class="space-y-2">
+<label class="text-sm font-semibold text-slate-700 dark:text-slate-300 ml-1">Email Address</label>
+<div class="relative">
+<span class="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">mail</span>
+<input class="w-full pl-12 pr-4 py-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-primary focus:border-transparent transition-all outline-none" placeholder="name@example.com" type="email"/>
+</div>
+</div>
+<div class="space-y-2">
+<label class="text-sm font-semibold text-slate-700 dark:text-slate-300 ml-1">Password</label>
+<div class="relative">
+<span class="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">lock</span>
+<input class="w-full pl-12 pr-12 py-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-primary focus:border-transparent transition-all outline-none" placeholder="Create a strong password" type="password"/>
+<button class="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-primary transition-colors" type="button">
+<span class="material-symbols-outlined">visibility</span>
+</button>
+</div>
+</div>
+<div class="space-y-2">
+<label class="text-sm font-semibold text-slate-700 dark:text-slate-300 ml-1">Confirm Password</label>
+<div class="relative">
+<span class="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">lock_reset</span>
+<input class="w-full pl-12 pr-12 py-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-primary focus:border-transparent transition-all outline-none" placeholder="Repeat your password" type="password"/>
+<button class="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-primary transition-colors" type="button">
+<span class="material-symbols-outlined">visibility</span>
+</button>
+</div>
+</div>
+<div class="flex items-center gap-2 py-2">
+<input class="rounded text-primary focus:ring-primary border-slate-300" id="terms" type="checkbox"/>
+<label class="text-sm text-slate-600 dark:text-slate-400" for="terms">I agree to the <a class="text-primary font-semibold hover:underline" href="#">Terms of Service</a> and <a class="text-primary font-semibold hover:underline" href="#">Privacy Policy</a>.</label>
+</div>
+<button class="w-full py-4 bg-primary hover:bg-primary-dark text-white font-bold rounded-xl transition-all shadow-lg shadow-primary/25 active:scale-[0.98]">
+                    Create Account
+                </button>
+<p class="text-center text-slate-600 dark:text-slate-400 pt-4">
+                    Already have an account? <a class="text-primary font-bold hover:underline" href="#">Login</a>
+</p>
+</form>
+<div class="mt-12 pt-8 border-t border-slate-100 dark:border-slate-800">
+<div class="flex flex-wrap justify-center gap-6 opacity-60">
+<div class="flex items-center gap-2 grayscale hover:grayscale-0 transition-all cursor-default">
+<span class="material-symbols-outlined text-2xl">verified</span>
+<span class="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400">SSL Secure</span>
+</div>
+<div class="flex items-center gap-2 grayscale hover:grayscale-0 transition-all cursor-default">
+<span class="material-symbols-outlined text-2xl">gpp_maybe</span>
+<span class="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400">Licensed Bank</span>
+</div>
+<div class="flex items-center gap-2 grayscale hover:grayscale-0 transition-all cursor-default">
+<span class="material-symbols-outlined text-2xl">credit_card</span>
+<span class="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400">PCI Compliant</span>
+</div>
+</div>
+</div>
+</div>
+</div>
+</body></html>

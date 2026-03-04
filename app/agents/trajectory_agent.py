@@ -1,5 +1,4 @@
-
-# TRAJECTORY AGENT 
+# TRAJECTORY AGENT
 
 
 from typing import Dict, Any
@@ -23,11 +22,10 @@ from app.utils.schemas import TrajectoryResponse
 
 
 class TrajectoryAgent(BaseAgent):
-
     """
     Trajectory Agent — Product Recommendation & Eligibility Engine
 
-    
+
     1. Deterministic recommendation (RecommendationEngine)
     2. Policy validation (RAG)
     3. LLM explanation layer (non-overriding)
@@ -35,6 +33,7 @@ class TrajectoryAgent(BaseAgent):
 
     The LLM NEVER overrides eligibility decisions.
     """
+
     # Initialize the agent
     def __init__(
         self,
@@ -52,7 +51,6 @@ class TrajectoryAgent(BaseAgent):
         self.openai_llm = openai_llm
         self.gemini_llm = gemini_llm
 
- 
     # Main execution
     async def run(self, payload: Dict[str, Any]) -> Dict[str, Any]:
 
@@ -60,13 +58,12 @@ class TrajectoryAgent(BaseAgent):
         if not customer_id:
             raise ValueError("customer_id is required.")
 
-      
         # Fetch customer profile
         profile = self.repo.get_customer_profile(customer_id)
         if profile is None:
             raise ValueError(f"Customer {customer_id}not found.")
-        
-         # Fetch transactions
+
+        # Fetch transactions
         transactions = self.repo.get_customer_transactions(customer_id)
 
         # Extract car_loan_signal_score from transactions (pre-assigned per product)
@@ -97,7 +94,9 @@ class TrajectoryAgent(BaseAgent):
         if not transactions.empty and "merchant_name" in transactions.columns:
             uber_tracker = int(
                 transactions[
-                    transactions["merchant_name"].isin(["Uber", "Bolt", "LagRide", "uber", "bolt", "lagride"])
+                    transactions["merchant_name"].isin(
+                        ["Uber", "Bolt", "LagRide", "uber", "bolt", "lagride"]
+                    )
                 ].shape[0]
             )
 
@@ -113,8 +112,6 @@ class TrajectoryAgent(BaseAgent):
             "current_balance": float(profile.get("current_balance") or 0.0),
         }
 
-      
-
         # Proactive Recommendation (Policy Engine)
 
         recommendation = await self.recommender.recommend(policy_input)
@@ -125,14 +122,13 @@ class TrajectoryAgent(BaseAgent):
             recommendation["validation"] = None
             return recommendation
 
-        primary_product  = recommendation["primary_product"]
+        primary_product = recommendation["primary_product"]
 
         # Validate With RAG (Grounding Layer)
         validation = await self.rag_engine.validate_product_recommendation(
-                customer_data=policy_input,
-                recommended_product=primary_product,
-            )
-
+            customer_data=policy_input,
+            recommended_product=primary_product,
+        )
 
         explanation_payload = f"""
 Customer ID: {customer_id}
@@ -156,31 +152,37 @@ Eligibility Decision: {recommendation['is_eligible']}
 Provide an audit-ready explanation aligned with PRS-001 policy.
 """
 
-        try:
-            llm_response = await self.openai_llm.generate(
-                system_prompt=Trajectory_System_Prompt,
-                user_input=explanation_payload,
-            )
-        except RateLimitError:
+        llm_response = None
+        if self.openai_llm:
+            try:
+                llm_response = await self.openai_llm.generate(
+                    system_prompt=Trajectory_System_Prompt,
+                    user_input=explanation_payload,
+                )
+            except Exception as e:
+                print(f"TrajectoryAgent: OpenAI error: {e}. Falling back to Gemini...")
+
+        if not llm_response:
             llm_response = await self.gemini_llm.generate(
                 system_prompt=Trajectory_System_Prompt,
                 user_input=explanation_payload,
             )
 
-        structured = llm_response.model_dump()
+        # Extract result or fallback
+        if llm_response:
+            structured = llm_response.model_dump()
+            explanation_text = (
+                f"{structured['explanation']}\n\n"
+                f"Risk Summary:\n{structured['risk_summary']}\n\n"
+                f"Governance:\n{structured['governance_note']}"
+            )
+        else:
+            print("TrajectoryAgent: Both LLMs unavailable or quota exceeded.")
+            structured = {}
+            explanation_text = "Personalized insights temporarily unavailable. Recommendation based on standard eligibility rules."
 
-        explanation= (
-            f"{structured['explanation']}\n\n"
-            f"Risk Summary:\n{structured['risk_summary']}\n\n"
-            f"Governance:\n{structured['governance_note']}"
-        )
-
-            
         # Logging
-        ReasoningLogger.log(
-            agent_name="TrajectoryAgent",
-            payload=structured
-        )
+        ReasoningLogger.log(agent_name="TrajectoryAgent", payload=structured)
 
         return {
             "agent": "TrajectoryAgent",
@@ -201,7 +203,6 @@ Provide an audit-ready explanation aligned with PRS-001 policy.
         }
 
 
-
 # Demo
 
 if __name__ == "__main__":
@@ -213,32 +214,30 @@ if __name__ == "__main__":
         repo = BankRepository(dataset_loader)
 
         rag_engine = await create_engine()
-        
+
         openai_llm = LLMClient(
-        client= AsyncOpenAI(api_key=OPENAI_API_KEY),
-        model_name="gpt-4o",
-        response_schema=TrajectoryResponse,
+            client=AsyncOpenAI(api_key=OPENAI_API_KEY),
+            model_name="gpt-4o",
+            response_schema=TrajectoryResponse,
         )
 
-        gemini_llm = LLMClient(     
-        client=genai.Client(api_key=GEMINI_API_KEY),
-        model_name="gemini-2.5-flash",
-        response_schema=TrajectoryResponse,
+        gemini_llm = LLMClient(
+            client=genai.Client(api_key=GEMINI_API_KEY),
+            model_name="gemini-2.0-flash",
+            response_schema=TrajectoryResponse,
         )
 
         agent = TrajectoryAgent(
-        repo=repo,
-        rag_engine=rag_engine,
-        openai_llm=openai_llm,
-        gemini_llm=gemini_llm
+            repo=repo,
+            rag_engine=rag_engine,
+            openai_llm=openai_llm,
+            gemini_llm=gemini_llm,
         )
 
         # Pick first customer from dataset
         customer_id = agent.repo.dataset_loader.customers.iloc[0]["customer_id"]
 
-        result = await agent.run({
-            "customer_id": customer_id
-        })
+        result = await agent.run({"customer_id": customer_id})
 
         print("\n=== TRAJECTORY OUTPUT ===")
         print(result)

@@ -17,11 +17,11 @@ PyJWT
 openai
 google-genai
 langgraph
-langchain_openai
-langchain_core
+langchain-openai
+langchain-core>
 
 # --- Data, RAG & Utilities ---
-chromadb
+chromadb>=0.6.0
 sentence-transformers
 torch
 pandas
@@ -30,7 +30,4 @@ python-dateutil
 resend
 svix
 email-validator
-
-genai
-google-genai
-dotenv
+scikit-learn

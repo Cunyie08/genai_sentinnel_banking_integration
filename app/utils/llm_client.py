@@ -3,25 +3,26 @@ from openai import AsyncOpenAI
 from google import genai
 
 
-
-
 import asyncio
 from openai import AsyncOpenAI
 from google import genai
 
 
-
-
 class LLMClient:
-    def __init__(self, client, model_name: str, response_schema, max_concurrent: int = 5):
+    def __init__(
+        self, client, model_name: str, response_schema, max_concurrent: int = 5
+    ):
         self.client = client
         self.model_name = model_name
         self.response_schema = response_schema
         self._semaphore = asyncio.Semaphore(max_concurrent)
 
-# Generate a response from the LLM
+    # Generate a response from the LLM
 
     async def generate(self, system_prompt: str, user_input: str):
+        if not self.client:
+            return None
+
         async with self._semaphore:
             try:
                 if isinstance(self.client, AsyncOpenAI):
@@ -30,7 +31,7 @@ class LLMClient:
                             model=self.model_name,
                             messages=[
                                 {"role": "system", "content": system_prompt},
-                                {"role": "user", "content": user_input}
+                                {"role": "user", "content": user_input},
                             ],
                             response_format=self.response_schema,
                         ),
@@ -45,8 +46,20 @@ class LLMClient:
                             "system_instruction": system_prompt,
                             "response_mime_type": "application/json",
                             "response_schema": self.response_schema,
-                        })
+                        },
+                    )
                     return response.parsed
+                return None
 
-            except asyncio.TimeoutError:
-                raise RuntimeError("LLM request timed out")
+            except Exception as e:
+                # Log the error but don't crash. Return None to allow fallback.
+                error_msg = str(e)
+                if (
+                    "429" in error_msg
+                    or "RESOURCE_EXHAUSTED" in error_msg
+                    or "quota" in error_msg.lower()
+                ):
+                    print(f"LLM Quota/Rate Limit ({self.model_name}): {error_msg}")
+                else:
+                    print(f"LLM Error ({self.model_name}): {error_msg}")
+                return None

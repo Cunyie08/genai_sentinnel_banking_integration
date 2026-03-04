@@ -54,8 +54,9 @@ from Backend.schemas import (
     ReportFailedRequest,
     InternalTransferRequest,
     RoutingResponse,
-    FraudResponse
+    FraudResponse,
 )
+
 
 class ComplaintQuery(BaseModel):
     account_number: str
@@ -63,6 +64,7 @@ class ComplaintQuery(BaseModel):
     complaint_text: str
     linked_transaction_id: Optional[str] = None
     linked_reference: Optional[str] = None
+
 
 logger = logging.getLogger(__name__)
 
@@ -123,6 +125,7 @@ async def get_me(
                 "account_number": acc.account_number,
                 "account_type": acc.account_type,
                 "balance": float(acc.current_balance),
+                "current_balance": float(acc.current_balance),
                 "status": acc.status,
             }
         )
@@ -363,26 +366,27 @@ async def process_complaint_routing(complaint_id: str, complaint_text: str):
             await dataset_loader.load()
             repo = BankRepository(dataset_loader)
             rag_engine = await create_engine()
+            openai_client = (
+                AsyncOpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
+            )
             openai_llm = LLMClient(
-                client=AsyncOpenAI(api_key=OPENAI_API_KEY),
+                client=openai_client,
                 model_name="gpt-4o",
-                response_schema=RoutingResponse
+                response_schema=RoutingResponse,
             )
             gemini_llm = LLMClient(
                 client=genai.Client(api_key=GEMINI_API_KEY),
-                model_name="gemini-2.5-flash",
-                response_schema=RoutingResponse
+                model_name="gemini-2.0-flash",
+                response_schema=RoutingResponse,
             )
 
             agent = DispatcherAgent(
                 repo=repo,
                 rag_engine=rag_engine,
                 openai_llm=openai_llm,
-                gemini_llm=gemini_llm
+                gemini_llm=gemini_llm,
             )
-            routing_result = await agent.run(
-                payload={"complaint_id": complaint_id}
-            )
+            routing_result = await agent.run(payload={"complaint_id": complaint_id})
 
             stmt = select(Complaint).filter(Complaint.complaint_id == complaint_id)
             result = await db.execute(stmt)
@@ -418,7 +422,166 @@ async def process_complaint_routing(complaint_id: str, complaint_text: str):
             print(f"CRITICAL AI ROUTING FAILURE for {complaint_id}: {e}")
 
 
-@app.post("/make_complaint", tags=["DB_Operations"])
+@app.post("/ai/chat", tags=["Agents"])
+async def ai_chat(
+    payload: Dict[str, Any] = Body(...),
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        user_message = payload.get("message", "")
+        if not user_message:
+            raise HTTPException(status_code=400, detail="Missing message")
+
+        # 1. Initialize Infrastructure
+        dataset_loader = DatasetLoader()
+        await dataset_loader.load()
+        repo = BankRepository(dataset_loader)
+        rag_engine = await create_engine()
+        openai_client = AsyncOpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
+
+        # 2. Intent Classification using Gemini
+        intent_llm = LLMClient(
+            client=genai.Client(api_key=GEMINI_API_KEY),
+            model_name="gemini-2.0-flash",
+            response_schema=dict,
+        )
+
+        intent_prompt = f"""
+        Classify the user's intent into one of: 'fraud_check', 'complaint_routing', 'product_recommendation', or 'general_query'.
+        User Message: "{user_message}"
+        Return JSON with key "intent".
+        """
+        intent_res = await intent_llm.generate(
+            "Intent Classification System", intent_prompt
+        )
+        intent = intent_res.get("intent", "general_query")
+
+        bot_text = "I'm here to help you with your banking needs."
+
+        # 3. Dispatch to Agent based on Intent
+        if intent == "fraud_check":
+            # Find last transaction for context
+            stmt = (
+                select(Transaction)
+                .join(Account)
+                .filter(Account.customer_id == user.customer_id)
+                .order_by(Transaction.transaction_timestamp.desc())
+                .limit(1)
+            )
+            res = await db.execute(stmt)
+            last_txn = res.scalars().first()
+
+            if last_txn:
+                agent = SentinelAgent(
+                    repo=repo,
+                    rag_engine=rag_engine,
+                    openai_llm=(
+                        LLMClient(openai_client, "gpt-4o", FraudResponse)
+                        if openai_client
+                        else None
+                    ),
+                    gemini_llm=LLMClient(
+                        genai.Client(api_key=GEMINI_API_KEY),
+                        "gemini-2.0-flash",
+                        FraudResponse,
+                    ),
+                )
+                agent_res = await agent.run({"transaction_id": last_txn.transaction_id})
+                risk = agent_res.get("risk_level", "UNKNOWN")
+                bot_text = f"I've analyzed your latest transaction ({last_txn.transaction_reference_number}). Risk Level: **{risk}**. {agent_res.get('risk_summary', '')}"
+            else:
+                bot_text = "I couldn't find any recent transactions for your account to perform a fraud check."
+
+        elif intent == "complaint_routing":
+            # Find last complaint for context
+            stmt = (
+                select(Complaint)
+                .filter(Complaint.customer_id == user.customer_id)
+                .order_by(Complaint.complaint_timestamp.desc())
+                .limit(1)
+            )
+            res = await db.execute(stmt)
+            last_comp = res.scalars().first()
+
+            if last_comp:
+                agent = DispatcherAgent(
+                    repo=repo,
+                    rag_engine=rag_engine,
+                    openai_llm=(
+                        LLMClient(openai_client, "gpt-4o", RoutingResponse)
+                        if openai_client
+                        else None
+                    ),
+                    gemini_llm=LLMClient(
+                        genai.Client(api_key=GEMINI_API_KEY),
+                        "gemini-2.0-flash",
+                        RoutingResponse,
+                    ),
+                )
+                agent_res = await agent.run({"complaint_id": last_comp.complaint_id})
+                bot_text = f"Regarding your complaint **{last_comp.complaint_id}**: It has been routed to the **{agent_res.get('department_name')}** department. Priority: **{agent_res.get('priority_level')}**."
+            else:
+                bot_text = "You don't have any active complaints. You can file one by sending an email to support@sentinelbank.com."
+
+        elif intent == "product_recommendation":
+            agent = TrajectoryAgent(
+                repo=repo,
+                rag_engine=rag_engine,
+                openai_llm=(
+                    LLMClient(openai_client, "gpt-4o", dict) if openai_client else None
+                ),
+                gemini_llm=LLMClient(
+                    genai.Client(api_key=GEMINI_API_KEY), "gemini-2.0-flash", dict
+                ),
+            )
+            agent_res = await agent.run({"customer_id": user.customer_id})
+            product = agent_res.get("primary_product")
+            if product and product != "None":
+                bot_text = f"Based on your financial trajectory, I recommend the **{product}**. {agent_res.get('reasoning', '')}"
+            else:
+                bot_text = "I don't have a specific product recommendation for you right now, but check back soon as your profile grows!"
+
+        else:
+            # General query handling
+            prompt = f"""
+            You are 'Sentinel AI', the internal banking chatbot for Sentinel Bank.
+            User: {user.email} (Customer ID: {user.customer_id})
+            
+            Context: You have access to Sentinel (Fraud), Dispatcher (Support), and Trajectory (Loans/Products) agents.
+            If the user asks about these specific things, relate your answer to being their concierge.
+            
+            User's Message: {user_message}
+            """
+            response = await intent_llm.generate("Sentinel AI Persona", prompt)
+            bot_text = response.get(
+                "text",
+                (
+                    response
+                    if isinstance(response, str)
+                    else "I'm here to assist with your banking."
+                ),
+            )
+
+        return {
+            "id": uuid.uuid4().hex,
+            "sender": "ai",
+            "type": "text",
+            "text": bot_text,
+            "time": datetime.now().strftime("%I:%M %p"),
+        }
+
+    except Exception as e:
+        logger.error(f"Chat error: {e}")
+        return {
+            "id": uuid.uuid4().hex,
+            "sender": "ai",
+            "type": "text",
+            "text": "I'm having a bit of trouble accessing my specialized banking agents right now. Please try again in a moment.",
+            "time": datetime.now().strftime("%I:%M %p"),
+        }
+
+
 async def make_complaint(
     query: ComplaintQuery,
     background_tasks: BackgroundTasks,
@@ -440,8 +603,17 @@ async def make_complaint(
         new_complaint = Complaint(
             complaint_id=new_complaint_id,
             customer_id=user.customer_id,
-            linked_transaction_id=query.linked_transaction_id if query.linked_transaction_id and query.linked_transaction_id != "string" else None,
-            linked_reference=query.linked_reference if query.linked_reference and query.linked_reference != "string" else None,
+            linked_transaction_id=(
+                query.linked_transaction_id
+                if query.linked_transaction_id
+                and query.linked_transaction_id != "string"
+                else None
+            ),
+            linked_reference=(
+                query.linked_reference
+                if query.linked_reference and query.linked_reference != "string"
+                else None
+            ),
             complaint_timestamp=datetime.now(),
             complaint_status="open",
             complaint_channel=query.complaint_channel,
@@ -564,24 +736,25 @@ async def make_transaction(
         await dataset_loader.load()
         repo = BankRepository(dataset_loader)
         rag_engine = await create_engine()
+        openai_client = AsyncOpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
         openai_llm = LLMClient(
-            client=AsyncOpenAI(api_key=OPENAI_API_KEY),
+            client=openai_client,
             model_name="gpt-4o",
-            response_schema=FraudResponse
+            response_schema=FraudResponse,
         )
         gemini_llm = LLMClient(
             client=genai.Client(api_key=GEMINI_API_KEY),
-            model_name="gemini-2.5-flash",
-            response_schema=FraudResponse
+            model_name="gemini-2.0-flash",
+            response_schema=FraudResponse,
         )
 
         agent = SentinelAgent(
             repo=repo,
             rag_engine=rag_engine,
             openai_llm=openai_llm,
-            gemini_llm=gemini_llm
+            gemini_llm=gemini_llm,
         )
-        
+
         # Build payload with mock transaction_id for initial scoring
         payload = request.model_dump()
         payload["transaction_id"] = f"TXN-{uuid.uuid4().hex[:10].upper()}"
@@ -632,6 +805,8 @@ async def make_transaction(
     except Exception as e:
         await db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.get("/trajectory/popup_recommendations", tags=["Agents"])
 async def get_trajectory_popup(
     user: User = Depends(get_current_user),
@@ -645,42 +820,81 @@ async def get_trajectory_popup(
         openai_llm = LLMClient(
             client=AsyncOpenAI(api_key=OPENAI_API_KEY),
             model_name="gpt-4o",
-            response_schema=dict
+            response_schema=dict,
         )
         gemini_llm = LLMClient(
             client=genai.Client(api_key=GEMINI_API_KEY),
-            model_name="gemini-2.5-flash",
-            response_schema=dict
+            model_name="gemini-2.0-flash",
+            response_schema=dict,
         )
         agent = TrajectoryAgent(
             repo=repo,
             rag_engine=rag_engine,
             openai_llm=openai_llm,
-            gemini_llm=gemini_llm
+            gemini_llm=gemini_llm,
         )
 
         # Force fetch the user from DB to ensure customer_id is mapped just in case the JWT middleware detached it
         stmt = select(User).filter(User.email == user.email)
         res = await db.execute(stmt)
         active_user = res.scalars().first()
-        
+
         customer_id = active_user.customer_id if active_user else user.customer_id
         if not customer_id:
-            raise HTTPException(status_code=400, detail="Authenticated user is not linked to a customer profile.")
+            raise HTTPException(
+                status_code=400,
+                detail="Authenticated user is not linked to a customer profile.",
+            )
 
         payload = {"customer_id": customer_id}
         recommendation_result = await agent.run(payload=payload)
 
+        # Format into "Cards" for the frontend marquee/popup
+        cards = []
+        primary = recommendation_result.get("primary_product")
+
+        if primary and recommendation_result.get("is_eligible"):
+            # Determine visual style based on product type
+            style = {
+                "Student Loan": {
+                    "grad": ["#2F4F4F", "#1A2E2E"],
+                    "label": "Education First",
+                },
+                "Car Loan": {"grad": ["#1e3a8a", "#1e1b4b"], "label": "Lifestyle"},
+                "Fixed Deposit": {
+                    "grad": ["#065f46", "#064e3b"],
+                    "label": "Grow Wealth",
+                },
+                "Credit Card": {"grad": ["#7c3aed", "#4c1d95"], "label": "Flexible"},
+            }.get(primary, {"grad": ["#111827", "#000000"], "label": "Special Offer"})
+
+            main_card = {
+                "id": uuid.uuid4().hex[:8],
+                "label": style["label"],
+                "title": primary,
+                "subtitle": f"Up to ₦{recommendation_result.get('monthly_emi', 0) * 10:,.0f}",
+                "cta": "APPLY NOW",
+                "ctaRoute": "loans",
+                "gradient": style["grad"],
+                "reasoning": recommendation_result.get("reasoning", ""),
+            }
+            cards.append(main_card)
+
+        # If no recommendation exists, return an empty list of cards
         return {
-            "status": "success",
-            "recommendations": recommendation_result
+            "status": "success" if cards else "no_recommendation",
+            "recommendations": recommendation_result,
+            "cards": cards,
         }
     except Exception as e:
         import traceback
+
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
+
 from Backend.email import send_auth_email
+
 
 @app.post("/trajectory/email_recommendations", tags=["Agents"])
 async def post_trajectory_email(
@@ -695,32 +909,35 @@ async def post_trajectory_email(
         openai_llm = LLMClient(
             client=AsyncOpenAI(api_key=OPENAI_API_KEY),
             model_name="gpt-4o",
-            response_schema=dict
+            response_schema=dict,
         )
         gemini_llm = LLMClient(
             client=genai.Client(api_key=GEMINI_API_KEY),
-            model_name="gemini-2.5-flash",
-            response_schema=dict
+            model_name="gemini-2.0-flash",
+            response_schema=dict,
         )
         agent = TrajectoryAgent(
             repo=repo,
             rag_engine=rag_engine,
             openai_llm=openai_llm,
-            gemini_llm=gemini_llm
+            gemini_llm=gemini_llm,
         )
 
         # Force fetch the user from DB to ensure customer_id is mapped just in case the JWT middleware detached it
         stmt = select(User).filter(User.email == user.email)
         res = await db.execute(stmt)
         active_user = res.scalars().first()
-        
+
         customer_id = active_user.customer_id if active_user else user.customer_id
         if not customer_id:
-            raise HTTPException(status_code=400, detail="Authenticated user is not linked to a customer profile.")
+            raise HTTPException(
+                status_code=400,
+                detail="Authenticated user is not linked to a customer profile.",
+            )
 
         payload = {"customer_id": customer_id}
         recommendation_result = await agent.run(payload=payload)
-        
+
         # If there's a primary recommendation, send it via email
         primary_product = recommendation_result.get("primary_product")
         if primary_product and primary_product != "None":
@@ -731,27 +948,28 @@ async def post_trajectory_email(
             <p><strong>Benefits:</strong> {recommendation_result.get('reasoning', 'Tailored to your financial journey.')}</p>
             <p>Log in to your Sentinel Banking app to claim this offer.</p>
             """
-            
-            # Send the email 
+
+            # Send the email
             await send_auth_email(
                 to_email=user.email,
                 subject="Your Exclusive Sentinel Bank Recommendation",
-                html_content=email_html
+                html_content=email_html,
             )
-            
+
             return {
                 "status": "success",
                 "message": "Recommendation email sent successfully.",
-                "primary_product": primary_product
+                "primary_product": primary_product,
             }
         else:
-             return {
+            return {
                 "status": "success",
-                "message": "No specific product recommended to email at this time."
+                "message": "No specific product recommended to email at this time.",
             }
-            
+
     except Exception as e:
         import traceback
+
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -794,7 +1012,10 @@ async def get_account_balance(
     account = result.scalars().first()
     if not account:
         raise HTTPException(status_code=404, detail="Account not found")
-    return {"account_number": accountNumber, "current_balance": float(account.current_balance)}
+    return {
+        "account_number": accountNumber,
+        "current_balance": float(account.current_balance),
+    }
 
 
 @app.get("/accounts/{accountNumber}/status", tags=["Accounts"])
@@ -1048,7 +1269,9 @@ async def internal_transfer(
     to_account = to_result.scalars().first()
 
     if not to_account:
-        raise HTTPException(status_code=404, detail="Receiver account not found")
+        raise HTTPException(
+            status_code=400, detail="The recipient account number does not exist."
+        )
 
     if from_account.account_id == to_account.account_id:
         raise HTTPException(
@@ -1064,24 +1287,22 @@ async def internal_transfer(
     await dataset_loader.load()
     repo = BankRepository(dataset_loader)
     rag_engine = await create_engine()
+    openai_client = AsyncOpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
     openai_llm = LLMClient(
-        client=AsyncOpenAI(api_key=OPENAI_API_KEY),
+        client=openai_client,
         model_name="gpt-4o",
-        response_schema=FraudResponse
+        response_schema=FraudResponse,
     )
     gemini_llm = LLMClient(
         client=genai.Client(api_key=GEMINI_API_KEY),
-        model_name="gemini-2.5-flash",
-        response_schema=FraudResponse
+        model_name="gemini-2.0-flash",
+        response_schema=FraudResponse,
     )
 
     agent = SentinelAgent(
-        repo=repo,
-        rag_engine=rag_engine,
-        openai_llm=openai_llm,
-        gemini_llm=gemini_llm
+        repo=repo, rag_engine=rag_engine, openai_llm=openai_llm, gemini_llm=gemini_llm
     )
-    
+
     # Build a simulated payload for the Sentinel Agent
     sentinel_payload = {
         "transaction_id": f"TXN-{uuid.uuid4().hex[:10].upper()}",
@@ -1090,7 +1311,7 @@ async def internal_transfer(
         "transaction_type": "debit",
         "channel": "in-app",
         "counterparty_bank": "Sentinel",
-        "narration": request.narration or "Internal Transfer"
+        "narration": request.narration or "Internal Transfer",
     }
 
     fraud_result = await agent.run(payload=sentinel_payload)
@@ -1102,7 +1323,6 @@ async def internal_transfer(
             "message": "Internal transfer flagged as risk",
             "fraud_analysis": fraud_result,
         }
-
 
     # Process transfer
     from_new_balance = from_account.current_balance - amount
