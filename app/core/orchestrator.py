@@ -56,6 +56,9 @@ class Orchestrator:
          Initialize async components (RAG engine).
          Must be called before handling requests.
          """
+
+        # Load dataset from DB into memory
+        # await self.dataset_loader.load()
         
         # Initialize RAG Engine
         self.rag = await create_engine()
