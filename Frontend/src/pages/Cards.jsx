@@ -45,7 +45,7 @@ const Cards = () => {
       showToast(`Card ${endpoint === 'freeze' ? 'frozen' : 'activated'} successfully.`);
       load();
     } catch {
-      showToast('Action failed. Try again.', 'error');
+      showToast('Action failed. Try again later.', 'error');
     } finally {
       setActionLoading('');
     }
