@@ -196,7 +196,6 @@ class SettingsResponse(BaseModel):
     class Config:
         from_attributes = True
 
-
 # --- Account Schemas ---
 
 
@@ -212,8 +211,7 @@ class AccountResponse(BaseModel):
 
     class Config:
         from_attributes = True
-
-
+        
 class FullUserResponse(UserResponse):
     customer_details: Optional[Dict[str, Any]] = None
     account_details: List[AccountResponse] = []
@@ -306,6 +304,9 @@ class AuditLogOut(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+
 
 
 # --- Card Schemas ---

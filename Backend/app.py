@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, or_, update
 from sqlalchemy.orm import selectinload
 from datetime import datetime, timezone, date
+from app.core.orchestrator import Orchestrator
 
 # Add parent directory to sys.path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -24,6 +25,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from Backend.database import engine, Base, SessionLocal, get_db
 from Backend.models import Complaint, Account, Transaction, Customer, User, UserSettings
 from Backend.middleware import get_current_user
+from app.utils.schemas import RoutingResponse, FraudResponse, RiskBreakdown, TrajectoryResponse
 from app.agents.dispatcher_agent import DispatcherAgent
 from app.agents.sentinel_agent import SentinelAgent
 from app.agents.trajectory_agent import TrajectoryAgent
@@ -52,9 +54,7 @@ from Backend.schemas import (
     FullUserResponse,
     AccountResponse,
     ReportFailedRequest,
-    InternalTransferRequest,
-    RoutingResponse,
-    FraudResponse,
+    InternalTransferRequest, 
 )
 
 
@@ -258,7 +258,7 @@ async def admin_delete_user(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    user.is_active = False  # Deactivate instead of hard delete
+    user.is_active = False 
     await db.commit()
     return {"message": f"User {userId} deactivated successfully"}
 
@@ -363,40 +363,52 @@ async def process_complaint_routing(complaint_id: str, complaint_text: str):
         try:
             # Initialize required components
             dataset_loader = DatasetLoader()
-            await dataset_loader.load()
-            repo = BankRepository(dataset_loader)
-            rag_engine = await create_engine()
-            openai_client = (
-                AsyncOpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
-            )
-            openai_llm = LLMClient(
-                client=openai_client,
-                model_name="gpt-4o",
-                response_schema=RoutingResponse,
-            )
-            gemini_llm = LLMClient(
-                client=genai.Client(api_key=GEMINI_API_KEY),
-                model_name="gemini-2.0-flash",
-                response_schema=RoutingResponse,
-            )
+            orchestrator = Orchestrator()
+            await orchestrator.initialize()
+            # await dataset_loader.load()
+            # repo = BankRepository(dataset_loader)
+            # rag_engine = await create_engine()
+            complaint_request = {
+            "type": "complaint",
+            "department": "complaint",
+            "complaint_id": complaint_id,
+            "agent": "DispatcherAgent" 
+        }
+            result1 = await orchestrator.handle_request(complaint_request)
+            print("\n=== DISPATCHER OUTPUT ===")
+            print(result1)
 
-            agent = DispatcherAgent(
-                repo=repo,
-                rag_engine=rag_engine,
-                openai_llm=openai_llm,
-                gemini_llm=gemini_llm,
-            )
-            routing_result = await agent.run(payload={"complaint_id": complaint_id})
+            # openai_client = (
+            #     AsyncOpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
+            # )
+            # openai_llm = LLMClient(
+            #     client=openai_client,
+            #     model_name="gpt-4o",
+            #     response_schema=RoutingResponse,
+            # )
+            # gemini_llm = LLMClient(
+            #     client=genai.Client(api_key=GEMINI_API_KEY),
+            #     model_name="gemini-2.0-flash",
+            #     response_schema=RoutingResponse,
+            # )
+
+            # agent = DispatcherAgent(
+            #     repo=repo,
+            #     rag_engine=rag_engine,
+            #     openai_llm=openai_llm,
+            #     gemini_llm=gemini_llm,
+            # )
+            # routing_result = await agent.run(payload={"complaint_id": complaint_id})
 
             stmt = select(Complaint).filter(Complaint.complaint_id == complaint_id)
             result = await db.execute(stmt)
             complaint = result.scalars().first()
 
             if complaint:
-                complaint.department_code = routing_result.get("department_code")
-                complaint.department_name = routing_result.get("department_name")
-                complaint.priority_level = routing_result.get("priority_level")
-                complaint.sentiment = routing_result.get("sentiment")
+                complaint.department_code = result.get("department_code")
+                complaint.department_name = result.get("department_name")
+                complaint.priority_level = result.get("priority_level")
+                complaint.sentiment = result.get("sentiment")
 
                 await db.commit()
                 print(
@@ -417,6 +429,7 @@ async def process_complaint_routing(complaint_id: str, complaint_text: str):
                         department=complaint.department_name,
                         priority=complaint.priority_level,
                     )
+            return result1
 
         except Exception as e:
             print(f"CRITICAL AI ROUTING FAILURE for {complaint_id}: {e}")
