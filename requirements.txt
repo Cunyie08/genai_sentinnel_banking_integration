@@ -8,6 +8,7 @@ python-dotenv
 # --- Database & ORM ---
 sqlalchemy
 asyncpg
+psycopg2-binary
 
 # --- Security & Authentication ---
 bcrypt
@@ -18,13 +19,12 @@ openai
 google-genai
 langgraph
 langchain-openai
-langchain-core>
+langchain-core
 
 # --- Data, RAG & Utilities ---
 chromadb>=0.6.0
 sentence-transformers
 torch
-<<<<<<< HEAD
 pandas
 faker
 python-dateutil
@@ -32,8 +32,8 @@ resend
 svix
 email-validator
 scikit-learn
-=======
 google-genai
 python-dotenv
 pandas
->>>>>>> f54b56f1e5309bc861498ceffd38728d9d5dff51
+
+

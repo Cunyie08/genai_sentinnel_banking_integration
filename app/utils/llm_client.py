@@ -3,15 +3,6 @@ from openai import AsyncOpenAI
 from google import genai
 
 
-<<<<<<< HEAD
-import asyncio
-from openai import AsyncOpenAI
-from google import genai
-=======
-
->>>>>>> f54b56f1e5309bc861498ceffd38728d9d5dff51
-
-
 class LLMClient:
     def __init__(
         self, client, model_name: str, response_schema, max_concurrent: int = 5
