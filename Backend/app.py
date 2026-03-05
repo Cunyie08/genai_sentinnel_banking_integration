@@ -581,7 +581,7 @@ async def ai_chat(
             "time": datetime.now().strftime("%I:%M %p"),
         }
 
-
+@app.post("/make_complaint", tags=["Agents"])
 async def make_complaint(
     query: ComplaintQuery,
     background_tasks: BackgroundTasks,
