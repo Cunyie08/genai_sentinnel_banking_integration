@@ -57,6 +57,8 @@ This module is optimized for production RAG systems in financial domains.
 from typing import List  # Provides type hinting for vector outputs
 import logging  # Standard Python logging for observability
 from sentence_transformers import SentenceTransformer  
+from pathlib import Path
+from functools import lru_cache
 # Pretrained transformer-based sentence embedding models
 
 
@@ -70,7 +72,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 # Module-specific logger for precise debugging and tracing
 
-
+_ENGINE_INSTANCE = None
 # =============================================================================
 # Embedding Engine
 # =============================================================================
@@ -132,18 +134,20 @@ class EmbeddingEngine:
         Raises:
             Exception if model fails to load.
         """
+        global _ENGINE_INSTANCE
+        if _ENGINE_INSTANCE is not None:
+            # Reuse already-loaded model
+            self.model = _ENGINE_INSTANCE.model
+            logger.info("Reusing cached embedding model")
+            return
 
         logger.info(f"Loading embedding model: {self.MODEL_NAME}")
-
         try:
-            # Load transformer model from HuggingFace cache or download
-            self.model = SentenceTransformer(self.MODEL_NAME)
-
+            cache_dir = str(Path(__file__).parent.parent.parent / "models")
+            self.model = SentenceTransformer(self.MODEL_NAME, cache_folder=cache_dir)
+            _ENGINE_INSTANCE = self
             logger.info(f"  Embedding model loaded: {self.MODEL_NAME}")
-            logger.info(f"  Dimensions: {self.EMBEDDING_DIMENSION}")
-
         except Exception as e:
-            # Log failure before raising
             logger.error(f"Failed to load embedding model: {e}")
             raise
 

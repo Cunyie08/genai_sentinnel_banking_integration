@@ -99,7 +99,11 @@ from chromadb.config import Settings
 from typing import Optional, Dict, Tuple  
 # Provides static typing support for better maintainability and clarity.
 
-import logging  
+import logging
+import os
+from functools import lru_cache
+from dotenv import load_dotenv
+load_dotenv()
 # Standard Python logging system for structured operational logging.
 
 
@@ -410,11 +414,13 @@ class ChromaDBConfig:
             - Query embedding
         """
 
-        logger.info(f"Loading embedding model: {self.EMBEDDING_MODEL}")
-
-        return embedding_functions.SentenceTransformerEmbeddingFunction(
-            model_name=self.EMBEDDING_MODEL
-        )
+        if not hasattr(self, "_embedding_fn") or self._embedding_fn is None:
+            logger.info(f"Loading embedding model: {self.EMBEDDING_MODEL} (once)")
+            self._embedding_fn = embedding_functions.SentenceTransformerEmbeddingFunction(
+                model_name=self.EMBEDDING_MODEL,
+                cache_folder=str(Path(__file__).parent.parent.parent / "models")
+            )
+        return self._embedding_fn
 
 
     def create_client(self) -> ClientAPI:
@@ -427,25 +433,32 @@ class ChromaDBConfig:
             Configured PersistentClient instance
         """
 
-        self.persist_directory.mkdir(parents=True, exist_ok=True)
+        api_key  = os.getenv("CHROMA_API_KEY", "")
+        tenant   = os.getenv("CHROMA_TENANT", "")
+        database = os.getenv("CHROMA_DATABASE", "")
 
-        settings = Settings(
-            persist_directory=str(self.persist_directory),
-            anonymized_telemetry=False,
-            allow_reset=True,
-            is_persistent=True,
-        )
-
-        client = chromadb.PersistentClient(
-            path=str(self.persist_directory),
-            settings=settings
-        )
-
-        logger.info(
-            f"ChromaDB PersistentClient initialized at {self.persist_directory}"
-        )
-
-        return client   
+        if api_key and tenant and database:
+            # Chroma Cloud — shared, always-on, works fully remote
+            logger.info("Connecting to Chroma Cloud...")
+            return chromadb.HttpClient(
+                ssl=True,
+                host="api.trychroma.com",
+                tenant=tenant,
+                database=database,
+                headers={"x-chroma-token": api_key},
+            )
+        else:
+            # Local fallback for solo dev without cloud credentials
+            self.persist_directory.mkdir(parents=True, exist_ok=True)
+            logger.info(f"Using local ChromaDB at {self.persist_directory}")
+            return chromadb.PersistentClient(
+                path=str(self.persist_directory),
+                settings=Settings(
+                    anonymized_telemetry=False,
+                    allow_reset=True,
+                    is_persistent=True,
+                )
+            )
 
     def get_or_create_collection(
         self,
