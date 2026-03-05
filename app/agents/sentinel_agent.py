@@ -1,6 +1,8 @@
 # This contains the Fraud/risk assessment
 
 from typing import Dict, Any
+import pandas as pd
+import numpy as np
 from app.agents.abstract_agent import BaseAgent
 from app.settings import OPENAI_API_KEY, GEMINI_API_KEY
 from app.utils.logger import ReasoningLogger, SystemLogger
@@ -62,16 +64,7 @@ class SentinelAgent(BaseAgent):
                 model_name="gpt-4o",
                 response_schema=FraudResponse,
             )
-<<<<<<< HEAD
-        else:
-            self.openai_llm = None
-            print("SentinelAgent: OPENAI_API_KEY missing. OpenAI features disabled.")
-
-        # Fallback Gemini (Primary if OpenAI missing)
-=======
         # Fallback
-
->>>>>>> f54b56f1e5309bc861498ceffd38728d9d5dff51
         self.gemini_llm = LLMClient(
             client=genai.Client(api_key=GEMINI_API_KEY),
             model_name="gemini-2.0-flash",
@@ -97,143 +90,29 @@ class SentinelAgent(BaseAgent):
         if not payload:
             raise ValueError("Transaction payload is required.")
 
-<<<<<<< HEAD
-        # If a transaction_id is passed and it's not a live test payload from app.py, try fetching it.
-        # Otherwise, we use the payload itself as the transaction dictionary.
-        transaction_id = payload.get("transaction_id")
+        try:
+            # If a transaction_id is passed and it's not a live test payload from app.py, try fetching it.
+            # Otherwise, we use the payload itself as the transaction dictionary.
+            transaction_id = payload.get("transaction_id")
 
-        # Determine if this is a live incoming transaction or an existing one
-        # Checking for necessary keys to consider it a "full" transaction object
-        if "amount" in payload and "account_number" in payload:
-            transaction = payload
-            print("Processing live transaction payload:", transaction)
-        else:
-            if not transaction_id:
-                raise ValueError(
-                    "transaction_id is required if full transaction payload is not provided."
-                )
-            # Fetch transaction from the repository
-            transaction = self.repo.get_transactions(transaction_id)
-            print("Transaction ID:", transaction_id)
-            print("Transaction fetched:", transaction)
-
-        # Deterministic fraud scoring engine
-        fraud_result = await self.rag_engine.calculate_fraud_risk(transaction)
-
-        # Extract structured result
-        base_result = {
-            "total_risk_score": fraud_result["total_risk_score"],
-            "risk_level": fraud_result["risk_level"],
-            "recommended_action": fraud_result["recommended_action"],
-            "requires_challenge": fraud_result["requires_challenge"],
-            "should_block": fraud_result["should_block"],
-            "confidence": fraud_result["confidence"],
-            "risk_breakdown": fraud_result["risk_breakdown"],
-            "policy_explanation": fraud_result["policy_explanation"],
-        }
-
-        # ML Fraud Probability
-        ml_probability = self.ml_scorer.predict(transaction)
-
-        base_result["ml_probability"] = round(ml_probability, 3)
-
-        # Only escalate LOW → MEDIUM if ML strongly indicates anomaly
-        if ml_probability > 0.85 and base_result["risk_level"] == "LOW":
-            base_result["risk_level"] = "MEDIUM"
-            base_result["recommended_action"] = (
-                "Escalated to MEDIUM risk due to ML anomaly signal"
-            )
-
-        # Card-Channel Mandatory Override
-        # All ATM / POS transactions must require push-to-app
-        card_channels = ["pos", "atm"]
-
-        if transaction.get("channel") in card_channels:
-            base_result["requires_challenge"] = True
-            base_result["recommended_action"] = (
-                "Mandatory push-to-app biometric challenge (Card channel policy override)"
-            )
-
-        # Gather Historical Context
-        account_num = transaction.get("account_number")
-        if account_num:
-            # Check how repository stores transactions. They store either `account_number` or `account_id`.
-            # We filter the raw dataset loader dataframe directly to get past behavior for this specific account
-            history_df = self.repo.dataset_loader.transactions
-
-            filters = []
-            if "account_number" in history_df.columns:
-                filters.append(history_df["account_number"] == account_num)
-            if "account_id" in history_df.columns and transaction.get("account_id"):
-                filters.append(
-                    history_df["account_id"] == transaction.get("account_id")
-                )
-
-            if filters:
-                # Combine filters with logical OR
-                import pandas as pd
-                import numpy as np
-
-                combined_filter = np.logical_or.reduce(filters)
-                history_df = history_df[combined_filter]
-            else:
-                history_df = history_df.head(
-                    0
-                )  # Empty dataframe if no matching columns
-            # Remove the current transaction from history if it exists
-            # (By comparing transaction_id if present)
-            txn_id = transaction.get("transaction_id")
-            if txn_id:
-                history_df = history_df[history_df["transaction_id"] != txn_id]
-
-            # Take last 5 transactions for context
-            historical_txns = history_df.tail(5).to_dict("records")
-        else:
-            historical_txns = []
-
-        history_context = ""
-        if historical_txns:
-            history_context = "User's Last 5 Transactions:\n"
-            for t in historical_txns:
-                history_context += f"- {t.get('transaction_timestamp')}: {t.get('amount')} via {t.get('channel')} (Status: {t.get('transaction_status')})\n"
-        else:
-            history_context = "User has NO prior transaction history (Cold Start). IMPORTANT: Do not automatically penalize this transaction or assume fraud strictly due to lack of history."
-
-        # LLM Explanation
-        explanation_payload = f"""
-            Transaction:
-            {transaction}
-
-            Risk Level: {base_result['risk_level']}
-            Total Score: {base_result['total_risk_score']}
-            Action: {base_result['recommended_action']}
-            
-            Historical Context:
-            {history_context}
-
-            Provide a clear audit-ready explanation considering the transaction against their historical behavior.
-            """
-
-        llm_response = None
-        if self.openai_llm:
-            try:
-                llm_response = await self.openai_llm.generate(
-                    system_prompt=Sentinel_System_Prompt, user_input=explanation_payload
-=======
-        SystemLogger.log_event(
+            SystemLogger.log_event(
             event_type="SentinelAgent_started",
             message="SentinelAgent exceution started",
             metadata={"transaction_id": transaction_id}
-        )
+            )
 
-        try:
-            if transaction_id is None:
-                raise ValueError("transaction_id is required.")
-
-            # Fetch transaction from the repository
-            transaction = self.repo.get_transactions(transaction_id)
-            print("Transaction ID:", transaction_id)
-            print("Transaction fetched:", transaction)
+            # Determine if this is a live incoming transaction or an existing one
+            # Checking for necessary keys to consider it a "full" transaction object
+            if "amount" in payload and "account_number" in payload:
+                transaction = payload
+                print("Processing live transaction payload:", transaction)
+            else:
+                if not transaction_id:
+                    raise ValueError("transaction_id is required if full transaction payload is not provided.")
+                # Fetch transaction from the repository
+                transaction = self.repo.get_transactions(transaction_id)
+                print("Transaction ID:", transaction_id)
+                print("Transaction fetched:", transaction)
 
             SystemLogger.log_event(
                 event_type="Transaction_data_fetched",
@@ -292,6 +171,45 @@ class SentinelAgent(BaseAgent):
 
             
 
+            # Gather Historical Context
+            account_num = transaction.get("account_number")
+            if account_num:
+                # Check how repository stores transactions. They store either `account_number` or `account_id`.
+                # We filter the raw dataset loader dataframe directly to get past behavior for this specific account
+                history_df = self.repo.dataset_loader.transactions
+
+                filters = []
+                if "account_number" in history_df.columns:
+                    filters.append(history_df["account_number"] == account_num)
+                if "account_id" in history_df.columns and transaction.get("account_id"):
+                    filters.append(history_df["account_id"] == transaction.get("account_id"))
+
+                if filters:
+                    # Combine filters with logical OR
+                    combined_filter = np.logical_or.reduce(filters)
+                    history_df = history_df[combined_filter]
+                else:
+                    history_df = history_df.head(0) # Empty dataframe if no matching columns
+                # Remove the current transaction from history if it exists
+                # (By comparing transaction_id if present)
+                txn_id = transaction.get("transaction_id")
+                if txn_id:
+                    history_df = history_df[history_df["transaction_id"] != txn_id]
+
+                # Take last 5 transactions for context
+                historical_txns = history_df.tail(5).to_dict('records')
+            else:
+                historical_txns = []
+
+            history_context = ""
+            if historical_txns:
+                history_context = "User's Last 5 Transactions:\n"
+                for t in historical_txns:
+                    history_context += f"- {t.get('transaction_timestamp')}: {t.get('amount')} via {t.get('channel')} (Status: {t.get('transaction_status')})\n"
+            else:
+                history_context = "User has NO prior transaction history (Cold Start). IMPORTANT: Do not automatically penalize this transaction or assume fraud strictly due to lack of history."
+
+
             # LLM Explanation
             explanation_payload = f"""
                 Transaction:
@@ -301,70 +219,33 @@ class SentinelAgent(BaseAgent):
                 Total Score: {base_result['total_risk_score']}
                 Action: {base_result['recommended_action']}
 
-                Provide a clear audit-ready explanation.
+                Historical Context:
+                {history_context}
+
+                Provide a clear audit-ready explanation considering the transaction against their historical behavior.
                 """
+
             
             try:
                 llm_response = await self.openai_llm.generate(
                 system_prompt=Sentinel_System_Prompt,
                 user_input=explanation_payload
->>>>>>> f54b56f1e5309bc861498ceffd38728d9d5dff51
                 )
             except Exception as e:
                 print(f"OpenAI error: {e}. Falling back to Gemini...")
+                llm_response = await self.gemini_llm.generate(
+                    system_prompt=Sentinel_System_Prompt,
+                    user_input=explanation_payload
+                    )
 
-<<<<<<< HEAD
-        if not llm_response:
-            llm_response = await self.gemini_llm.generate(
-                system_prompt=Sentinel_System_Prompt, user_input=explanation_payload
-            )
-
-        # Extract structured LLM output or use RAG fallback
-        if llm_response:
-            result = llm_response.model_dump()
-            explanation_text = result.get("policy_explanation", "")
-            risk_summary = result.get("risk_summary", "AI Analysis Complete.")
-        else:
-            # Fallback if both LLMs fail (e.g. Quota Exceeded)
-            print(
-                "Both LLMs unavailable or quota exceeded. Falling back to RAG/ML decision."
-            )
-            result = {
-                "risk_summary": "Security analysis service is currently under high load. Using automated safeguards.",
-                "risk_score_logic": "Standard behavioral analysis applied.",
-                "governance_note": "Governance-approved fallback mechanism activated.",
-            }
-            explanation_text = "AI explanation service temporarily unavailable. Transaction analyzed using primary safety protocols."
-=======
                 SystemLogger.log_event(
                     event_type="LLM_explanation_completed",
                     message="Sentinel LLM explanation generated"
                 )
->>>>>>> f54b56f1e5309bc861498ceffd38728d9d5dff51
-
-            except RateLimitError:
-                    print("OpenAI rate limited. Falling back to Gemini...")
-
-<<<<<<< HEAD
-        # Merge policy_explanation safely with LLM Explanation
-        result["policy_explanation"] = (
-            f"Policy Basis:\n{base_result['policy_explanation']}\n\n"
-            f"Explanation:\n{explanation_text}"
-        )
-=======
-                    llm_response = await self.gemini_llm.generate(
-                    system_prompt=Sentinel_System_Prompt,
-                    user_input=explanation_payload
-                    )
->>>>>>> f54b56f1e5309bc861498ceffd38728d9d5dff51
 
             # Extract structured LLM output
             result = llm_response.model_dump()
 
-<<<<<<< HEAD
-        # Log reasoning trace
-        ReasoningLogger.log(agent_name="SentinelAgent", payload=result)
-=======
             # Preserve deterministic fraud engine decisions
             result["total_risk_score"] = base_result["total_risk_score"]
             result["risk_level"] = base_result["risk_level"]
@@ -373,7 +254,6 @@ class SentinelAgent(BaseAgent):
             result["should_block"] = base_result["should_block"]
             result["confidence"] = base_result["confidence"]
             result["risk_breakdown"] = base_result["risk_breakdown"]
->>>>>>> f54b56f1e5309bc861498ceffd38728d9d5dff51
 
             # Merge policy_explanation safely with LLM Explanation
             result["policy_explanation"] = (
@@ -398,12 +278,13 @@ class SentinelAgent(BaseAgent):
 
             return result
         except Exception as e:
+
             SystemLogger.log_event(
                 event_type="SentinelAgent failed",
                 message=str(e),
                 metadata={"transaction_id": transaction_id, "traceback": traceback.format_exc()}
             )
-            raise
+            raise e
 
 
 # Testing
@@ -422,19 +303,12 @@ async def main():
         response_schema=FraudResponse,
     )
 
-<<<<<<< HEAD
-    gemini_llm = LLMClient(
-        client=genai.Client(api_key=GEMINI_API_KEY),
-        model_name="gemini-2.5-flash",
-        response_schema=FraudResponse,
-=======
 
     gemini_llm = LLMClient(     
     client=genai.Client(api_key=GEMINI_API_KEY),
     model_name="gemini-2.5-flash",
     response_schema=FraudResponse
 
->>>>>>> f54b56f1e5309bc861498ceffd38728d9d5dff51
     )
 
     agent = SentinelAgent(
