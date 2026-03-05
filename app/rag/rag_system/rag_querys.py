@@ -741,8 +741,8 @@ class RAGQueryEngine:
         # RAG explanation
         explanation = await self.query(
             question   = (
-                f"What action should be taken for a {risk_level} fraud risk "
-                f"transaction scoring {total} points with flags: {trace}?"
+                f"What action or SLA applies to a {risk_level} fraud risk "
+                f"transaction for {merchant}?"
             ),
             agent      = "Sentinel",
             collection = "policies",

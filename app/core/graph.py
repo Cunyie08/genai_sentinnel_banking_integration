@@ -13,16 +13,14 @@ class AgentGraph:
 
         # Mapping between department labels and agent identifiers
         self.routing_table = {
-            "FRAUD_TEAM": "sentinel_agent",
-            "CREDIT": "trajectory_agent",
-            "PAYMENTS": "dispatcher_agent",
-            "CARD_OPERATIONS": "dispatcher_agent",
-            "CUSTOMER_SUPPORT": "dispatcher_agent"
+                "complaint": "DispatcherAgent",   
+                "transaction": "SentinelAgent",   
+                "recommendation": "TrajectoryAgent" 
         }
 
     # Define the agent to handle the next request
 
-    def get_next_agent(self, dispatch_decision: dict) -> str: # returns a string instead of an agent object for easy replacement of agents and cleaner orchestraion logic.
+    def get_next_agent(self, request_decision: dict) -> str | None: # returns a string instead of an agent object for easy replacement of agents and cleaner orchestraion logic.
         
         """ 
         Args: 
@@ -33,12 +31,13 @@ class AgentGraph:
             
         """  
         # Extract the department from the dispatcher ouput
-        department = dispatch_decision.get("department")
+        department = request_decision.get("department")
 
         # Search for the agent responsible for this department
-        next_agent = self.routing_table.get(
-            department,
-            "dispatcher_agent")
+        if department is not None:
+            next_agent = self.routing_table.get(department)
+        else:
+            next_agent = None
         
         return next_agent
 

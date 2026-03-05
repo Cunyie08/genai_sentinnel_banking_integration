@@ -1,9 +1,11 @@
 # This contains the Fraud/risk assessment
 
 from typing import Dict, Any
+import pandas as pd
+import numpy as np
 from app.agents.abstract_agent import BaseAgent
 from app.settings import OPENAI_API_KEY, GEMINI_API_KEY
-from app.utils.logger import ReasoningLogger
+from app.utils.logger import ReasoningLogger, SystemLogger
 from app.utils.schemas import FraudResponse
 from app.utils.llm_client import LLMClient
 from openai import RateLimitError, AsyncOpenAI
@@ -15,9 +17,12 @@ import asyncio
 from app.data.dataset_loader import DatasetLoader
 from app.data.repository import BankRepository
 from app.ml.fraud_model import MLScorer
+from app.rag.rag_system.rag_querys import create_engine
+import traceback
 
 
 # Create a class that assess fraud/risk and explains why transaction was flagged
+
 
 class SentinelAgent(BaseAgent):
     """
@@ -29,38 +34,45 @@ class SentinelAgent(BaseAgent):
     """
 
     # Initialize the agent
-    def __init__(self):
-        super().__init__(name="SentinelAgent")
+    def __init__(
+        self,
+        repo: BankRepository,
+        rag_engine: RAGQueryEngine,
+        openai_llm: LLMClient,
+        gemini_llm: LLMClient,
+    ):
 
-        # Load the Dataset for the customers, accounts, transactions, complaints
-        self.dataset_loader = DatasetLoader()
+        self.repo = repo
+        self.rag_engine = rag_engine
+        self.openai_llm = openai_llm
+        self.gemini_llm = gemini_llm
 
         # Repository abstracts dataset access
-        self.repo = BankRepository(self.dataset_loader)
-    
+        self.repo = repo
+
         # Initialize the RAG engine for fraud scoring + policy explanation grounding
         self.client, self.config = initialize_chromadb()
         self.rag_engine = RAGQueryEngine(self.client, self.config)
 
         # Initialize the MLScorer
-        self.ml_scorer = MLScorer(self.dataset_loader)
-    
-        # Initialize OpenAI client
-        self.openai_llm = LLMClient(
+        self.ml_scorer = MLScorer(self.repo.dataset_loader)
+
+        # Initialize OpenAI client only if key is set
+        if OPENAI_API_KEY:
+            self.openai_llm = LLMClient(
                 client=AsyncOpenAI(api_key=OPENAI_API_KEY),
                 model_name="gpt-4o",
-                response_schema=FraudResponse
+                response_schema=FraudResponse,
             )
         # Fallback
         self.gemini_llm = LLMClient(
             client=genai.Client(api_key=GEMINI_API_KEY),
-            model_name="gemini-2.5-flash",
-            response_schema=FraudResponse
+            model_name="gemini-2.0-flash",
+            response_schema=FraudResponse,
         )
-    
-    # Fraud assessment flow
-    async def run(self, input_data: Dict[str, Any]) -> Dict[str, Any]:
 
+    # Fraud assessment flow
+    async def run(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         """
         Performs fraud detection and enforcement logic.
 
@@ -74,123 +86,242 @@ class SentinelAgent(BaseAgent):
         7. Add LLM explanation overlay
         8. Log decision
         """
-        # Validate transaction
-        transaction_id: str | None = input_data.get("transaction_id")
+        # Validate transaction payload
+        if not payload:
+            raise ValueError("Transaction payload is required.")
 
-        if transaction_id is None:
-            raise ValueError("transaction_id is required.")
-
-        # Fetch transaction from the repository
-        transaction = self.repo.get_transactions(transaction_id)
-        print("Transaction ID:", transaction_id)
-        print("Transaction fetched:", transaction)
-
-
-        # Deterministic fraud scoring engine
-        fraud_result = await self.rag_engine.calculate_fraud_risk(transaction)
-
-        
-        # Extract structured result
-        base_result = {
-        "total_risk_score": fraud_result["total_risk_score"],
-        "risk_level": fraud_result["risk_level"],
-        "recommended_action": fraud_result["recommended_action"],
-        "requires_challenge": fraud_result["requires_challenge"],
-        "should_block": fraud_result["should_block"],
-        "confidence": fraud_result["confidence"],
-        "risk_breakdown": fraud_result["risk_breakdown"],
-        "policy_explanation": fraud_result["policy_explanation"]
-        }
-
-        # ML Fraud Probability 
-        ml_probability = self.ml_scorer.predict(transaction)
-
-        base_result["ml_probability"] = round(ml_probability, 3)
-
-        # Only escalate LOW → MEDIUM if ML strongly indicates anomaly
-        if ml_probability > 0.85 and base_result["risk_level"] == "LOW":
-            base_result["risk_level"] = "MEDIUM"
-            base_result["recommended_action"] = \
-                        "Escalated to MEDIUM risk due to ML anomaly signal"
-
-        # Card-Channel Mandatory Override 
-        # All ATM / POS transactions must require push-to-app
-        card_channels = ['pos', 'atm']
-
-        if transaction.get('channel') in card_channels:
-             base_result["requires_challenge"] = True
-             base_result['recommended_action'] = "Mandatory push-to-app biometric challenge (Card channel policy override)"
-
-        
-
-        # LLM Explanation
-        explanation_payload = f"""
-            Transaction:
-            {transaction}
-
-            Risk Level: {base_result['risk_level']}
-            Total Score: {base_result['total_risk_score']}
-            Action: {base_result['recommended_action']}
-
-            Provide a clear audit-ready explanation.
-            """
-        
         try:
-            llm_response = await self.openai_llm.generate(
-            system_prompt=Sentinel_System_Prompt,
-            user_input=explanation_payload
-            )
-        except RateLimitError:
-                print("OpenAI rate limited. Falling back to Gemini...")
+            # If a transaction_id is passed and it's not a live test payload from app.py, try fetching it.
+            # Otherwise, we use the payload itself as the transaction dictionary.
+            transaction_id = payload.get("transaction_id")
 
-                llm_response = await self.gemini_llm.generate(
+            SystemLogger.log_event(
+            event_type="SentinelAgent_started",
+            message="SentinelAgent exceution started",
+            metadata={"transaction_id": transaction_id}
+            )
+
+            # Determine if this is a live incoming transaction or an existing one
+            # Checking for necessary keys to consider it a "full" transaction object
+            if "amount" in payload and "account_number" in payload:
+                transaction = payload
+                print("Processing live transaction payload:", transaction)
+            else:
+                if not transaction_id:
+                    raise ValueError("transaction_id is required if full transaction payload is not provided.")
+                # Fetch transaction from the repository
+                transaction = self.repo.get_transactions(transaction_id)
+                print("Transaction ID:", transaction_id)
+                print("Transaction fetched:", transaction)
+
+            SystemLogger.log_event(
+                event_type="Transaction_data_fetched",
+                message="Transaction retrieved",
+                metadata={"transaction_id": transaction_id, 
+                          "amount": transaction.get("amount"),
+                          "channel": transaction.get("channel")}
+            )
+
+            # Deterministic fraud scoring engine
+            fraud_result = await self.rag_engine.calculate_fraud_risk(transaction)
+
+            SystemLogger.log_event(
+                event_type="RAG_fraud_scoring_completed",
+                message="RAG-based fraud policy validation completed",
+                metadata={"transaction_id": transaction_id, "risk_level": fraud_result["risk_level"]}
+            )
+
+            
+            # Extract structured result
+            base_result = {
+            "total_risk_score": fraud_result["total_risk_score"],
+            "risk_level": fraud_result["risk_level"],
+            "recommended_action": fraud_result["recommended_action"],
+            "requires_challenge": fraud_result["requires_challenge"],
+            "should_block": fraud_result["should_block"],
+            "confidence": fraud_result["confidence"],
+            "risk_breakdown": fraud_result["risk_breakdown"],
+            "policy_explanation": fraud_result["policy_explanation"]
+            }
+
+            # ML Fraud Probability 
+            ml_probability = self.ml_scorer.predict(transaction)
+
+            base_result["ml_probability"] = round(ml_probability, 3)
+
+            # Only escalate LOW → MEDIUM if ML strongly indicates anomaly
+            if ml_probability > 0.85 and base_result["risk_level"] == "LOW":
+                base_result["risk_level"] = "MEDIUM"
+                base_result["recommended_action"] = \
+                            "Escalated to MEDIUM risk due to ML anomaly signal"
+            
+            SystemLogger.log_event(
+                event_type="ML_scoring_completed",
+                message="Fraud scoring computed",
+                metadata={"ml_probability": base_result["ml_probability"]}
+            )
+
+            # Card-Channel Mandatory Override 
+            # All ATM / POS transactions must require push-to-app
+            card_channels = ['pos', 'atm']
+
+            if transaction.get('channel') in card_channels:
+                base_result["requires_challenge"] = True
+                base_result['recommended_action'] = "Mandatory push-to-app biometric challenge (Card channel policy override)"
+
+            
+
+            # Gather Historical Context
+            account_num = transaction.get("account_number")
+            if account_num:
+                # Check how repository stores transactions. They store either `account_number` or `account_id`.
+                # We filter the raw dataset loader dataframe directly to get past behavior for this specific account
+                history_df = self.repo.dataset_loader.transactions
+
+                filters = []
+                if "account_number" in history_df.columns:
+                    filters.append(history_df["account_number"] == account_num)
+                if "account_id" in history_df.columns and transaction.get("account_id"):
+                    filters.append(history_df["account_id"] == transaction.get("account_id"))
+
+                if filters:
+                    # Combine filters with logical OR
+                    combined_filter = np.logical_or.reduce(filters)
+                    history_df = history_df[combined_filter]
+                else:
+                    history_df = history_df.head(0) # Empty dataframe if no matching columns
+                # Remove the current transaction from history if it exists
+                # (By comparing transaction_id if present)
+                txn_id = transaction.get("transaction_id")
+                if txn_id:
+                    history_df = history_df[history_df["transaction_id"] != txn_id]
+
+                # Take last 5 transactions for context
+                historical_txns = history_df.tail(5).to_dict('records')
+            else:
+                historical_txns = []
+
+            history_context = ""
+            if historical_txns:
+                history_context = "User's Last 5 Transactions:\n"
+                for t in historical_txns:
+                    history_context += f"- {t.get('transaction_timestamp')}: {t.get('amount')} via {t.get('channel')} (Status: {t.get('transaction_status')})\n"
+            else:
+                history_context = "User has NO prior transaction history (Cold Start). IMPORTANT: Do not automatically penalize this transaction or assume fraud strictly due to lack of history."
+
+
+            # LLM Explanation
+            explanation_payload = f"""
+                Transaction:
+                {transaction}
+
+                Risk Level: {base_result['risk_level']}
+                Total Score: {base_result['total_risk_score']}
+                Action: {base_result['recommended_action']}
+
+                Historical Context:
+                {history_context}
+
+                Provide a clear audit-ready explanation considering the transaction against their historical behavior.
+                """
+
+            
+            try:
+                llm_response = await self.openai_llm.generate(
                 system_prompt=Sentinel_System_Prompt,
                 user_input=explanation_payload
                 )
+            except Exception as e:
+                print(f"OpenAI error: {e}. Falling back to Gemini...")
+                llm_response = await self.gemini_llm.generate(
+                    system_prompt=Sentinel_System_Prompt,
+                    user_input=explanation_payload
+                    )
 
-        # Extract structured LLM output
-        result = llm_response.model_dump()
+                SystemLogger.log_event(
+                    event_type="LLM_explanation_completed",
+                    message="Sentinel LLM explanation generated"
+                )
 
-        # Preserve deterministic fraud engine decisions
-        result["total_risk_score"] = base_result["total_risk_score"]
-        result["risk_level"] = base_result["risk_level"]
-        result["recommended_action"] = base_result["recommended_action"]
-        result["requires_challenge"] = base_result["requires_challenge"]
-        result["should_block"] = base_result["should_block"]
-        result["confidence"] = base_result["confidence"]
-        result["risk_breakdown"] = base_result["risk_breakdown"]
+            # Extract structured LLM output
+            result = llm_response.model_dump()
 
-        # Merge policy_explanation safely with LLM Explanation
-        result["policy_explanation"] = (
-            f"Policy Basis:\n{base_result['policy_explanation']}\n\n"
-            f"LLM Explanation:\n{result.get('policy_explanation', '')}"
-        )
+            # Preserve deterministic fraud engine decisions
+            result["total_risk_score"] = base_result["total_risk_score"]
+            result["risk_level"] = base_result["risk_level"]
+            result["recommended_action"] = base_result["recommended_action"]
+            result["requires_challenge"] = base_result["requires_challenge"]
+            result["should_block"] = base_result["should_block"]
+            result["confidence"] = base_result["confidence"]
+            result["risk_breakdown"] = base_result["risk_breakdown"]
 
-        # Tag the Agent
-        result["agent"] = self.name
+            # Merge policy_explanation safely with LLM Explanation
+            result["policy_explanation"] = (
+                f"Policy Basis:\n{base_result['policy_explanation']}\n\n"
+                f"LLM Explanation:\n{result.get('policy_explanation', '')}"
+            )
 
-        # Log reasoning trace
-        ReasoningLogger.log(
-            agent_name=self.name,
-            payload=result
-        )
+            # Tag the Agent
+            result["agent"] = "SentinelAgent"
 
-        return result
+            # Log reasoning trace
+            ReasoningLogger.log(
+                agent_name="SentinelAgent",
+                payload=result
+            )
+
+            SystemLogger.log_event(
+                event_type="SentinelAgent_completed",
+                message=f"SentinelAgent execution completed",
+                metadata={"final_risk_level": result["risk_level"], "should_block": result["should_block"]}
+            )
+
+            return result
+        except Exception as e:
+
+            SystemLogger.log_event(
+                event_type="SentinelAgent failed",
+                message=str(e),
+                metadata={"transaction_id": transaction_id, "traceback": traceback.format_exc()}
+            )
+            raise e
 
 
 # Testing
 async def main():
-    agent = SentinelAgent()
+    # Infrastructure Setup (Same as Orchestrator)
+
+    dataset_loader = DatasetLoader()
+    await dataset_loader.load()
+    repo = BankRepository(dataset_loader)
+
+    rag_engine = await create_engine()
+
+    openai_llm = LLMClient(
+        client=AsyncOpenAI(api_key=OPENAI_API_KEY),
+        model_name="gpt-4o",
+        response_schema=FraudResponse,
+    )
+
+
+    gemini_llm = LLMClient(     
+    client=genai.Client(api_key=GEMINI_API_KEY),
+    model_name="gemini-2.5-flash",
+    response_schema=FraudResponse
+
+    )
+
+    agent = SentinelAgent(
+        repo=repo, rag_engine=rag_engine, openai_llm=openai_llm, gemini_llm=gemini_llm
+    )
 
     # Select a real transaction ID from the dataset
     transaction_id = agent.repo.dataset_loader.transactions.iloc[9]["transaction_id"]
 
-    result = await agent.run({
-        "transaction_id": transaction_id
-    })
+    result = await agent.run({"transaction_id": transaction_id})
     print("\n=== SENTINEL OUTPUT ===")
     print(result)
 
-if __name__ == "__main__":
-     asyncio.run(main())
 
+if __name__ == "__main__":
+    asyncio.run(main())

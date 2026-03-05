@@ -152,10 +152,10 @@ class DocumentChunker:
                 )
                 chunks.extend(sub_chunks)
 
-        logger.info(f"  → {document_id}: {len(chunks)} chunks created")
+        logger.info(f"  -> {document_id}: {len(chunks)} chunks created")
         if chunks:
             avg = sum(c["char_count"] for c in chunks) / len(chunks)
-            logger.info(f"  → Average chunk size: {avg:.0f} chars")
+            logger.info(f"  -> Average chunk size: {avg:.0f} chars")
 
         return chunks
 
@@ -395,12 +395,12 @@ class DocumentIngester:
         if reset_first:
             print("Step 0: Resetting collections...")
             self.config.reset_all_collections(self.client)
-            print("  ✓ All collections cleared\n")
+            print("  [OK] All collections cleared\n")
 
         print("Step 1: Generating documents via BankingPolicyGenerator...")
         generator = BankingPolicyGenerator(bank_name=bank_name)
         documents = generator.generate_all_documents()
-        print(f"  ✓ {len(documents)} documents generated\n")
+        print(f"  [OK] {len(documents)} documents generated\n")
 
         print("Step 2: Chunking and enriching metadata...")
         all_chunks: List[Dict]    = []
@@ -433,7 +433,7 @@ class DocumentIngester:
             else:
                 policy_chunks.extend(chunks)
 
-            print(f"  ✓ {doc_id:<14}  {len(chunks):>3} chunks  "
+            print(f"  [OK] {doc_id:<14}  {len(chunks):>3} chunks  "
                   f"agent={registry.get('agent_target', 'All'):<12}  "
                   f"type={doc_type_flag}")
 
@@ -443,14 +443,14 @@ class DocumentIngester:
         print("Step 3: Ingesting into ChromaDB...")
 
         if policy_chunks:
-            print(f"\n  → {self.config.COLLECTION_POLICIES}  ({len(policy_chunks)} chunks)")
+            print(f"\n  -> {self.config.COLLECTION_POLICIES}  ({len(policy_chunks)} chunks)")
             self.ingest_to_collection(policy_chunks, self.config.COLLECTION_POLICIES)
 
         if faq_chunks:
-            print(f"\n  → {self.config.COLLECTION_FAQS}  ({len(faq_chunks)} chunks)")
+            print(f"\n  -> {self.config.COLLECTION_FAQS}  ({len(faq_chunks)} chunks)")
             self.ingest_to_collection(faq_chunks, self.config.COLLECTION_FAQS)
 
-        print(f"\n  → {self.config.COLLECTION_ALL}  ({len(all_chunks)} chunks)")
+        print(f"\n  -> {self.config.COLLECTION_ALL}  ({len(all_chunks)} chunks)")
         self.ingest_to_collection(all_chunks, self.config.COLLECTION_ALL)
 
         self._print_completion_block()
@@ -574,7 +574,7 @@ class DocumentIngester:
         print("Step 2: Preprocessing...")
         for doc in documents:
             self.preprocess_document(doc)
-        print(f"  ✓ {len(documents)} documents preprocessed\n")
+        print(f"  [OK] {len(documents)} documents preprocessed\n")
 
         print("Step 3: Chunking...")
         all_chunks: List[Dict] = []
@@ -590,7 +590,7 @@ class DocumentIngester:
                 source_meta   = {},
             )
             all_chunks.extend(chunks)
-            print(f"  ✓ {doc['document_id']:<14}  {len(chunks):>3} chunks  "
+            print(f"  [OK] {doc['document_id']:<14}  {len(chunks):>3} chunks  "
                   f"agent={doc.get('agent_target', 'All')}")
 
         print(f"\n  Total: {len(all_chunks)} chunks\n")
@@ -603,14 +603,14 @@ class DocumentIngester:
         print("Step 4: Ingesting into ChromaDB...")
 
         if policy_chunks:
-            print(f"\n  → {self.config.COLLECTION_POLICIES}  ({len(policy_chunks)} chunks)")
+            print(f"\n  -> {self.config.COLLECTION_POLICIES}  ({len(policy_chunks)} chunks)")
             self.ingest_to_collection(policy_chunks, self.config.COLLECTION_POLICIES)
 
         if faq_chunks:
-            print(f"\n  → {self.config.COLLECTION_FAQS}  ({len(faq_chunks)} chunks)")
+            print(f"\n  -> {self.config.COLLECTION_FAQS}  ({len(faq_chunks)} chunks)")
             self.ingest_to_collection(faq_chunks, self.config.COLLECTION_FAQS)
 
-        print(f"\n  → {self.config.COLLECTION_ALL}  ({len(all_chunks)} chunks)")
+        print(f"\n  -> {self.config.COLLECTION_ALL}  ({len(all_chunks)} chunks)")
         self.ingest_to_collection(all_chunks, self.config.COLLECTION_ALL)
 
         self._print_completion_block()
@@ -636,7 +636,7 @@ class DocumentIngester:
         collection = self.config.get_or_create_collection(
             self.client, collection_name
         )
-        logger.info(f"Ingesting {len(chunks)} chunks → {collection_name}")
+        logger.info(f"Ingesting {len(chunks)} chunks -> {collection_name}")
 
         for i in range(0, len(chunks), batch_size):
             batch = chunks[i : i + batch_size]

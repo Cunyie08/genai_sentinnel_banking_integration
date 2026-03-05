@@ -1,8 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import Literal, Dict
-
-from pydantic import BaseModel, Field
-from typing import Dict, List, Literal
+from typing import Literal, Dict, List
 
 
 # Dispatcher Schema (Aligned with new detect_complaint_category)
@@ -35,3 +32,10 @@ class FraudResponse(BaseModel):
     confidence: float = Field(ge=0, le=1, description="RAG retrieval confidence for policy explanation")
     ml_probability: float = Field(ge=0, le=1,description="ML-predicted probability of fraud")
     policy_explanation: str = Field(description="Merged policy_explanation + LLM explanation layer")
+
+
+
+class TrajectoryResponse(BaseModel):
+    explanation: str
+    risk_summary: str
+    governance_note: str
