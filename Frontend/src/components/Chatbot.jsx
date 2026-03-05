@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { MdChat, MdClose, MdSend, MdSmartToy, MdPerson } from 'react-icons/md';
 import axiosInstance from '../api/axiosInstance';
 
+
 const Chatbot = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState([
