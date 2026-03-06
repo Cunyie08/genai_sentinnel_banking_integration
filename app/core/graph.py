@@ -30,12 +30,12 @@ class AgentGraph:
             A string with the Name of the agent to handle the next task    
             
         """  
-        # Extract the department from the dispatcher ouput
-        department = request_decision.get("department")
+        # Extract the routing key from the request (either type or department)
+        routing_key = request_decision.get("type", request_decision.get("department"))
 
-        # Search for the agent responsible for this department
-        if department is not None:
-            next_agent = self.routing_table.get(department)
+        # Search for the agent responsible for this
+        if routing_key is not None:
+            next_agent = self.routing_table.get(routing_key)
         else:
             next_agent = None
         

@@ -212,6 +212,24 @@ class AccountResponse(BaseModel):
     class Config:
         from_attributes = True
         
+
+# --- Account Schemas ---
+
+
+class AccountResponse(BaseModel):
+    account_id: str
+    account_number: str
+    account_type: Optional[str] = None
+    currency: Optional[str] = None
+    balance: float
+    current_balance: float
+    status: Optional[str] = None
+    opened_date: Optional[date] = None
+
+    class Config:
+        from_attributes = True
+
+
 class FullUserResponse(UserResponse):
     customer_details: Optional[Dict[str, Any]] = None
     account_details: List[AccountResponse] = []

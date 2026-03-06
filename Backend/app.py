@@ -5,6 +5,8 @@ from fastapi import BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Dict, Any, List, Optional
+import csv
+from pathlib import Path
 import sys
 import os
 import uuid
@@ -56,6 +58,7 @@ from Backend.schemas import (
     ReportFailedRequest,
     InternalTransferRequest, 
 )
+from Backend.email import send_auth_email
 
 
 class ComplaintQuery(BaseModel):
@@ -405,10 +408,10 @@ async def process_complaint_routing(complaint_id: str, complaint_text: str):
             complaint = result.scalars().first()
 
             if complaint:
-                complaint.department_code = result.get("department_code")
-                complaint.department_name = result.get("department_name")
-                complaint.priority_level = result.get("priority_level")
-                complaint.sentiment = result.get("sentiment")
+                complaint.department_code = result1.get("department_code")
+                complaint.department_name = result1.get("department_name")
+                complaint.priority_level = result1.get("priority_level")
+                complaint.sentiment = result1.get("sentiment")
 
                 await db.commit()
                 print(
@@ -637,6 +640,35 @@ async def make_complaint(
         db.add(new_complaint)
         await db.commit()
 
+        # Append the new complaint to complaints.csv for the DatasetLoader
+        
+        base_dir = Path(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+        csv_path = base_dir / "complaints.csv"
+        
+        with open(csv_path, mode="a", newline="", encoding="utf-8") as file:
+            writer = csv.writer(file)
+            writer.writerow([
+                new_complaint_id,
+                user.customer_id,
+                account.account_id,
+                new_complaint.linked_transaction_id or "",
+                new_complaint.linked_reference or "",
+                "",
+                "Pending AI Routing",
+                "",
+                "",
+                query.complaint_channel,
+                "",
+                new_complaint.complaint_timestamp.strftime("%Y-%m-%d %H:%M:%S"),
+                "",
+                "",
+                "",
+                "",
+                "open",
+                "0",
+                query.complaint_text
+            ])
+
         background_tasks.add_task(
             process_complaint_routing,
             complaint_id=new_complaint_id,
@@ -711,6 +743,55 @@ async def create_customer(
         await db.refresh(new_customer)
         await db.refresh(new_account)
 
+        # Append to customers.csv so agents can find it
+        csv_path = Path(__file__).parent.parent / "customers.csv"
+        file_exists = csv_path.exists()
+        with open(csv_path, mode="a", newline="", encoding="utf-8") as file:
+            writer = csv.writer(file)
+            if not file_exists:
+                writer.writerow(
+                    [
+                        "customer_id",
+                        "first_name",
+                        "last_name",
+                        "full_name",
+                        "gender",
+                        "age",
+                        "date_of_birth",
+                        "bvn",
+                        "nin",
+                        "phone_number",
+                        "telco_provider",
+                        "email",
+                        "state_of_origin",
+                        "residential_state",
+                        "banking_branch",
+                        "solo_candidate",
+                        "onboarding_date",
+                    ]
+                )
+            writer.writerow(
+                [
+                    new_customer.customer_id,
+                    new_customer.first_name,
+                    new_customer.last_name,
+                    new_customer.full_name,
+                    new_customer.gender,
+                    new_customer.age,
+                    new_customer.date_of_birth,
+                    new_customer.bvn,
+                    new_customer.nin,
+                    new_customer.phone_number,
+                    new_customer.telco_provider,
+                    new_customer.email,
+                    new_customer.state_of_origin,
+                    new_customer.residential_state,
+                    new_customer.banking_branch,
+                    True,  # Default solo_candidate to True
+                    new_customer.onboarding_date,
+                ]
+            )
+
         return {
             "message": "Customer and Bank Account created successfully",
             "customer_id": new_customer.customer_id,
@@ -744,35 +825,52 @@ async def make_transaction(
         if not account:
             raise HTTPException(status_code=403, detail="Unauthorized account access")
 
-        # Initialize required components
-        dataset_loader = DatasetLoader()
-        await dataset_loader.load()
-        repo = BankRepository(dataset_loader)
-        rag_engine = await create_engine()
-        openai_client = AsyncOpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
-        openai_llm = LLMClient(
-            client=openai_client,
-            model_name="gpt-4o",
-            response_schema=FraudResponse,
-        )
-        gemini_llm = LLMClient(
-            client=genai.Client(api_key=GEMINI_API_KEY),
-            model_name="gemini-2.0-flash",
-            response_schema=FraudResponse,
-        )
-
-        agent = SentinelAgent(
-            repo=repo,
-            rag_engine=rag_engine,
-            openai_llm=openai_llm,
-            gemini_llm=gemini_llm,
-        )
-
         # Build payload with mock transaction_id for initial scoring
-        payload = request.model_dump()
-        payload["transaction_id"] = f"TXN-{uuid.uuid4().hex[:10].upper()}"
+        txn_id = f"TXN-{uuid.uuid4().hex[:10].upper()}"
+        safe_amount = Decimal(str(request.amount))
+        
+        # Append pending transaction to transactions.csv for the DatasetLoader to read
+        base_dir = Path(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+        csv_path_txn = base_dir / "transactions.csv"
+        
+        import csv
+        with open(csv_path_txn, mode="a", newline="", encoding="utf-8") as file:
+            writer = csv.writer(file)
+            writer.writerow([
+                txn_id,
+                account.account_id,
+                f"REF-{uuid.uuid4().hex[:10].upper()}",
+                datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                request.amount,
+                "pending", # transaction_status
+                "NGN",
+                request.transaction_type,
+                "", # fee
+                request.channel,
+                "", # destination_account
+                "", # merchant_name
+                "", # merchant_category
+                "0", # is_fraud_flag
+                "",
+                ""
+            ])
+            
+        orchestrator = Orchestrator()
+        await orchestrator.initialize()
 
-        fraud_result = await agent.run(payload=payload)
+        payload = {
+            "type": "transaction",
+            "department": "fraud",
+            "transaction_id": txn_id,
+            "agent": "SentinelAgent",
+            "account_id": account.account_id,
+            "amount": float(safe_amount),
+            "channel": request.channel
+        }
+
+        fraud_result = await orchestrator.handle_request(payload)
+        
+        # In case the result is structured differently
         risk_score = fraud_result.get("total_risk_score", 0)
 
         if risk_score > 80:
@@ -826,27 +924,6 @@ async def get_trajectory_popup(
     db: AsyncSession = Depends(get_db),
 ):
     try:
-        dataset_loader = DatasetLoader()
-        await dataset_loader.load()
-        repo = BankRepository(dataset_loader)
-        rag_engine = await create_engine()
-        openai_llm = LLMClient(
-            client=AsyncOpenAI(api_key=OPENAI_API_KEY),
-            model_name="gpt-4o",
-            response_schema=dict,
-        )
-        gemini_llm = LLMClient(
-            client=genai.Client(api_key=GEMINI_API_KEY),
-            model_name="gemini-2.0-flash",
-            response_schema=dict,
-        )
-        agent = TrajectoryAgent(
-            repo=repo,
-            rag_engine=rag_engine,
-            openai_llm=openai_llm,
-            gemini_llm=gemini_llm,
-        )
-
         # Force fetch the user from DB to ensure customer_id is mapped just in case the JWT middleware detached it
         stmt = select(User).filter(User.email == user.email)
         res = await db.execute(stmt)
@@ -859,8 +936,16 @@ async def get_trajectory_popup(
                 detail="Authenticated user is not linked to a customer profile.",
             )
 
-        payload = {"customer_id": customer_id}
-        recommendation_result = await agent.run(payload=payload)
+        orchestrator = Orchestrator()
+        await orchestrator.initialize()
+
+        payload = {
+            "type": "recommendation",
+            "agent": "TrajectoryAgent",
+            "customer_id": customer_id
+        }
+        
+        recommendation_result = await orchestrator.handle_request(payload)
 
         # Format into "Cards" for the frontend marquee/popup
         cards = []
@@ -906,7 +991,6 @@ async def get_trajectory_popup(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-from Backend.email import send_auth_email
 
 
 @app.post("/trajectory/email_recommendations", tags=["Agents"])
@@ -915,27 +999,6 @@ async def post_trajectory_email(
     db: AsyncSession = Depends(get_db),
 ):
     try:
-        dataset_loader = DatasetLoader()
-        await dataset_loader.load()
-        repo = BankRepository(dataset_loader)
-        rag_engine = await create_engine()
-        openai_llm = LLMClient(
-            client=AsyncOpenAI(api_key=OPENAI_API_KEY),
-            model_name="gpt-4o",
-            response_schema=dict,
-        )
-        gemini_llm = LLMClient(
-            client=genai.Client(api_key=GEMINI_API_KEY),
-            model_name="gemini-2.0-flash",
-            response_schema=dict,
-        )
-        agent = TrajectoryAgent(
-            repo=repo,
-            rag_engine=rag_engine,
-            openai_llm=openai_llm,
-            gemini_llm=gemini_llm,
-        )
-
         # Force fetch the user from DB to ensure customer_id is mapped just in case the JWT middleware detached it
         stmt = select(User).filter(User.email == user.email)
         res = await db.execute(stmt)
@@ -948,8 +1011,16 @@ async def post_trajectory_email(
                 detail="Authenticated user is not linked to a customer profile.",
             )
 
-        payload = {"customer_id": customer_id}
-        recommendation_result = await agent.run(payload=payload)
+        orchestrator = Orchestrator()
+        await orchestrator.initialize()
+
+        payload = {
+            "type": "recommendation",
+            "agent": "TrajectoryAgent",
+            "customer_id": customer_id
+        }
+        
+        recommendation_result = await orchestrator.handle_request(payload)
 
         # If there's a primary recommendation, send it via email
         primary_product = recommendation_result.get("primary_product")
@@ -1295,40 +1366,53 @@ async def internal_transfer(
     if from_account.current_balance < amount:
         raise HTTPException(status_code=400, detail="Insufficient funds")
 
-    # Initialize SentinelAgent for Fraud Assessment
-    dataset_loader = DatasetLoader()
-    await dataset_loader.load()
-    repo = BankRepository(dataset_loader)
-    rag_engine = await create_engine()
-    openai_client = AsyncOpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
-    openai_llm = LLMClient(
-        client=openai_client,
-        model_name="gpt-4o",
-        response_schema=FraudResponse,
-    )
-    gemini_llm = LLMClient(
-        client=genai.Client(api_key=GEMINI_API_KEY),
-        model_name="gemini-2.0-flash",
-        response_schema=FraudResponse,
-    )
+    # Generate a transaction ID for the background process
+    txn_id = f"TXN-{uuid.uuid4().hex[:10].upper()}"
 
-    agent = SentinelAgent(
-        repo=repo, rag_engine=rag_engine, openai_llm=openai_llm, gemini_llm=gemini_llm
-    )
+    # Append pending transaction to transactions.csv for the DatasetLoader
+    base_dir = Path(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+    csv_path_txn = base_dir / "transactions.csv"
+    
+    import csv    
+    with open(csv_path_txn, mode="a", newline="", encoding="utf-8") as file:
+        writer = csv.writer(file)
+        writer.writerow([
+            txn_id,
+            from_account.account_id,
+            f"REF-{uuid.uuid4().hex[:10].upper()}",
+            datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            request.amount,
+            "pending", # transaction_status
+            "NGN",
+            "debit",
+            "", # fee
+            "in-app",
+            to_account.account_id, # destination_account
+            "", # merchant_name
+            "", # merchant_category
+            "0", # is_fraud_flag
+            "",
+            ""
+        ])
+
+    orchestrator = Orchestrator()
+    await orchestrator.initialize()
 
     # Build a simulated payload for the Sentinel Agent
     sentinel_payload = {
-        "transaction_id": f"TXN-{uuid.uuid4().hex[:10].upper()}",
-        "account_number": request.from_account_number,
+        "type": "transaction",
+        "department": "fraud",
+        "transaction_id": txn_id,
+        "agent": "SentinelAgent",
+        "account_id": from_account.account_id,
         "amount": float(amount),
-        "transaction_type": "debit",
         "channel": "in-app",
-        "counterparty_bank": "Sentinel",
-        "narration": request.narration or "Internal Transfer",
     }
 
-    fraud_result = await agent.run(payload=sentinel_payload)
-    risk_score = fraud_result.get("risk_score", 0)
+    fraud_result = await orchestrator.handle_request(sentinel_payload)
+    
+    # Depending on format: orchestrator returns {"total_risk_score": 0} normally
+    risk_score = fraud_result.get("total_risk_score", fraud_result.get("risk_score", 0))
 
     if risk_score > 0.8:
         return {
