@@ -11,7 +11,7 @@ from app.rag.rag_system.rag_querys import RAGQueryEngine
 from app.rag.rag_system.chromadb_config import initialize_chromadb
 from app.utils.llm_client import LLMClient
 from app.settings import OPENAI_API_KEY, GEMINI_API_KEY
-from app.data.dataset_loader import DatasetLoader
+from app.database.dataset_loader import DatasetLoader
 from app.data.repository import BankRepository
 from app.rag.rag_system.rag_querys import create_engine
 import traceback

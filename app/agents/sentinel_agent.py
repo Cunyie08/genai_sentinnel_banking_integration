@@ -14,7 +14,7 @@ from app.prompts.sentinel_prompt import Sentinel_System_Prompt
 from app.rag.rag_system.rag_querys import RAGQueryEngine
 from app.rag.rag_system.chromadb_config import initialize_chromadb
 import asyncio
-from app.data.dataset_loader import DatasetLoader
+from app.database.dataset_loader import DatasetLoader
 from app.data.repository import BankRepository
 from app.ml.fraud_model import MLScorer
 from app.rag.rag_system.rag_querys import create_engine
