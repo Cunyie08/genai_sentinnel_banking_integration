@@ -185,7 +185,8 @@ WORK_DISTRIBUTION.md
 complaints.csv
 customers.csv
 transactions.csv
-
+login_credentials.csv
+customers_with_login.csv
 
 Frontend\package-lock.json
 

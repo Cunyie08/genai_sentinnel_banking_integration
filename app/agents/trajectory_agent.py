@@ -6,7 +6,7 @@ import asyncio
 
 from google import genai
 from app.agents.abstract_agent import BaseAgent
-from app.data.dataset_loader import DatasetLoader
+from app.database.dataset_loader import DatasetLoader
 from app.data.repository import BankRepository
 from app.rag.rag_system.recommend_product import RecommendationEngine
 from app.rag.rag_system.rag_querys import RAGQueryEngine

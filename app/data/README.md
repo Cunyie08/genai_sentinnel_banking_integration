@@ -1,158 +1,68 @@
-# Data Layer - Sentinnel Banking
+# Sentinel Bank - Database Setup
 
-This directory contains the data access and abstraction layer for the Sentinnel Banking system.
+## Remote Database (Aiven PostgreSQL)
 
-It is responsible for:
+This project uses a **PostgreSQL** database hosted on [Aiven](https://aiven.io).
 
-- Loading synthetic datasets
-- Providing structured access to customer, transaction, and complaint data
-- Isolating agents from raw data implementation details
-- This layer does not contain business logic.
+### Schema Overview
 
-## Components
+The database contains **5 tables**:
 
-### dataset_loader.py
+| Table          | Primary Key                | Description                                                       |
+| -------------- | -------------------------- | ----------------------------------------------------------------- |
+| `customers`    | `customer_id` (VARCHAR)    | Customer profiles — name, BVN, NIN, contact info, branch          |
+| `users`        | `user_id` (VARCHAR)        | App authentication — linked to a customer, with role-based access |
+| `accounts`     | `account_id` (VARCHAR)     | Bank accounts linked to customers                                 |
+| `transactions` | `transaction_id` (VARCHAR) | Transaction records with fraud scoring & merchant info            |
+| `complaints`   | `complaint_id` (VARCHAR)   | Customer complaints with SLA tracking & sentiment                 |
 
-The DatasetLoader class is responsible for loading structured CSV datasets into memory as pandas DataFrames.
+### Relationships
 
-#### Loaded Datasets
-These datasets are generated synthetically and simulate realistic banking workflows.
+```
+customers (1) ──→ (N) users
+customers (1) ──→ (N) accounts
+customers (1) ──→ (N) complaints
+accounts  (1) ──→ (N) transactions
+transactions (1) ──→ (N) complaints
+```
 
-- customers_df
-- accounts_df
-- transactions_df
-- complaints_df
+### Getting Started
 
+1. **Get credentials** from the team lead or the Aiven Console.
+2. **Copy** `.env.example` to `.env`:
+   ```bash
+   cp .env.example .env
+   ```
+3. **Fill in** your Aiven credentials in the `.env` file.
 
-The loader:
+### Environment Variables
 
-- Centralizes dataset loading
-- Ensures consistent access paths
-- Keeps file I/O separate from business logic
+| Variable      | Description                 |
+| ------------- | --------------------------- |
+| `DB_HOST`     | Aiven service hostname      |
+| `DB_PORT`     | Connection port             |
+| `DB_NAME`     | Database name (`defaultdb`) |
+| `DB_USER`     | Username (`avnadmin`)       |
+| `DB_PASSWORD` | Aiven password              |
+| `DB_SSL`      | SSL mode (`require`)        |
 
-### repository.py
+### Creating the Schema
 
-The BankRepository class provides structured query methods over the loaded datasets. It acts as an abstraction layer between:
+Install dependencies and run the schema script:
 
-- Agents and
-- Raw DataFrames
+```bash
+pip install psycopg2-binary python-dotenv
+python database/create_schema.py
+```
 
-Available Methods
+> ⚠️ The script **drops and recreates all tables** — do not run on a populated database unless you intend to reset it.
 
-- get_customer_profile(customer_id)
-- get_customer_transactions(customer_id)
-- get_complaints(complaint_id)
-- get_transactions(transaction_id)
+### Testing Your Connection
 
-These methods:
+You can test the connection using `psql`:
 
-- Perform filtering
-- Validate IDs
-- Raise controlled errors if records are missing
-- Return structured dictionaries or DataFrames
-- Design Principles
+```bash
+psql "postgresql://avnadmin:<password>@<host>:<port>/defaultdb?sslmode=require"
+```
 
-The data layer follows:
-
-- Separation of concerns
-- Clear abstraction boundaries
-- No business logic
-- No policy enforcement
-
-#### No ML computations
-
-Agents are responsible for interpreting the data.
-The repository is responsible only for retrieving it.
-
-#### Why This Matters
-
-This design ensures:
-- Agents remain testable
-- Data source can be swapped without changing agents
-- Logic and storage remain decoupled
-- System remains modular
-
-### Data Source
-
-All datasets are:
-
-- Synthetic
-- Generated via data_generator.py
-- Designed to simulate realistic banking operations
-- Free of real customer data
-
-# Dataset Layer - Sentinel Banking Synthetic Data
-
-This directory contains synthetic datasets used for:
-
-- Fraud modeling
-- Product recommendation
-- Complaint routing
-- Behavioral signal extraction
-
----
-
-## Files
-
-### data_generator.py
-
-Generates synthetic banking data including:
-
-- customers.csv
-- accounts.csv
-- transactions.csv
-- complaints.csv
-
-All datasets are internally consistent.
-
----
-
-## Data Structure
-
-### Customers
-- customer_id
-- age
-- account_type
-- Loan_signal_score
-
----
-
-### Transactions
-- transaction_id
-- customer_id
-- transaction_type
-- amount
-- merchant_category
-- fraud_explainability_trace
-
----
-
-### Complaints
-- complaint_id
-- customer_id
-- complaint_text
-
----
-
-## Behavioral Signals Derived
-
-Trajectory Agent computes:
-
-- monthly_inflow
-- salary_detected
-- uber_tracker
-- DSR
-
-Sentinel Agent computes:
-
-- fraud flags
-- merchant risk
-- timing risk
-
----
-
-## Important Notes
-
-- Data is synthetic.
-- No real customer data is used.
-- Designed for testing policy-based AI systems.
+> ⚠️ **Never commit your `.env` or `info.md` to git!**
