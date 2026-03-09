@@ -7,7 +7,7 @@ from typing import Dict, Any, Optional
 from app.rag.rag_system.rag_querys import create_engine as create_rag_engine
 from app.data.db_connections import get_engine
 from app.data.dataset_loader import DatasetLoader
-from app.data.repository import SentinelRepository
+from app.data.repository import BankRepository
 from app.agents.dispatcher_agent import DispatcherAgent
 from app.agents.sentinel_agent import SentinelAgent
 from app.agents.trajectory_agent import TrajectoryAgent
@@ -43,7 +43,7 @@ class Orchestrator:
         self._initialized: bool = False
 
         self.engine:      Optional[Any] = None
-        self.repo:        Optional[SentinelRepository] = None
+        self.repo:        Optional[BankRepository] = None
         self.rag:         Optional[Any] = None
 
         self.dispatcher:  Optional[DispatcherAgent]  = None
@@ -74,7 +74,7 @@ class Orchestrator:
 
         # Database + repository 
         self.engine = get_engine()
-        self.repo   = SentinelRepository(self.engine)
+        self.repo   = BankRepository(self.engine)
 
         # Seed database (idempotent - safe to call on every startup)
         loader = DatasetLoader(self.engine)
