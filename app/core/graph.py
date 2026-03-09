@@ -33,7 +33,7 @@ class AgentGraph:
         # Extract the routing key from the request (either type or department)
         routing_key = request_decision.get("type", request_decision.get("department"))
 
-        # Search for the agent responsible for this
+        # Search for the agent responsible for this department
         if routing_key is not None:
             next_agent = self.routing_table.get(routing_key)
         else:

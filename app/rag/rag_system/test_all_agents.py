@@ -85,8 +85,8 @@ try:
 except ImportError:
     try:
         # Running from rag_system/ directory
-        from rag_querys import RAGQueryEngine
-        from chromadb_config import initialize_chromadb
+        from .rag_querys import RAGQueryEngine
+        from .chromadb_config import initialize_chromadb
         from policy_generator import (
             EXPECTED_SLA, DEPT_NAMES, MERCHANT_RISK, FLAG_WEIGHTS,
             LOAN_SIGNAL_SCORE_RANGES,

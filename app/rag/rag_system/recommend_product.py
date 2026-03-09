@@ -9,7 +9,7 @@ rag_querys.validate_product_recommendation).
 
 Architecture:
   RecommendationEngine is the primary class, consumed by RAGQueryEngine
-  (rag_querys.py) via composition. test_agents.py imports the class and
+  (rag_querys.py) via composition. test_all_agents.py imports the class and
   calls engine.recommend(customer) directly for the proactive leg of each
   Trajectory test case.
 
@@ -40,9 +40,6 @@ CBN-aligned interest rate benchmarks (February 2026):
   Student Loan    : 18% APR (1.5% monthly)
   Investment Plan : 0%  (investment product — no repayment)
   Trust Fund      : 0%  (managed wealth product — no repayment)
-
-Author: AI Engineer 2
-Date: February 2026
 """
 
 import asyncio
@@ -50,9 +47,7 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Dict, Any, List, Optional
 import math
 
-# =============================================================================
 # Product Policy Definitions (Aligned to PRS-001 v2.2)
-# =============================================================================
 # signal_threshold  : Loan_signal_score floor (from LOAN_SIGNAL_SCORE_RANGES)
 # score_ceiling     : Loan_signal_score ceiling
 # interest_rate     : Annual rate (CBN-aligned, February 2026)
@@ -113,10 +108,7 @@ PRODUCT_POLICIES: Dict[str, Dict] = {
 DSR_CAP: float = 0.333
 
 
-# =============================================================================
 # Module-Level Financial Helpers
-# =============================================================================
-# Kept at module level so they can be imported and unit-tested independently.
 
 def compute_emi(principal: float, annual_rate: float, tenure_months: int) -> float:
     """
@@ -150,10 +142,8 @@ def is_dsr_compliant(emi: float, monthly_inflow: float, cap: float = DSR_CAP) ->
     return dsr is None or dsr <= cap
 
 
-# =============================================================================
-# RecommendationEngine Class
-# =============================================================================
 
+# RecommendationEngine Class
 class RecommendationEngine:
     """
     Trajectory Agent — proactive product recommendation engine.
@@ -210,9 +200,8 @@ class RecommendationEngine:
             key=lambda x: x[1]["priority"]
         )
 
-    # -------------------------------------------------------------------------
+    
     # Public API — async (primary, used by RAG pipeline and test_agents.py)
-    # -------------------------------------------------------------------------
 
     async def recommend(self, customer: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -236,9 +225,8 @@ class RecommendationEngine:
             customer,
         )
 
-    # -------------------------------------------------------------------------
+
     # Public API — sync (retained for non-async callers and __main__ demo)
-    # -------------------------------------------------------------------------
 
     def recommend_sync(self, customer: Dict[str, Any]) -> Dict[str, Any]:
         """

@@ -96,7 +96,7 @@ class FraudResponse(BaseModel):
 
 class TransactionRequest(BaseModel):
     account_number: str = Field(..., description="The 10-digit account number")
-    channel: str
+    channel: str = "mobile"
     device_id: str
     counterparty_bank: str
     narration: str
@@ -104,6 +104,11 @@ class TransactionRequest(BaseModel):
     amount: float = Field(gt=0)
     currency: str
     merchant_name: str | None = None
+
+
+class TransactionConfirmRequest(BaseModel):
+    transaction_id: str
+    password: str
 
 
 class ReportFailedRequest(BaseModel):

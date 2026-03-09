@@ -188,3 +188,14 @@ transactions.csv
 
 
 Frontend\package-lock.json
+
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+models/
+.env
+app/rag/chroma_db/
+__pycache__/
+*.pyc

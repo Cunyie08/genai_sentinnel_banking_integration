@@ -80,64 +80,64 @@ def generate_otp(length: int = 6) -> str:
     return "".join(secrets.choice(string.digits) for _ in range(length))
 
 
-@router.post("/auth/register", response_model=RegisterResponse)
-async def register(user: UserCreate, db: AsyncSession = Depends(get_db)):
-    try:
-        stmt_user = select(User).filter(User.email == user.email)
-        result_user = await db.execute(stmt_user)
-        db_user = result_user.scalars().first()
-
-        if db_user:
-            raise HTTPException(status_code=400, detail="Email already registered")
-
-        stmt_customer = select(Customer).filter(Customer.email == user.email)
-        result_customer = await db.execute(stmt_customer)
-        db_customer = result_customer.scalars().first()
-
-        if not db_customer:
-            raise HTTPException(
-                status_code=403,
-                detail="No bank account found with this email. You need to open a bank account first.",
-            )
-
-        hashed_pw = get_password_hash(user.password)
-
-        new_user = User(
-            user_id=f"USR-{uuid.uuid4().hex[:10].upper()}",
-            email=user.email,
-            password_hash=hashed_pw,
-            customer_id=db_customer.customer_id,
-            is_active=False,  # User is inactive until OTP verified
-        )
-
-        db.add(new_user)
-
-        # Generate and Send OTP
-        otp_code = generate_otp()
-        otp_token = OTPToken(
-            user_id=new_user.user_id,
-            otp_code=otp_code,
-            purpose="registration",
-            expires_at=datetime.now() + timedelta(minutes=15),
-        )
-        db.add(otp_token)
-
-        await db.commit()
-        await db.refresh(new_user)
-
-        await send_otp_email(to_email=user.email, otp_code=otp_code)
-
-        return {
-            "message": "User registered successfully. Please verify your email with the OTP sent.",
-            "user_id": new_user.user_id,
-        }
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        await db.rollback()
-        print(f"Registration failed: {e}")
-        raise HTTPException(status_code=500, detail="Internal server error")
+# @router.post("/auth/register", response_model=RegisterResponse)
+# async def register(user: UserCreate, db: AsyncSession = Depends(get_db)):
+#     try:
+#         stmt_user = select(User).filter(User.email == user.email)
+#         result_user = await db.execute(stmt_user)
+#         db_user = result_user.scalars().first()
+# 
+#         if db_user:
+#             raise HTTPException(status_code=400, detail="Email already registered")
+# 
+#         stmt_customer = select(Customer).filter(Customer.email == user.email)
+#         result_customer = await db.execute(stmt_customer)
+#         db_customer = result_customer.scalars().first()
+# 
+#         if not db_customer:
+#             raise HTTPException(
+#                 status_code=403,
+#                 detail="No bank account found with this email. You need to open a bank account first.",
+#             )
+# 
+#         hashed_pw = get_password_hash(user.password)
+# 
+#         new_user = User(
+#             user_id=f"USR-{uuid.uuid4().hex[:10].upper()}",
+#             email=user.email,
+#             password_hash=hashed_pw,
+#             customer_id=db_customer.customer_id,
+#             is_active=False,  # User is inactive until OTP verified
+#         )
+# 
+#         db.add(new_user)
+# 
+#         # Generate and Send OTP
+#         otp_code = generate_otp()
+#         otp_token = OTPToken(
+#             user_id=new_user.user_id,
+#             otp_code=otp_code,
+#             purpose="registration",
+#             expires_at=datetime.now() + timedelta(minutes=15),
+#         )
+#         db.add(otp_token)
+# 
+#         await db.commit()
+#         await db.refresh(new_user)
+# 
+#         await send_otp_email(to_email=user.email, otp_code=otp_code)
+# 
+#         return {
+#             "message": "User registered successfully. Please verify your email with the OTP sent.",
+#             "user_id": new_user.user_id,
+#         }
+# 
+#     except HTTPException:
+#         raise
+#     except Exception as e:
+#         await db.rollback()
+#         print(f"Registration failed: {e}")
+#         raise HTTPException(status_code=500, detail="Internal server error")
 
 
 import traceback

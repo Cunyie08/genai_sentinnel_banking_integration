@@ -48,6 +48,7 @@ from Backend.email import send_complaint_confirmation_email
 from app.settings import RESEND_WEBHOOK_SECRET, OPENAI_API_KEY, GEMINI_API_KEY
 from Backend.schemas import (
     TransactionRequest,
+    TransactionConfirmRequest,
     CustomerCreate,
     ProfileUpdate,
     PreferencesUpdate,
@@ -59,6 +60,7 @@ from Backend.schemas import (
     InternalTransferRequest, 
 )
 from Backend.email import send_auth_email
+from Backend.auth import verify_password
 
 
 class ComplaintQuery(BaseModel):
@@ -450,16 +452,13 @@ async def ai_chat(
             raise HTTPException(status_code=400, detail="Missing message")
 
         # 1. Initialize Infrastructure
-        dataset_loader = DatasetLoader()
-        await dataset_loader.load()
-        repo = BankRepository(dataset_loader)
-        rag_engine = await create_engine()
-        openai_client = AsyncOpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
-
+        orchestrator = Orchestrator()
+        await orchestrator.initialize()
+        
         # 2. Intent Classification using Gemini
         intent_llm = LLMClient(
             client=genai.Client(api_key=GEMINI_API_KEY),
-            model_name="gemini-2.0-flash",
+            model_name="gemini-2.5-flash",
             response_schema=dict,
         )
 
@@ -489,21 +488,16 @@ async def ai_chat(
             last_txn = res.scalars().first()
 
             if last_txn:
-                agent = SentinelAgent(
-                    repo=repo,
-                    rag_engine=rag_engine,
-                    openai_llm=(
-                        LLMClient(openai_client, "gpt-4o", FraudResponse)
-                        if openai_client
-                        else None
-                    ),
-                    gemini_llm=LLMClient(
-                        genai.Client(api_key=GEMINI_API_KEY),
-                        "gemini-2.0-flash",
-                        FraudResponse,
-                    ),
-                )
-                agent_res = await agent.run({"transaction_id": last_txn.transaction_id})
+                payload = {
+                    "type": "transaction",
+                    "department": "fraud",
+                    "transaction_id": last_txn.transaction_id,
+                    "agent": "SentinelAgent",
+                    "account_id": last_txn.account_id,
+                    "amount": float(last_txn.amount),
+                    "channel": last_txn.channel
+                }
+                agent_res = await orchestrator.handle_request(payload)
                 risk = agent_res.get("risk_level", "UNKNOWN")
                 bot_text = f"I've analyzed your latest transaction ({last_txn.transaction_reference_number}). Risk Level: **{risk}**. {agent_res.get('risk_summary', '')}"
             else:
@@ -521,37 +515,25 @@ async def ai_chat(
             last_comp = res.scalars().first()
 
             if last_comp:
-                agent = DispatcherAgent(
-                    repo=repo,
-                    rag_engine=rag_engine,
-                    openai_llm=(
-                        LLMClient(openai_client, "gpt-4o", RoutingResponse)
-                        if openai_client
-                        else None
-                    ),
-                    gemini_llm=LLMClient(
-                        genai.Client(api_key=GEMINI_API_KEY),
-                        "gemini-2.0-flash",
-                        RoutingResponse,
-                    ),
-                )
-                agent_res = await agent.run({"complaint_id": last_comp.complaint_id})
+                payload = {
+                    "type": "complaint",
+                    "department": "complaint",
+                    "complaint_id": last_comp.complaint_id,
+                    "agent": "DispatcherAgent" 
+                }
+                agent_res = await orchestrator.handle_request(payload)
                 bot_text = f"Regarding your complaint **{last_comp.complaint_id}**: It has been routed to the **{agent_res.get('department_name')}** department. Priority: **{agent_res.get('priority_level')}**."
             else:
                 bot_text = "You don't have any active complaints. You can file one by sending an email to support@sentinelbank.com."
 
         elif intent == "product_recommendation":
-            agent = TrajectoryAgent(
-                repo=repo,
-                rag_engine=rag_engine,
-                openai_llm=(
-                    LLMClient(openai_client, "gpt-4o", dict) if openai_client else None
-                ),
-                gemini_llm=LLMClient(
-                    genai.Client(api_key=GEMINI_API_KEY), "gemini-2.0-flash", dict
-                ),
-            )
-            agent_res = await agent.run({"customer_id": user.customer_id})
+            payload = {
+                "type": "recommendation",
+                "department": "recommendation",
+                "customer_id": user.customer_id,
+                "agent": "TrajectoryAgent"
+            }
+            agent_res = await orchestrator.handle_request(payload)
             product = agent_res.get("primary_product")
             if product and product != "None":
                 bot_text = f"Based on your financial trajectory, I recommend the **{product}**. {agent_res.get('reasoning', '')}"
@@ -619,6 +601,7 @@ async def make_complaint(
         new_complaint = Complaint(
             complaint_id=new_complaint_id,
             customer_id=user.customer_id,
+            account_id=account.account_id,
             linked_transaction_id=(
                 query.linked_transaction_id
                 if query.linked_transaction_id
@@ -639,35 +622,6 @@ async def make_complaint(
 
         db.add(new_complaint)
         await db.commit()
-
-        # Append the new complaint to complaints.csv for the DatasetLoader
-        
-        base_dir = Path(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-        csv_path = base_dir / "complaints.csv"
-        
-        with open(csv_path, mode="a", newline="", encoding="utf-8") as file:
-            writer = csv.writer(file)
-            writer.writerow([
-                new_complaint_id,
-                user.customer_id,
-                account.account_id,
-                new_complaint.linked_transaction_id or "",
-                new_complaint.linked_reference or "",
-                "",
-                "Pending AI Routing",
-                "",
-                "",
-                query.complaint_channel,
-                "",
-                new_complaint.complaint_timestamp.strftime("%Y-%m-%d %H:%M:%S"),
-                "",
-                "",
-                "",
-                "",
-                "open",
-                "0",
-                query.complaint_text
-            ])
 
         background_tasks.add_task(
             process_complaint_routing,
@@ -828,32 +782,6 @@ async def make_transaction(
         # Build payload with mock transaction_id for initial scoring
         txn_id = f"TXN-{uuid.uuid4().hex[:10].upper()}"
         safe_amount = Decimal(str(request.amount))
-        
-        # Append pending transaction to transactions.csv for the DatasetLoader to read
-        base_dir = Path(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-        csv_path_txn = base_dir / "transactions.csv"
-        
-        import csv
-        with open(csv_path_txn, mode="a", newline="", encoding="utf-8") as file:
-            writer = csv.writer(file)
-            writer.writerow([
-                txn_id,
-                account.account_id,
-                f"REF-{uuid.uuid4().hex[:10].upper()}",
-                datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                request.amount,
-                "pending", # transaction_status
-                "NGN",
-                request.transaction_type,
-                "", # fee
-                request.channel,
-                "", # destination_account
-                "", # merchant_name
-                "", # merchant_category
-                "0", # is_fraud_flag
-                "",
-                ""
-            ])
             
         orchestrator = Orchestrator()
         await orchestrator.initialize()
@@ -873,14 +801,8 @@ async def make_transaction(
         # In case the result is structured differently
         risk_score = fraud_result.get("total_risk_score", 0)
 
-        if risk_score > 80:
-            return {
-                "status": "blocked",
-                "message": "Transaction flagged as risk",
-                "fraud_analysis": fraud_result,
-            }
+        is_pending = risk_score > 80
 
-        safe_amount = Decimal(str(request.amount))
         if request.transaction_type == "debit":
             if account.current_balance < safe_amount:
                 raise HTTPException(status_code=400, detail="Insufficient funds")
@@ -889,33 +811,175 @@ async def make_transaction(
             new_balance = account.current_balance + safe_amount
 
         transaction = Transaction(
-            transaction_id=f"TXN-{uuid.uuid4().hex[:10].upper()}",
+            transaction_id=txn_id,
             transaction_reference_number=f"REF-{uuid.uuid4().hex[:10].upper()}",
             account_id=account.account_id,
             channel=request.channel,
+            device_id=request.device_id,
             counterparty_bank=request.counterparty_bank,
+            narration=request.narration,
             amount=safe_amount,
+            currency=request.currency,
+            merchant_name=request.merchant_name,
             transaction_type=request.transaction_type,
-            transaction_balance=new_balance,
-            transaction_status="completed",
+            transaction_balance=new_balance if not is_pending else account.current_balance,
+            transaction_status="pending" if is_pending else "completed",
             is_fraud_score=int(risk_score),
             transaction_timestamp=datetime.now(),
         )
 
-        account.current_balance = new_balance
         db.add(transaction)
+        
+        if not is_pending:
+            account.current_balance = new_balance
+            
         await db.commit()
 
-        return {
-            "status": "approved",
-            "transaction_reference": transaction.transaction_reference_number,
-        }
+        if is_pending:
+            return {
+                "status": "PENDING_CONFIRMATION",
+                "message": "Transaction requires customer confirmation",
+                "transaction_id": txn_id,
+                "fraud_analysis": fraud_result,
+            }
+
+        return fraud_result
+    
     except HTTPException:
         await db.rollback()
         raise
     except Exception as e:
         await db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/transactions/confirm", tags=["Agents"])
+async def confirm_transaction(
+    request: TransactionConfirmRequest,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        # Verify the password (stored as plain text)
+        if request.password != user.password_hash:
+            raise HTTPException(status_code=401, detail="Invalid password")
+            
+        stmt = select(Transaction).filter(
+            Transaction.transaction_id == request.transaction_id,
+            Transaction.transaction_status == "pending"
+        ).with_for_update()
+        
+        result = await db.execute(stmt)
+        transaction = result.scalars().first()
+        
+        if not transaction:
+            raise HTTPException(status_code=404, detail="Pending transaction not found")
+            
+        # Get the account to update its balance
+        stmt_acc = select(Account).filter(Account.account_id == transaction.account_id).with_for_update()
+        res_acc = await db.execute(stmt_acc)
+        account = res_acc.scalars().first()
+        
+        if not account:
+            raise HTTPException(status_code=404, detail="Account not found")
+            
+        # Perform the balance adjustment
+        safe_amount = Decimal(str(transaction.amount))
+        if transaction.transaction_type == "debit":
+            if account.current_balance < safe_amount:
+                raise HTTPException(status_code=400, detail="Insufficient funds")
+            account.current_balance -= safe_amount
+        else:
+            account.current_balance += safe_amount
+            
+        transaction.transaction_status = "completed"
+        transaction.transaction_balance = account.current_balance
+        
+        await db.commit()
+        
+        return {"status": "success", "message": "Transaction verified and completed successfully"}
+    except HTTPException:
+        await db.rollback()
+        raise
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/card_transaction", tags=["Agents"])
+async def card_transaction(
+    request: TransactionRequest,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        stmt = (
+            select(Account)
+            .filter(
+                Account.account_number == request.account_number,
+                Account.customer_id == user.customer_id,
+            )
+            .with_for_update()
+        )
+
+        result = await db.execute(stmt)
+        account = result.scalars().first()
+
+        if not account:
+            raise HTTPException(status_code=403, detail="Unauthorized account access")
+
+        txn_id = f"TXN-{uuid.uuid4().hex[:10].upper()}"
+        safe_amount = Decimal(str(request.amount))
+            
+        # Hardcode as pending for demo to trigger biometric/password popup
+        is_pending = True
+
+        transaction = Transaction(
+            transaction_id=txn_id,
+            transaction_reference_number=f"REF-{uuid.uuid4().hex[:10].upper()}",
+            account_id=account.account_id,
+            channel="card",
+            device_id=request.device_id,
+            counterparty_bank=request.counterparty_bank,
+            narration=request.narration,
+            amount=safe_amount,
+            currency=request.currency,
+            merchant_name=request.merchant_name,
+            transaction_type=request.transaction_type,
+            transaction_balance=account.current_balance, # Don't deduct yet
+            transaction_status="pending",
+            is_fraud_score=0,
+            transaction_timestamp=datetime.now(),
+        )
+
+        db.add(transaction)
+        await db.commit()
+
+        return {
+            "status": "PENDING_CONFIRMATION",
+            "message": "Card transaction requires confirmation",
+            "transaction_id": txn_id,
+            "fraud_analysis": {"total_risk_score": 0, "reasoning": "Standard card transaction security policy"}
+        }
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/faqs", tags=["Agents"])
+async def get_faqs():
+    try:
+        faq_path = os.path.join(os.path.dirname(__file__), "..", "app", "rag", "knowledge_base", "faqs", "FAQ-001.txt")
+        if not os.path.exists(faq_path):
+            raise HTTPException(status_code=404, detail="FAQ not found")
+            
+        with open(faq_path, "r", encoding="utf-8") as file:
+            content = file.read()
+            
+        return {
+            "status": "success",
+            "content": content
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 
 @app.get("/trajectory/popup_recommendations", tags=["Agents"])
@@ -1025,25 +1089,35 @@ async def post_trajectory_email(
         # If there's a primary recommendation, send it via email
         primary_product = recommendation_result.get("primary_product")
         if primary_product and primary_product != "None":
+            # Map products to department emails
+            department_emails = {
+                "Student Loan": "loans@sentinelbank.com",
+                "Car Loan": "loans@sentinelbank.com",
+                "Fixed Deposit": "investments@sentinelbank.com",
+                "Credit Card": "cards@sentinelbank.com"
+            }
+            target_email = department_emails.get(primary_product, "support@sentinelbank.com")
+            
             # Format appealing HTML email
             email_html = f"""
-            <h2>Special Offer Just for You!</h2>
-            <p>Based on your recent activity, we think you'd love our <strong>{primary_product}</strong>.</p>
-            <p><strong>Benefits:</strong> {recommendation_result.get('reasoning', 'Tailored to your financial journey.')}</p>
-            <p>Log in to your Sentinel Banking app to claim this offer.</p>
+            <h2>New Product Recommendation Lead</h2>
+            <p>Customer ID: <strong>{customer_id}</strong> is a strong candidate for <strong>{primary_product}</strong>.</p>
+            <p><strong>Sentinel AI Reasoning:</strong> {recommendation_result.get('reasoning', 'No reasoning provided.')}</p>
+            <p>Please reach out to the customer or queue their profile for campaign targeting.</p>
             """
 
-            # Send the email
+            # Send the email to the specific department
             await send_auth_email(
-                to_email=user.email,
-                subject="Your Exclusive Sentinel Bank Recommendation",
+                to_email=target_email,
+                subject=f"Sentinel Lead: {primary_product} for {customer_id}",
                 html_content=email_html,
             )
 
             return {
                 "status": "success",
-                "message": "Recommendation email sent successfully.",
+                "message": f"Recommendation email routed for {primary_product} successfully.",
                 "primary_product": primary_product,
+                "routed_to": target_email
             }
         else:
             return {
