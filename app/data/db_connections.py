@@ -1,5 +1,7 @@
 import os
+import ssl
 from contextlib import asynccontextmanager
+from urllib.parse import urlparse, urlencode, parse_qs, urlunparse
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, AsyncEngine, async_sessionmaker
 from sqlalchemy.orm import declarative_base
@@ -33,17 +35,36 @@ def get_engine(echo: bool = False):
                 "postgresql://", "postgresql+asyncpg://", 1
             )
 
+        # asyncpg does NOT accept sslmode as a URL query param — TypeError crash.
+        # Remove it entirely and handle SSL manually via connect_args below.
+        parsed    = urlparse(database_url)
+        params    = parse_qs(parsed.query)
+        params.pop("sslmode", None)
+        clean_qs  = urlencode({k: v[0] for k, v in params.items()})
+        clean_url = urlunparse(parsed._replace(query=clean_qs))
+
+        # Bild SSLContext explicitly for asyncpg
+        # Supabase, Railway, and Neon use self-signed certs in their chain.
+        # ssl=True uses Python's default verifier which rejects self-signed
+        # certs with SSLCertVerificationError.
+        # Passing an SSLContext with CERT_NONE encrypts the connection
+        # without rejecting the self-signed certificate.
+        ssl_context = ssl.create_default_context()
+        ssl_context.check_hostname = False
+        ssl_context.verify_mode    = ssl.CERT_NONE
+
         engine = create_async_engine(
-            database_url,
+            clean_url,
             echo=echo,
-            pool_pre_ping=True,   # silently drops old connections
+            pool_pre_ping=True,
             pool_size=10,
             max_overflow=20,
+            connect_args={"ssl": ssl_context},
         )
-        print("[DB] Driver -> asyncpg (PostgreSQL)")
+        print("[DB] Driver      -> asyncpg (PostgreSQL + SSL/no-verify)")
 
     else:
-
+        # SQLite fallback (local dev)
         db_dir  = os.path.join(os.path.dirname(__file__), "data")
         os.makedirs(db_dir, exist_ok=True)
         db_path = os.path.join(db_dir, "sentinel_bank.db")
@@ -53,10 +74,9 @@ def get_engine(echo: bool = False):
             echo=echo,
             connect_args={"check_same_thread": False},
         )
-        print(f"[DB] Driver -> aiosqlite (SQLite @ {db_path})")
+        print(f"[DB] Driver      -> aiosqlite  (SQLite @ {db_path})")
 
     return engine
-
 
 # Async session factory
 
@@ -101,6 +121,10 @@ async def get_async_session(engine: AsyncEngine):
 # Initialize the schema
 
 async def init_db(engine: AsyncEngine) -> None:
+    """
+    Create all tables defined in models.py if they don't exist.
+    Safe to call on every startup — does nothing if tables already exist.
+    """
     async with engine.begin() as connection:
         await connection.run_sync(base.metadata.create_all)
     print("[DB] Schema -> tables created / verified")
@@ -108,7 +132,7 @@ async def init_db(engine: AsyncEngine) -> None:
 
 async def drop_db(engine: AsyncEngine) -> None:
     """
-    Drop all tables. DESTRUCTIVE — dev only.
+    Drop all tables. DESTRUCTIVE - dev only.
 
     Usage:
         await drop_db(engine)

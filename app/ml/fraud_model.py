@@ -3,7 +3,7 @@
 import joblib
 import pandas as pd
 
-from app.data.dataset_loader import DatasetLoader
+from app.database.dataset_loader import DatasetLoader
 from app.ml.feature_engineering import FraudFeatureBuilder
 
 
