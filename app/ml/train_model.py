@@ -5,7 +5,7 @@ import pandas as pd
 import joblib
 from sklearn.ensemble import RandomForestClassifier
 from app.ml.feature_engineering import FraudFeatureBuilder
-from app.data.dataset_loader import DatasetLoader
+from app.database.dataset_loader import DatasetLoader
 
 # Load transactions.csv into memory
 dataset_loader = DatasetLoader()

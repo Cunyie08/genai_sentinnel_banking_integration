@@ -31,7 +31,7 @@ from app.utils.schemas import RoutingResponse, FraudResponse, RiskBreakdown, Tra
 from app.agents.dispatcher_agent import DispatcherAgent
 from app.agents.sentinel_agent import SentinelAgent
 from app.agents.trajectory_agent import TrajectoryAgent
-from app.data.dataset_loader import DatasetLoader
+from app.database.dataset_loader import DatasetLoader
 from app.data.repository import BankRepository
 from app.rag.rag_system.rag_querys import create_engine
 from app.utils.llm_client import LLMClient
@@ -622,6 +622,35 @@ async def make_complaint(
 
         db.add(new_complaint)
         await db.commit()
+
+        # Append the new complaint to complaints.csv for the DatasetLoader
+        
+        base_dir = Path(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+        csv_path = base_dir / "complaints.csv"
+        
+        with open(csv_path, mode="a", newline="", encoding="utf-8") as file:
+            writer = csv.writer(file)
+            writer.writerow([
+                new_complaint_id,
+                user.customer_id,
+                account.account_id,
+                new_complaint.linked_transaction_id or "",
+                new_complaint.linked_reference or "",
+                "",
+                "Pending AI Routing",
+                "",
+                "",
+                query.complaint_channel,
+                "",
+                new_complaint.complaint_timestamp.strftime("%Y-%m-%d %H:%M:%S"),
+                "",
+                "",
+                "",
+                "",
+                "open",
+                "0",
+                query.complaint_text
+            ])
 
         background_tasks.add_task(
             process_complaint_routing,

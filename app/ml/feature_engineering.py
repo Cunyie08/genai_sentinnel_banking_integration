@@ -20,7 +20,8 @@ class FraudFeatureBuilder:
         txn_time_str = transaction.get("transaction_timestamp", str(datetime.datetime.now()))
         txn_time = pd.to_datetime(txn_time_str)
 
-        # history length represents number of prior transactions
+        # history length represents number 
+        # of prior transactions
         features["txn_count_so_far"] = len(history)
           
 
