@@ -36,7 +36,7 @@ class BankRepository:
         return self._session_factory()
 
 
-    # DISPATCHER AGENT — Complaint lookup
+    # DISPATCHER AGENT - Complaint lookup
 
     async def get_complaint(self, complaint_id: str) -> Optional[dict]:
         """
