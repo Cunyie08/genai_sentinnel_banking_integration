@@ -134,11 +134,11 @@ class TrajectoryAgent(BaseAgent):
                 message="Customer behavioral profile fetched from database",
                 metadata={
                     "customer_id":       customer_id,
-                    "transaction_count": profile.get("transaction_count", 0),
-                    "loan_signal_score": profile.get("Loan_signal_score"),
-                    "salary_detected":   profile.get("salary_detected"),
-                    "uber_tracker":      profile.get("uber_tracker"),
-                    "account_type":      profile.get("account_type"),
+                    "transaction_count": int(profile.get("transaction_count", 0)),
+                    "loan_signal_score": float(profile.get("Loan_signal_score") or 0.0),
+                    "salary_detected":   bool(profile.get("salary_detected")),
+                    "uber_tracker":      int(profile.get("uber_tracker") or 0),
+                    "account_type":      str(profile.get("account_type") or ""),
                 },
             )
 
@@ -370,7 +370,7 @@ class TrajectoryAgent(BaseAgent):
             "unmet_criteria":          recommendation.get("unmet_criteria", []),
 
             # Eligibility (authoritative — from recommendation engine + RAG)
-            "is_eligible":             recommendation.get("is_eligible", False),
+            "is_eligible":             validation.get("is_eligible", False),
 
             # RAG policy validation (full dict preserved for audit)
             "policy_validation":       validation,
