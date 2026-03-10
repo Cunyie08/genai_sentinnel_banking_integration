@@ -75,14 +75,14 @@ class DispatcherAgent(BaseAgent):
         Args:
         Supports two input modes:
 
-        Mode A — Live frontend input (demo / production intake):
+        Mode A: Live frontend input (demo / production intake):
             {
                 "complaint_text": "My card was charged twice at Shoprite",
                 "customer_id":    "optional-uuid",       # optional
                 "channel":        "web",                  # optional
             }
 
-        Mode B — Database lookup (batch processing / orchestrator):
+        Mode B: Database lookup (batch processing / orchestrator):
             {
                 "complaint_id": "CMP-000001"
             }
