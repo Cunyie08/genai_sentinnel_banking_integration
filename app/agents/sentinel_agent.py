@@ -26,7 +26,9 @@ Standalone usage (dev/debug only):
 """
 
 import asyncio
+import logging
 import traceback
+import pandas as pd
 from typing import Any, Dict, Optional
 
 from openai import RateLimitError
@@ -43,6 +45,7 @@ from app.utils.llm_client import LLMClient
 from app.utils.logger import ReasoningLogger, SystemLogger
 from app.utils.schemas import FraudResponse
 from app.settings import OPENAI_API_KEY, GEMINI_API_KEY
+from typing import List
 
 # Card channels that always require a push-to-app biometric challenge
 _CARD_CHANNELS  = {"pos", "atm"}
@@ -165,8 +168,18 @@ class SentinelAgent(BaseAgent):
                 "policy_explanation": fraud_result["policy_explanation"],
             }
 
+            # Fetch transaction history via repository
+            customer_id = transaction.get("customer_id")
+            if customer_id:
+                all_transactions = await self.repo.get_customer_transactions(customer_id)
+                # Ensure we represent history as DataFrame for the builder
+                history_df = pd.DataFrame(all_transactions) if all_transactions else pd.DataFrame()
+            else:
+                all_transactions = []
+                history_df = pd.DataFrame()
+
             # ML anomaly probability
-            ml_probability = self.ml_scorer.predict(transaction)
+            ml_probability = self.ml_scorer.predict(transaction, history_df)
             rag_decision["ml_probability"] = round(ml_probability, 3)
 
             SystemLogger.log_event(
@@ -195,11 +208,8 @@ class SentinelAgent(BaseAgent):
                     "(card channel policy override)"
                 )
 
-            # Historical context (last 5 transactions) via repository
-            history_context = await self._build_history_context(
-                customer_id=transaction.get("customer_id"),
-                current_transaction_id=transaction_id,
-            )
+            # Historical context formatting for LLM
+            history_context = self._format_history_context(customer_id, current_transaction_id=transaction_id, history_data=all_transactions)
 
             # LLM audit explanation 
             llm_input  = self._build_explanation_prompt(
@@ -242,28 +252,23 @@ class SentinelAgent(BaseAgent):
 
     # Private helpers
 
-    async def _build_history_context(
+    def _format_history_context(
         self,
         customer_id:            Optional[str],
         current_transaction_id: Optional[str],
+        history_data:           List[Dict[str, Any]]
     ) -> str:
         """
-        Fetch the customer's last 5 transactions from the database
-        (excluding the current one) and format them as a context string
-        for the LLM explanation prompt.
-
-        Uses repository.get_customer_transactions() — no raw DataFrame access.
+        Format retrieved transactions as a context string for the LLM prompt.
         """
         if not customer_id:
             return (
                 "No customer ID available — historical context unavailable."
             )
 
-        all_transactions = await self.repo.get_customer_transactions(customer_id)
-
         # Exclude the current transaction
         history = [
-            t for t in all_transactions
+            t for t in history_data
             if t.get("transaction_id") != current_transaction_id
         ][:5]
 

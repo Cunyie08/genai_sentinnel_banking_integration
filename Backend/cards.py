@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from Backend.database import get_db
-from Backend.models import User, Account, Card
+from Backend.models import Account, Card, Customer
 from Backend.middleware import get_current_user
 from Backend.schemas import CardRequest, CardResponse, CardLimitUpdate
 
@@ -19,7 +19,7 @@ router = APIRouter(prefix="/cards", tags=["Cards"])
 async def request_card(
     request: CardRequest,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: Customer = Depends(get_current_user),
 ):
     # Verify account belongs to user
     stmt = select(Account).filter(
@@ -55,7 +55,7 @@ async def request_card(
 
 @router.get("/", response_model=List[CardResponse])
 async def list_cards(
-    db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)
+    db: AsyncSession = Depends(get_db), user: Customer = Depends(get_current_user)
 ):
     # Find all accounts linked to the user's customer record
     acc_stmt = select(Account.account_id).filter(
@@ -77,7 +77,7 @@ async def list_cards(
 async def freeze_card(
     cardId: str,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: Customer = Depends(get_current_user),
 ):
     # Join with Account to verify ownership
     stmt = (
@@ -101,7 +101,7 @@ async def freeze_card(
 async def activate_card(
     cardId: str,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: Customer = Depends(get_current_user),
 ):
     stmt = (
         select(Card)
@@ -124,7 +124,7 @@ async def activate_card(
 async def get_card_details(
     cardId: str,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: Customer = Depends(get_current_user),
 ):
     stmt = (
         select(Card)
@@ -145,7 +145,7 @@ async def set_card_limit(
     cardId: str,
     limit_data: CardLimitUpdate,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: Customer = Depends(get_current_user),
 ):
     stmt = (
         select(Card)

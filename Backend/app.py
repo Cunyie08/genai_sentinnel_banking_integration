@@ -25,13 +25,13 @@ from app.core.orchestrator import Orchestrator
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from Backend.database import engine, Base, SessionLocal, get_db
-from Backend.models import Complaint, Account, Transaction, Customer, User, UserSettings
+from Backend.models import Complaint, Account, Transaction, Customer, UserSettings
 from Backend.middleware import get_current_user
 from app.utils.schemas import RoutingResponse, FraudResponse, RiskBreakdown, TrajectoryResponse
 from app.agents.dispatcher_agent import DispatcherAgent
 from app.agents.sentinel_agent import SentinelAgent
 from app.agents.trajectory_agent import TrajectoryAgent
-from app.database.dataset_loader import DatasetLoader
+# from app.database.dataset_loader import DatasetLoader
 from app.data.repository import BankRepository
 from app.rag.rag_system.rag_querys import create_engine
 from app.utils.llm_client import LLMClient
@@ -73,9 +73,14 @@ class ComplaintQuery(BaseModel):
 
 logger = logging.getLogger(__name__)
 
+orchestrator = Orchestrator()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    global orchestrator
+    print("Initializing Orchestrator globally...")
+    await orchestrator.initialize()
+    print("Orchestrator Initialization complete.")
     yield
 
     print("Shutting down: Disposing database engine...")
@@ -109,7 +114,7 @@ profile_router = APIRouter(tags=["User Profile"])
 
 @profile_router.get("/users/me", response_model=FullUserResponse)
 async def get_me(
-    current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)
+    current_user: Customer = Depends(get_current_user), db: AsyncSession = Depends(get_db)
 ):
     # Fetch customer and account details
     stmt = select(Customer).filter(Customer.customer_id == current_user.customer_id)
@@ -136,9 +141,8 @@ async def get_me(
         )
 
     return {
-        "user_id": current_user.user_id,
+        "customer_id": current_user.customer_id,
         "email": current_user.email,
-        "role": current_user.role,
         "customer_details": (
             {
                 "first_name": customer.first_name,
@@ -157,7 +161,7 @@ async def get_me(
 @profile_router.patch("/users/update-profile")
 async def update_profile(
     update_data: ProfileUpdate,
-    current_user: User = Depends(get_current_user),
+    current_user: Customer = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     if not current_user.customer_id:
@@ -185,15 +189,15 @@ async def update_profile(
 
 @profile_router.get("/users/settings", response_model=SettingsResponse)
 async def get_settings(
-    current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)
+    current_user: Customer = Depends(get_current_user), db: AsyncSession = Depends(get_db)
 ):
-    stmt = select(UserSettings).filter(UserSettings.user_id == current_user.user_id)
+    stmt = select(UserSettings).filter(UserSettings.customer_id == current_user.customer_id)
     result = await db.execute(stmt)
     settings = result.scalars().first()
 
     if not settings:
         # Create default if missing
-        settings = UserSettings(user_id=current_user.user_id)
+        settings = UserSettings(customer_id=current_user.customer_id)
         db.add(settings)
         await db.commit()
         await db.refresh(settings)
@@ -204,15 +208,15 @@ async def get_settings(
 @profile_router.patch("/users/update-preferences")
 async def update_preferences(
     prefs: PreferencesUpdate,
-    current_user: User = Depends(get_current_user),
+    current_user: Customer = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    stmt = select(UserSettings).filter(UserSettings.user_id == current_user.user_id)
+    stmt = select(UserSettings).filter(UserSettings.customer_id == current_user.customer_id)
     result = await db.execute(stmt)
     settings = result.scalars().first()
 
     if not settings:
-        settings = UserSettings(user_id=current_user.user_id)
+        settings = UserSettings(customer_id=current_user.customer_id)
         db.add(settings)
 
     if prefs.theme:
@@ -229,16 +233,16 @@ async def update_preferences(
 
 
 # Admin Endpoints
-@profile_router.get("/users/{userId}", dependencies=[Depends(get_current_user)])
+@profile_router.get("/users/{customerId}", dependencies=[Depends(get_current_user)])
 async def admin_get_user(
-    userId: str,
-    current_user: User = Depends(get_current_user),
+    customerId: str,
+    current_user: Customer = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    if current_user.role != "admin":
-        raise HTTPException(status_code=403, detail="Admin access required")
+    # if getattr(current_user, "role", None) != "admin":
+    #     raise HTTPException(status_code=403, detail="Admin access required")
 
-    stmt = select(User).filter(User.user_id == userId)
+    stmt = select(Customer).filter(Customer.customer_id == customerId)
     result = await db.execute(stmt)
     user = result.scalars().first()
     if not user:
@@ -247,25 +251,25 @@ async def admin_get_user(
     return user
 
 
-@profile_router.delete("/users/{userId}")
+@profile_router.delete("/users/{customerId}")
 async def admin_delete_user(
-    userId: str,
-    current_user: User = Depends(get_current_user),
+    customerId: str,
+    current_user: Customer = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    if current_user.role != "admin":
-        raise HTTPException(status_code=403, detail="Admin access required")
+    # if getattr(current_user, "role", None) != "admin":
+    #     raise HTTPException(status_code=403, detail="Admin access required")
 
-    stmt = select(User).filter(User.user_id == userId)
+    stmt = select(Customer).filter(Customer.customer_id == customerId)
     result = await db.execute(stmt)
     user = result.scalars().first()
 
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    user.is_active = False 
+    # user.is_active = False 
     await db.commit()
-    return {"message": f"User {userId} deactivated successfully"}
+    return {"message": f"User {customerId} deactivated successfully"}
 
 
 app.include_router(profile_router)
@@ -285,7 +289,6 @@ webhook_router = APIRouter(tags=["Webhooks"])
 @webhook_router.post("/webhooks/inbound-email")
 async def inbound_email_webhook(
     request: Request,
-    background_tasks: BackgroundTasks = None,
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -322,7 +325,7 @@ async def inbound_email_webhook(
         raise HTTPException(status_code=422, detail="Missing 'from' field")
 
     # 4. Find the user by from_email
-    stmt = select(User).filter(User.email == from_email)
+    stmt = select(Customer).filter(Customer.email == from_email)
     result = await db.execute(stmt)
     user = result.scalars().first()
 
@@ -345,9 +348,8 @@ async def inbound_email_webhook(
     db.add(new_complaint)
     await db.commit()
 
-    # 3. Trigger AI Routing in background
-    background_tasks.add_task(
-        process_complaint_routing,
+    # 3. Trigger AI Routing synchronously
+    await process_complaint_routing(
         complaint_id=new_complaint_id,
         complaint_text=text,
     )
@@ -367,7 +369,7 @@ async def process_complaint_routing(complaint_id: str, complaint_text: str):
     async with SessionLocal() as db:
         try:
             # Initialize required components
-            dataset_loader = DatasetLoader()
+            # dataset_loader = DatasetLoader()
             orchestrator = Orchestrator()
             await orchestrator.initialize()
             # await dataset_loader.load()
@@ -420,7 +422,7 @@ async def process_complaint_routing(complaint_id: str, complaint_text: str):
                     f"Successfully routed complaint {complaint_id} to {complaint.department_name}"
                 )
 
-                user_stmt = select(User).filter(
+                user_stmt = select(Customer).filter(
                     User.customer_id == complaint.customer_id
                 )
                 user_result = await db.execute(user_stmt)
@@ -443,7 +445,7 @@ async def process_complaint_routing(complaint_id: str, complaint_text: str):
 @app.post("/ai/chat", tags=["Agents"])
 async def ai_chat(
     payload: Dict[str, Any] = Body(...),
-    user: User = Depends(get_current_user),
+    user: Customer = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     try:
@@ -582,8 +584,7 @@ async def ai_chat(
 @app.post("/make_complaint", tags=["Agents"])
 async def make_complaint(
     query: ComplaintQuery,
-    background_tasks: BackgroundTasks,
-    user: User = Depends(get_current_user),
+    user: Customer = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     try:
@@ -621,46 +622,57 @@ async def make_complaint(
         )
 
         db.add(new_complaint)
+        await db.flush()
+        
+        complaint_request = {
+            "type": "complaint",
+            "department": "complaint",
+            "complaint_id": new_complaint_id,
+            "agent": "DispatcherAgent" 
+        }
+        
+        result1 = await orchestrator.handle_request(complaint_request)
+
+        # Update the complaint with the AI's routing decision
+        new_complaint.department_code = result1.get("department_code")
+        new_complaint.department_name = result1.get("department_name")
+        new_complaint.priority_level = result1.get("priority_level")
+        new_complaint.sentiment = result1.get("sentiment")
+
         await db.commit()
 
-        # Append the new complaint to complaints.csv for the DatasetLoader
+        # Map department to the proper representative email
+        department_emails = {
+            "TSU": "jofesdavid@gmail.com",
+            "COC": "dekpo231998@gmail.com",
+            "FRM": "ekpodavid120@gmail.com",
+            "DCS": "oshoridwanullah@gmail.com",
+            "AOD": "dekpo255@stu.ui.edu.ng",
+            "CLS": "businesskaoshi@gmail.com"
+        }
         
-        base_dir = Path(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-        csv_path = base_dir / "complaints.csv"
-        
-        with open(csv_path, mode="a", newline="", encoding="utf-8") as file:
-            writer = csv.writer(file)
-            writer.writerow([
-                new_complaint_id,
-                user.customer_id,
-                account.account_id,
-                new_complaint.linked_transaction_id or "",
-                new_complaint.linked_reference or "",
-                "",
-                "Pending AI Routing",
-                "",
-                "",
-                query.complaint_channel,
-                "",
-                new_complaint.complaint_timestamp.strftime("%Y-%m-%d %H:%M:%S"),
-                "",
-                "",
-                "",
-                "",
-                "open",
-                "0",
-                query.complaint_text
-            ])
+        dept_code = new_complaint.department_code or ""
+        target_email = department_emails.get(dept_code, "support@sentinelbank.com")
 
-        background_tasks.add_task(
-            process_complaint_routing,
-            complaint_id=new_complaint_id,
-            complaint_text=query.complaint_text,
+        from Backend.email_templates import get_complaint_confirmation_template
+        email_body = get_complaint_confirmation_template(
+            new_complaint_id, 
+            new_complaint.department_name or "General Support", 
+            new_complaint.priority_level or "Low"
         )
 
+        # Prepare the final response explicitly matching RoutingResponse schema + message
         return {
-            "message": "Complaint submitted successfully and is being routed.",
+            "message": "Complaint processed and routed successfully.",
             "complaint_id": new_complaint_id,
+            "department_code": result1.get("department_code"),
+            "department_name": result1.get("department_name"),
+            "priority_level": result1.get("priority_level"),
+            "sla_hours": result1.get("sla_hours"),
+            "routing_method": result1.get("routing_method"),
+            "keyword_matches": result1.get("keyword_matches"),
+            "confidence": result1.get("confidence"),
+            "reasoning": result1.get("reasoning")
         }
     except Exception as e:
         await db.rollback()
@@ -789,7 +801,7 @@ async def create_customer(
 @app.post("/make_transaction", tags=["Agents"])
 async def make_transaction(
     request: TransactionRequest,
-    user: User = Depends(get_current_user),
+    user: Customer = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     try:
@@ -812,8 +824,7 @@ async def make_transaction(
         txn_id = f"TXN-{uuid.uuid4().hex[:10].upper()}"
         safe_amount = Decimal(str(request.amount))
             
-        orchestrator = Orchestrator()
-        await orchestrator.initialize()
+
 
         payload = {
             "type": "transaction",
@@ -822,7 +833,13 @@ async def make_transaction(
             "agent": "SentinelAgent",
             "account_id": account.account_id,
             "amount": float(safe_amount),
-            "channel": request.channel
+            "channel": request.channel,
+            "device_id": request.device_id,
+            "merchant_name": request.merchant_name,
+            "narration": request.narration,
+            "counterparty_bank": request.counterparty_bank,
+            "transaction_type": request.transaction_type,
+            "currency": request.currency,
         }
 
         fraud_result = await orchestrator.handle_request(payload)
@@ -843,6 +860,7 @@ async def make_transaction(
             transaction_id=txn_id,
             transaction_reference_number=f"REF-{uuid.uuid4().hex[:10].upper()}",
             account_id=account.account_id,
+            customer_id=account.customer_id,
             channel=request.channel,
             device_id=request.device_id,
             counterparty_bank=request.counterparty_bank,
@@ -854,6 +872,7 @@ async def make_transaction(
             transaction_balance=new_balance if not is_pending else account.current_balance,
             transaction_status="pending" if is_pending else "completed",
             is_fraud_score=int(risk_score),
+            fraud_explainability_trace=fraud_result.get("policy_explanation") or fraud_result.get("reasoning") or "No explanation provided.",
             transaction_timestamp=datetime.now(),
         )
 
@@ -884,7 +903,7 @@ async def make_transaction(
 @app.post("/transactions/confirm", tags=["Agents"])
 async def confirm_transaction(
     request: TransactionConfirmRequest,
-    user: User = Depends(get_current_user),
+    user: Customer = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     try:
@@ -936,7 +955,7 @@ async def confirm_transaction(
 @app.post("/card_transaction", tags=["Agents"])
 async def card_transaction(
     request: TransactionRequest,
-    user: User = Depends(get_current_user),
+    user: Customer = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     try:
@@ -958,14 +977,35 @@ async def card_transaction(
         txn_id = f"TXN-{uuid.uuid4().hex[:10].upper()}"
         safe_amount = Decimal(str(request.amount))
             
-        # Hardcode as pending for demo to trigger biometric/password popup
+
+
+        payload = {
+            "type": "transaction",
+            "department": "fraud",
+            "transaction_id": txn_id,
+            "agent": "SentinelAgent",
+            "account_id": account.account_id,
+            "amount": float(safe_amount),
+            "channel": "pos", # Default card channel to enforce challenge policy
+            "device_id": request.device_id,
+            "merchant_name": request.merchant_name,
+            "narration": request.narration,
+            "counterparty_bank": request.counterparty_bank,
+            "transaction_type": "debit",
+            "currency": request.currency,
+        }
+
+        fraud_result = await orchestrator.handle_request(payload)
+
+        # Force card transactions to always require confirmation via popup
         is_pending = True
 
         transaction = Transaction(
             transaction_id=txn_id,
             transaction_reference_number=f"REF-{uuid.uuid4().hex[:10].upper()}",
             account_id=account.account_id,
-            channel="card",
+            customer_id=account.customer_id,
+            channel="pos",
             device_id=request.device_id,
             counterparty_bank=request.counterparty_bank,
             narration=request.narration,
@@ -975,7 +1015,8 @@ async def card_transaction(
             transaction_type=request.transaction_type,
             transaction_balance=account.current_balance, # Don't deduct yet
             transaction_status="pending",
-            is_fraud_score=0,
+            is_fraud_score=int(fraud_result.get("total_risk_score", 0)),
+            fraud_explainability_trace=fraud_result.get("policy_explanation") or fraud_result.get("reasoning") or "Mandatory card challenge override.",
             transaction_timestamp=datetime.now(),
         )
 
@@ -986,22 +1027,13 @@ async def card_transaction(
             "status": "PENDING_CONFIRMATION",
             "message": "Card transaction requires confirmation",
             "transaction_id": txn_id,
-            "fraud_analysis": {"total_risk_score": 0, "reasoning": "Standard card transaction security policy"}
+            "fraud_analysis": fraud_result
         }
     except Exception as e:
         await db.rollback()
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/faqs", tags=["Agents"])
-async def get_faqs():
-    try:
-        faq_path = os.path.join(os.path.dirname(__file__), "..", "app", "rag", "knowledge_base", "faqs", "FAQ-001.txt")
-        if not os.path.exists(faq_path):
-            raise HTTPException(status_code=404, detail="FAQ not found")
-            
-        with open(faq_path, "r", encoding="utf-8") as file:
-            content = file.read()
-            
         return {
             "status": "success",
             "content": content
@@ -1013,12 +1045,12 @@ async def get_faqs():
 
 @app.get("/trajectory/popup_recommendations", tags=["Agents"])
 async def get_trajectory_popup(
-    user: User = Depends(get_current_user),
+    user: Customer = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     try:
         # Force fetch the user from DB to ensure customer_id is mapped just in case the JWT middleware detached it
-        stmt = select(User).filter(User.email == user.email)
+        stmt = select(Customer).filter(Customer.email == user.email)
         res = await db.execute(stmt)
         active_user = res.scalars().first()
 
@@ -1086,84 +1118,15 @@ async def get_trajectory_popup(
 
 
 
-@app.post("/trajectory/email_recommendations", tags=["Agents"])
-async def post_trajectory_email(
-    user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    try:
-        # Force fetch the user from DB to ensure customer_id is mapped just in case the JWT middleware detached it
-        stmt = select(User).filter(User.email == user.email)
-        res = await db.execute(stmt)
-        active_user = res.scalars().first()
+# @app.post("/trajectory/email_recommendations", tags=["Agents"])
+# async def post_trajectory_email(
+# ... endpoint disabled to rely purely on frontend popups
 
-        customer_id = active_user.customer_id if active_user else user.customer_id
-        if not customer_id:
-            raise HTTPException(
-                status_code=400,
-                detail="Authenticated user is not linked to a customer profile.",
-            )
-
-        orchestrator = Orchestrator()
-        await orchestrator.initialize()
-
-        payload = {
-            "type": "recommendation",
-            "agent": "TrajectoryAgent",
-            "customer_id": customer_id
-        }
-        
-        recommendation_result = await orchestrator.handle_request(payload)
-
-        # If there's a primary recommendation, send it via email
-        primary_product = recommendation_result.get("primary_product")
-        if primary_product and primary_product != "None":
-            # Map products to department emails
-            department_emails = {
-                "Student Loan": "loans@sentinelbank.com",
-                "Car Loan": "loans@sentinelbank.com",
-                "Fixed Deposit": "investments@sentinelbank.com",
-                "Credit Card": "cards@sentinelbank.com"
-            }
-            target_email = department_emails.get(primary_product, "support@sentinelbank.com")
-            
-            # Format appealing HTML email
-            email_html = f"""
-            <h2>New Product Recommendation Lead</h2>
-            <p>Customer ID: <strong>{customer_id}</strong> is a strong candidate for <strong>{primary_product}</strong>.</p>
-            <p><strong>Sentinel AI Reasoning:</strong> {recommendation_result.get('reasoning', 'No reasoning provided.')}</p>
-            <p>Please reach out to the customer or queue their profile for campaign targeting.</p>
-            """
-
-            # Send the email to the specific department
-            await send_auth_email(
-                to_email=target_email,
-                subject=f"Sentinel Lead: {primary_product} for {customer_id}",
-                html_content=email_html,
-            )
-
-            return {
-                "status": "success",
-                "message": f"Recommendation email routed for {primary_product} successfully.",
-                "primary_product": primary_product,
-                "routed_to": target_email
-            }
-        else:
-            return {
-                "status": "success",
-                "message": "No specific product recommended to email at this time.",
-            }
-
-    except Exception as e:
-        import traceback
-
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/accounts", tags=["Accounts"], response_model=List[AccountResponse])
 async def list_accounts(
-    db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)
+    db: AsyncSession = Depends(get_db), user: Customer = Depends(get_current_user)
 ):
     stmt = select(Account).filter(Account.customer_id == user.customer_id)
     result = await db.execute(stmt)
@@ -1174,7 +1137,7 @@ async def list_accounts(
 async def get_account_details(
     accountNumber: str,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: Customer = Depends(get_current_user),
 ):
     stmt = select(Account).filter(
         Account.account_number == accountNumber, Account.customer_id == user.customer_id
@@ -1190,7 +1153,7 @@ async def get_account_details(
 async def get_account_balance(
     accountNumber: str,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: Customer = Depends(get_current_user),
 ):
     stmt = select(Account).filter(
         Account.account_number == accountNumber, Account.customer_id == user.customer_id
@@ -1209,7 +1172,7 @@ async def get_account_balance(
 async def get_account_status(
     accountNumber: str,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: Customer = Depends(get_current_user),
 ):
     stmt = select(Account).filter(
         Account.account_number == accountNumber, Account.customer_id == user.customer_id
@@ -1225,7 +1188,7 @@ async def get_account_status(
 async def freeze_account(
     accountNumber: str,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: Customer = Depends(get_current_user),
 ):
     stmt = select(Account).filter(
         Account.account_number == accountNumber, Account.customer_id == user.customer_id
@@ -1244,7 +1207,7 @@ async def freeze_account(
 async def activate_account(
     accountNumber: str,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: Customer = Depends(get_current_user),
 ):
     stmt = select(Account).filter(
         Account.account_number == accountNumber, Account.customer_id == user.customer_id
@@ -1264,7 +1227,7 @@ async def activate_account(
 
 @app.get("/transactions", tags=["Transactions"])
 async def list_transactions(
-    db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)
+    db: AsyncSession = Depends(get_db), user: Customer = Depends(get_current_user)
 ):
     # Find all accounts linked to the user's customer record
     acc_stmt = select(Account.account_id).filter(
@@ -1289,7 +1252,7 @@ async def list_transactions(
 async def get_transaction_details(
     transactionId: str,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: Customer = Depends(get_current_user),
 ):
     # Join with Account to verify ownership
     stmt = (
@@ -1311,7 +1274,7 @@ async def get_transaction_details(
 async def list_transactions_for_account(
     accountNumber: str,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: Customer = Depends(get_current_user),
 ):
     # Verify account ownership
     acc_stmt = select(Account).filter(
@@ -1339,7 +1302,7 @@ async def filter_transactions(
     max_amount: Optional[float] = None,
     transaction_type: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: Customer = Depends(get_current_user),
 ):
     # Find all accounts linked to the user's customer record
     acc_stmt = select(Account.account_id).filter(
@@ -1373,7 +1336,7 @@ async def filter_transactions(
 async def get_transaction_status(
     transactionId: str,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: Customer = Depends(get_current_user),
 ):
     stmt = (
         select(Transaction)
@@ -1400,7 +1363,7 @@ async def get_transaction_status(
 async def report_failed_transaction(
     request: ReportFailedRequest,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: Customer = Depends(get_current_user),
 ):
     stmt = (
         select(Transaction)
@@ -1427,7 +1390,7 @@ async def report_failed_transaction(
 async def internal_transfer(
     request: InternalTransferRequest,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: Customer = Depends(get_current_user),
 ):
     # Verify sender account belongs to user and is locked for update
     from_stmt = (
@@ -1538,6 +1501,7 @@ async def internal_transfer(
         transaction_id=f"TXN-{uuid.uuid4().hex[:10].upper()}",
         transaction_reference_number=f"REF-{uuid.uuid4().hex[:10].upper()}",
         account_id=from_account.account_id,
+        customer_id=from_account.customer_id,
         channel="in-app",
         counterparty_bank="Sentinel",
         narration=request.narration or "Internal Transfer",
@@ -1553,6 +1517,7 @@ async def internal_transfer(
         transaction_id=f"TXN-{uuid.uuid4().hex[:10].upper()}",
         transaction_reference_number=f"REF-{uuid.uuid4().hex[:10].upper()}",
         account_id=to_account.account_id,
+        customer_id=to_account.customer_id,
         channel="in-app",
         counterparty_bank="Sentinel",
         narration=request.narration or "Internal Transfer",
@@ -1574,6 +1539,100 @@ async def internal_transfer(
         "reference": debit_txn.transaction_reference_number,
     }
 
+
+@app.get("/faqs", tags=["Support"])
+async def get_faqs(prompt: Optional[str] = None):
+    """
+    Reads and parses the static FAQ-001.txt knowledge base file.
+    Returns structured JSON with sections, questions, and answers for the frontend UI.
+    """
+    base_dir = Path(__file__).resolve().parent.parent
+    faq_path = base_dir / "app" / "rag" / "knowledge_base" / "faqs" / "FAQ-001.txt"
+
+    if not faq_path.exists():
+        raise HTTPException(status_code=404, detail="FAQ file not found.")
+
+    with open(faq_path, "r", encoding="utf-8") as file:
+        lines = file.readlines()
+
+    faqs = []
+    current_category = "General"
+    current_q = None
+    current_a = []
+    in_answer = False
+
+    for line in lines:
+        stripped = line.strip()
+
+        # Check for Category/Section Header
+        if stripped.startswith("SECTION "):
+            current_category = stripped.split(":", 1)[-1].strip()
+            continue
+
+        # Check for Question
+        if stripped.startswith("Q") and ":" in stripped:
+            if current_q and current_a:
+                faqs.append({
+                    "category": current_category,
+                    "question": current_q,
+                    "answer": "\n".join(current_a).strip()
+                })
+            
+            # Extract new question
+            current_q = stripped.split(":", 1)[-1].strip()
+            current_a = []
+            in_answer = False
+            continue
+
+        # Check for Answer starting 
+        if stripped.startswith("A:"):
+            in_answer = True
+            current_a.append(stripped[2:].strip())
+            continue
+            
+        # Append continuing answer text
+        if in_answer and stripped and not stripped.startswith("──") and not stripped.startswith("=="):
+            current_a.append(stripped)
+
+    # Append the last Q/A pair
+    if current_q and current_a:
+        faqs.append({
+            "category": current_category,
+            "question": current_q,
+            "answer": "\n".join(current_a).strip()
+        })
+
+    if prompt:
+        prompt_lower = prompt.lower()
+        best_match = None
+        best_score = 0
+        prompt_words = set([w for w in prompt_lower.split() if len(w) > 3])
+
+        for faq in faqs:
+            q_lower = faq["question"].lower()
+            a_lower = faq["answer"].lower()
+            
+            score = 0
+            for word in prompt_words:
+                if word in q_lower:
+                    score += 3
+                if word in a_lower:
+                    score += 1
+
+            if score > best_score:
+                best_score = score
+                best_match = faq
+
+        threshold = 3 
+        if best_match and best_score >= threshold:
+            return {"answer": best_match["answer"], "question_matched": best_match["question"], "match_found": True}
+        else:
+            return {
+                "answer": "I couldn't find a specific answer to your question in our FAQs. Please contact our 24/7 customer care team for further assistance.",
+                "match_found": False
+            }
+
+    return {"faqs": faqs}
 
 if __name__ == "__main__":
     uvicorn.run(app, host="127.0.0.1", port=8080)

@@ -15,7 +15,7 @@ from sqlalchemy import select
 
 from Backend.database import get_db
 from Backend.middleware import get_current_user
-from Backend.models import AuditLog
+from Backend.models import Customer, AuditLog
 from Backend.schemas import AuditLogOut
 
 router = APIRouter(prefix="/audit", tags=["Audit"])
@@ -54,9 +54,9 @@ async def get_audit_logs(
     return result.scalars().all()
 
 
-@router.get("/user/{user_id}", response_model=list[AuditLogOut])
+@router.get("/user/{customer_id}", response_model=list[AuditLogOut])
 async def get_audit_logs_by_user(
-    user_id: str,
+    customer_id: str,
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
     db: AsyncSession = Depends(get_db),
@@ -66,8 +66,8 @@ async def get_audit_logs_by_user(
     result = await db.execute(
         select(AuditLog)
         .filter(
-            (AuditLog.actor_id == user_id)
-            | ((AuditLog.target_type == "user") & (AuditLog.target_id == user_id))
+            (AuditLog.actor_id == customer_id)
+            | ((AuditLog.target_type == "user") & (AuditLog.target_id == customer_id))
         )
         .order_by(AuditLog.created_at.desc())
         .offset(skip)

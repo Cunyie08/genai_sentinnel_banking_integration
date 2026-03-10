@@ -18,7 +18,7 @@ class UserLogin(BaseModel):
 
 class RegisterResponse(BaseModel):
     message: str
-    user_id: str
+    customer_id: str
 
 
 class Token(BaseModel):
@@ -31,8 +31,7 @@ class TokenData(BaseModel):
 
 
 class UserResponse(UserBase):
-    user_id: str
-    role: str
+    customer_id: str
 
     class Config:
         from_attributes = True
@@ -52,7 +51,7 @@ class OnboardingSubmission(BaseModel):
 
 class OnboardingResponse(BaseModel):
     id: str
-    user_id: str
+    customer_id: str
     answers: Dict[str, Any]
     derived_profile: Optional[Dict[str, Any]] = None
 
@@ -298,7 +297,7 @@ class AdminUserStatusUpdate(BaseModel):
 
 class TicketAssign(BaseModel):
     assigned_to: str = Field(
-        ..., description="user_id of the agent to assign the ticket to"
+        ..., description="customer_id of the agent to assign the ticket to"
     )
 
 

@@ -15,7 +15,7 @@ from datetime import datetime
 
 from Backend.database import get_db
 from Backend.middleware import get_current_user
-from Backend.models import Account, ServiceTransaction, Transaction
+from Backend.models import Customer, Account, ServiceTransaction, Transaction
 from Backend.schemas import (
     AirtimePurchaseRequest,
     DataPurchaseRequest,
@@ -115,7 +115,7 @@ async def purchase_airtime(
 
     txn = ServiceTransaction(
         service_tx_id=f"STX-{uuid.uuid4().hex[:12].upper()}",
-        user_id=user.user_id,
+        customer_id=user.customer_id,
         account_id=payload.account_id,
         service_type="airtime",
         provider=payload.provider,
@@ -153,7 +153,7 @@ async def purchase_data(
 
     txn = ServiceTransaction(
         service_tx_id=f"STX-{uuid.uuid4().hex[:12].upper()}",
-        user_id=user.user_id,
+        customer_id=user.customer_id,
         account_id=payload.account_id,
         service_type="data",
         provider=payload.provider,
@@ -198,7 +198,7 @@ async def pay_bill(
 
     txn = ServiceTransaction(
         service_tx_id=f"STX-{uuid.uuid4().hex[:12].upper()}",
-        user_id=user.user_id,
+        customer_id=user.customer_id,
         account_id=payload.account_id,
         service_type="bills",
         provider=payload.provider,
@@ -270,11 +270,11 @@ async def internal_transfer(
         src_acc.current_balance = float(src_acc.current_balance) - payload.amount
         dest_acc.current_balance = float(dest_acc.current_balance) + payload.amount
 
-        # Record Transaction for Sender
         sender_txn = Transaction(
             transaction_id=uuid.uuid4().hex,
             transaction_reference_number=f"TRF-OUT-{uuid.uuid4().hex[:10].upper()}",
             account_id=src_acc.account_id,
+            customer_id=src_acc.customer_id,
             channel="web",
             transaction_type="debit",
             amount=payload.amount,
@@ -284,11 +284,11 @@ async def internal_transfer(
             transaction_balance=src_acc.current_balance,
         )
 
-        # Record Transaction for Recipient
         receiver_txn = Transaction(
             transaction_id=uuid.uuid4().hex,
             transaction_reference_number=f"TRF-IN-{uuid.uuid4().hex[:10].upper()}",
             account_id=dest_acc.account_id,
+            customer_id=dest_acc.customer_id,
             channel="web",
             transaction_type="credit",
             amount=payload.amount,

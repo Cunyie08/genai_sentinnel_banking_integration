@@ -247,24 +247,16 @@ class DatasetLoader:
         df      = pd.read_csv(login_path)[["customer_id", "username", "password"]]
         records = df.to_dict(orient="records")
 
-        updated = 0
+        # Use bulk executemany style for performance and to avoid connection pool exhaustion
         async with self.engine.begin() as conn:
-            for row in records:
-                await conn.execute(
-                    text(
-                        "UPDATE customers "
-                        "SET username = :username, password = :password "
-                        "WHERE customer_id = :customer_id"
-                    ),
-                    {
-                        "username":    row["username"],
-                        "password":    row["password"],
-                        "customer_id": row["customer_id"],
-                    },
-                )
-                updated += 1
+            stmt = text(
+                "UPDATE customers "
+                "SET username = :username, password = :password "
+                "WHERE customer_id = :customer_id"
+            )
+            await conn.execute(stmt, records)
 
-        print(f"[Seeder] login patch: {updated:>8,} customers updated")
+        print(f"[Seeder] login patch: {len(records):>8,} customers updated")
 
 
 # CLI entry point
