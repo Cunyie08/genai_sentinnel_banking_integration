@@ -6,12 +6,14 @@ import joblib
 from sklearn.ensemble import RandomForestClassifier
 from app.ml.feature_engineering import FraudFeatureBuilder
 from app.data.dataset_loader import DatasetLoader
+from app.data.repository import BankRepository
 
 # Load transactions.csv into memory
-dataset_loader = DatasetLoader()
+repo = BankRepository()
+dataset_loader = DatasetLoader(repo)
 
 # Extract transactions from dataframe
-transactions = dataset_loader.transactions
+transactions = repo.dataset_loader.transactions
 
 # Convert timestamp column to datetime for proper sorting
 transactions["transaction_timestamp"] = pd.to_datetime(

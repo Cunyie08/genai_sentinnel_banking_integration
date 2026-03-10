@@ -7,6 +7,7 @@ from app.data.dataset_loader import DatasetLoader
 from app.ml.feature_engineering import FraudFeatureBuilder
 
 
+
 class MLScorer:
     """
     Loads trained fraud model and produces fraud probability.
