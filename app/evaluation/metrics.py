@@ -36,9 +36,9 @@ class Metrics:
 
     @staticmethod
     def evaluate_product_recommendation(result: Dict[str, Any]) -> Dict[str, float]:
+        val = result.get("policy_validation") or {}
         return {
             "eligible": 1.0 if result.get("is_eligible") else 0.0,
-            "policy_confidence": result.get("policy_validation", {}).get("confidence", 0.0),
+            "policy_confidence": val.get("confidence", 0.0),
         }
 
-    
