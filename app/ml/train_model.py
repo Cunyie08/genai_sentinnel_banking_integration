@@ -1,19 +1,32 @@
 # TRAIN FRAUD ML MODEL (Efficient + Behavioral-Aware)
 
 # Import all necssary libraries and directory
+import os
 import pandas as pd
 import joblib
 from sklearn.ensemble import RandomForestClassifier
 from app.ml.feature_engineering import FraudFeatureBuilder
 from app.data.dataset_loader import DatasetLoader
+from app.data.db_connections import get_engine, init_db
 from app.data.repository import BankRepository
 
 # Load transactions.csv into memory
-repo = BankRepository()
-dataset_loader = DatasetLoader(repo)
+_DATA_DIR = os.getenv(
+    "SENTINEL_DATA_DIR",
+    os.path.dirname(os.path.abspath(__file__))   # project root
+)
+_CSV_PATH = os.path.join(_DATA_DIR, "transactions.csv")
 
-# Extract transactions from dataframe
-transactions = repo.dataset_loader.transactions
+if not os.path.exists(_CSV_PATH):
+    raise FileNotFoundError(
+        f"transactions.csv not found at: {_CSV_PATH}\n"
+        f"Set SENTINEL_DATA_DIR env var to the folder containing your CSVs."
+    )
+
+print(f"[Train] Loading transactions from: {_CSV_PATH}")
+transactions = pd.read_csv(_CSV_PATH)
+print(f"[Train] Loaded {len(transactions):,} rows")
+
 
 # Convert timestamp column to datetime for proper sorting
 transactions["transaction_timestamp"] = pd.to_datetime(
@@ -28,7 +41,7 @@ transactions["transaction_timestamp"] = pd.to_datetime(
 # Sort cumulative features by chronological calculations
 transactions = transactions.sort_values(
     ["account_id", "transaction_timestamp"]
-)
+).reset_index(drop=True)
 
 # Use cumcount() for the no of prior transactions per account
 transactions["txn_count_so_far"] = (transactions.groupby("account_id").cumcount())
@@ -88,11 +101,19 @@ model = RandomForestClassifier(
     random_state=42        # Reproducibility
 )
 
+print("[Train] Fitting model...")
+model.fit(X, y)
+print("[Train] Model trained.")
+
 # Fit model
 model.fit(X, y)
 
 
 # Save trained model for inference inside SentinelAgent
-joblib.dump(model, "app/ml/model.pkl")
 
-print("Model trained and saved.")
+output_path = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "app", "ml", "model.pkl"
+)
+os.makedirs(os.path.dirname(output_path), exist_ok=True)
+joblib.dump(model, output_path)
+print(f"[Train] Model saved → {output_path}")
