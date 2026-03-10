@@ -1,75 +1,17 @@
 # This file contains the database abstraction layer
 from typing import Dict, Any
 from app.data.dataset_loader import DatasetLoader
-
-
-# class BankRepository:
-#     """
-#     Repository layer abstracting dataset access.
-#     Prevents agents from directly reading CSV files.
-#     """
-
-#     def __init__(self, dataset_loader):
-#         self.dataset_loader = dataset_loader
-
-#     # Dispatcher support
-#     def get_complaints(self, complaint_id: str): # returns a dictionary [str, Any] 
-
-#         complaint = self.dataset_loader.complaints[self.dataset_loader.complaints['complaint_id'] == complaint_id]
-
-#         if complaint.empty:
-#             raise ValueError(f"Complaint ID {complaint_id} not found")
-        
-#         return complaint.iloc[0].to_dict()
-
-#     # Sentinel Support
-#     def get_transactions(self, transaction_id: str):
-
-#         txn = self.dataset_loader.transactions[self.dataset_loader.transactions['transaction_id']== transaction_id]
-        
-#         if txn.empty:
-#             raise ValueError(f"Transaction ID {transaction_id} not found")
-
-#         return txn.iloc[0].to_dict()
-    
-#     def get_customer_profile(self, customer_id: str):  
-#         # Ensure string comparison
-#         customer = self.dataset_loader.customers[
-#             self.dataset_loader.customers["customer_id"].astype(str) == str(customer_id)
-#         ]
-
-#         if customer.empty:
-#             raise ValueError(f"Customer ID {customer_id} not found.")
-
-#         return customer.iloc[0].to_dict()
-
-#     def get_customer_transactions(self, customer_id: str):
-#         if self.dataset_loader.accounts.empty or self.dataset_loader.transactions.empty:
-#             import pandas as pd
-#             return pd.DataFrame()
-            
-#         customer_accounts = self.dataset_loader.accounts[
-#             self.dataset_loader.accounts["customer_id"].astype(str) == str(customer_id)
-#         ]["account_id"].tolist()
-
-#         return self.dataset_loader.transactions[
-#             self.dataset_loader.transactions["account_id"].isin(customer_accounts)
-#         ]
-
-
 import asyncio
 from typing import Optional
-
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
-
 from app.data.db_connections import get_engine, get_session_factory
 from Backend.models import Customer, Account, Transaction, Complaint
 
 
 # Repository
 
-class SentinelRepository:
+class BankRepository:
     """
     Async data access layer for all Sentinel Bank agents.
 
@@ -166,16 +108,16 @@ class SentinelRepository:
         needs for both VALIDATION and PROACTIVE recommendation modes.
 
         Signals computed:
-            Loan_signal_score   — latest value from most recent transaction
-            monthly_inflow      — total credit amount across all transactions
-            monthly_outflow     — total debit amount across all transactions
-            salary_detected     — True if any salary credit is flagged
-            uber_tracker        — count of Uber / Bolt / LagRide transactions
-            recommended_product — product assigned by data_generator
-            account_type        — type of primary (highest-balance) account
-            current_balance     — balance of primary account
-            transaction_count   — total number of transactions
-            recent_transactions — last 10 transactions (for agent context)
+            Loan_signal_score   - latest value from most recent transaction
+            monthly_inflow      - total credit amount across all transactions
+            monthly_outflow     - total debit amount across all transactions
+            salary_detected     - True if any salary credit is flagged
+            uber_tracker        - count of Uber / Bolt / LagRide transactions
+            recommended_product - product assigned by data_generator
+            account_type        - type of primary (highest-balance) account
+            current_balance     - balance of primary account
+            transaction_count   - total number of transactions
+            recent_transactions - last 10 transactions (for agent context)
 
         Used by: TrajectoryAgent (both VALIDATION and PROACTIVE modes)
 
@@ -395,3 +337,58 @@ class SentinelRepository:
 
         counts["healthy"] = all(v and v > 0 for v in counts.values())
         return counts
+
+
+
+# class BankRepository:
+#     """
+#     Repository layer abstracting dataset access.
+#     Prevents agents from directly reading CSV files.
+#     """
+
+#     def __init__(self, dataset_loader):
+#         self.dataset_loader = dataset_loader
+
+#     # Dispatcher support
+#     def get_complaints(self, complaint_id: str): # returns a dictionary [str, Any] 
+
+#         complaint = self.dataset_loader.complaints[self.dataset_loader.complaints['complaint_id'] == complaint_id]
+
+#         if complaint.empty:
+#             raise ValueError(f"Complaint ID {complaint_id} not found")
+        
+#         return complaint.iloc[0].to_dict()
+
+#     # Sentinel Support
+#     def get_transactions(self, transaction_id: str):
+
+#         txn = self.dataset_loader.transactions[self.dataset_loader.transactions['transaction_id']== transaction_id]
+        
+#         if txn.empty:
+#             raise ValueError(f"Transaction ID {transaction_id} not found")
+
+#         return txn.iloc[0].to_dict()
+    
+#     def get_customer_profile(self, customer_id: str):  
+#         # Ensure string comparison
+#         customer = self.dataset_loader.customers[
+#             self.dataset_loader.customers["customer_id"].astype(str) == str(customer_id)
+#         ]
+
+#         if customer.empty:
+#             raise ValueError(f"Customer ID {customer_id} not found.")
+
+#         return customer.iloc[0].to_dict()
+
+#     def get_customer_transactions(self, customer_id: str):
+#         if self.dataset_loader.accounts.empty or self.dataset_loader.transactions.empty:
+#             import pandas as pd
+#             return pd.DataFrame()
+            
+#         customer_accounts = self.dataset_loader.accounts[
+#             self.dataset_loader.accounts["customer_id"].astype(str) == str(customer_id)
+#         ]["account_id"].tolist()
+
+#         return self.dataset_loader.transactions[
+#             self.dataset_loader.transactions["account_id"].isin(customer_accounts)
+#         ]
