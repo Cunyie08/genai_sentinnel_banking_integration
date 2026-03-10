@@ -1,9 +1,7 @@
 # TRAJECTORY AGENT
 
 """
-app/agents/trajectory_agent.py
-------------------------------
-Sentinnel Bank — Trajectory Agent  (v2)
+Sentinnel Bank — Trajectory Agent
 
 Responsibilities:
     - Accept a customer_id from the Orchestrator

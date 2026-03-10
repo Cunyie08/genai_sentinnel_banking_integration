@@ -1,7 +1,5 @@
 """
-app/agents/dispatcher_agent.py
-===============================
-Sentinnel Bank — Dispatcher Agent  (v2)
+Sentinnel Bank — Dispatcher Agent
 
 Responsibilities:
     - Accept a complaint_id from the Orchestrator
@@ -75,8 +73,21 @@ class DispatcherAgent(BaseAgent):
         Process a complaint routing request end-to-end.
 
         Args:
-            payload: Must contain "complaint_id" key.
-                     e.g. {"complaint_id": "CMP-000001", ...}
+        Supports two input modes:
+
+        Mode A — Live frontend input (demo / production intake):
+            {
+                "complaint_text": "My card was charged twice at Shoprite",
+                "customer_id":    "optional-uuid",       # optional
+                "channel":        "web",                  # optional
+            }
+
+        Mode B — Database lookup (batch processing / orchestrator):
+            {
+                "complaint_id": "CMP-000001"
+            }
+
+        If both are provided, complaint_text takes priority (live mode).
 
         Returns:
             Structured routing result dict with department, priority,
@@ -86,39 +97,76 @@ class DispatcherAgent(BaseAgent):
             ValueError  if complaint_id is missing or complaint not found.
             Exception   re-raised to Orchestrator after logging.
         """
-        complaint_id: Optional[str] = payload.get("complaint_id")
+        complaint_id:   Optional[str] = payload.get("complaint_id")
+        complaint_text: Optional[str] = payload.get("complaint_text", "").strip()
+
+        # Determine input mode
+        is_live_input = bool(complaint_text)
 
         SystemLogger.log_event(
             event_type="dispatcher_started",
             message="DispatcherAgent started",
-            metadata={"complaint_id": complaint_id},
+            metadata={
+                "mode":         "live_input" if is_live_input else "db_lookup",
+                "complaint_id": complaint_id,
+                "has_text":     is_live_input,
+            },
         )
+
 
         try:
             # Validate input 
-            if not complaint_id:
-                raise ValueError("complaint_id is required for DispatcherAgent.")
+            if is_live_input:
+                # Mode A: frontend provided complaint text directly
+                # Build a synthetic complaint_record from the payload
+                complaint_record = {
+                    "complaint_text":    complaint_text,
+                    "customer_id":       payload.get("customer_id"),
+                    "complaint_channel": payload.get("channel", "web"),
+                    "sentiment":         None,   # not pre-computed for live input
+                    "linked_transaction": None,
+                    "department_code":   None,
+                    "priority_level":    None,
+                }
+                complaint_id = complaint_id or "LIVE"
 
-            # Fetch complaint from database (async)
-            complaint_record = await self.repo.get_complaint(complaint_id)
-
-            if complaint_record is None:
-                raise ValueError(
-                    f"Complaint '{complaint_id}' not found in database."
+                SystemLogger.log_event(
+                    event_type="live_complaint_received",
+                    message="Processing live complaint text from frontend",
+                    metadata={
+                        "customer_id": complaint_record["customer_id"],
+                        "channel":     complaint_record["complaint_channel"],
+                        "text_length": len(complaint_text),
+                    },
                 )
 
-            complaint_text = complaint_record["complaint_text"]
+            else:
+                # Mode B: fetch complaint record from database by ID
+                if not complaint_id:
+                    raise ValueError(
+                        "Provide either 'complaint_text' (live input) "
+                        "or 'complaint_id' (database lookup)."
+                    )
 
-            SystemLogger.log_event(
-                event_type="complaint_fetched",
-                message="Fetched complaint from database",
-                metadata={
-                    "complaint_id":   complaint_id,
-                    "department":     complaint_record.get("department_code"),
-                    "priority":       complaint_record.get("priority_level"),
-                    "sentiment":      complaint_record.get("sentiment"),
-                },
-            )
+                complaint_record = await self.repo.get_complaint(complaint_id)
+
+                if complaint_record is None:
+                    raise ValueError(
+                        f"Complaint '{complaint_id}' not found in database."
+                    )
+
+                complaint_text = complaint_record["complaint_text"]
+
+                SystemLogger.log_event(
+                    event_type="complaint_fetched",
+                    message="Fetched complaint from database",
+                    metadata={
+                        "complaint_id": complaint_id,
+                        "department":   complaint_record.get("department_code"),
+                        "priority":     complaint_record.get("priority_level"),
+                        "sentiment":    complaint_record.get("sentiment"),
+                    },
+                )
 
             # RAG-grounded routing 
             routing = await self.rag_engine.detect_complaint_category(complaint_text)
@@ -250,11 +298,13 @@ class DispatcherAgent(BaseAgent):
         llm_result:       RoutingResponse,
     ) -> Dict[str, Any]:
         """
-        Merge RAG decision + DB context + LLM explanation into the
+        Merge RAG decision + complaint context + LLM explanation into the
         final result dict.
 
-        RAG values are always authoritative — LLM cannot override
+        RAG values are always authoritative, LLM cannot override
         department_code, priority, SLA, or confidence.
+
+        Works identically for both live input and DB-fetched complaints.
         """
         result = llm_result.model_dump()
 
@@ -273,19 +323,19 @@ class DispatcherAgent(BaseAgent):
             f"Explanation:\n{result.get('reasoning', '')}"
         )
 
-        # Database context (for downstream audit trail)
-        result["complaint_id"]      = complaint_id
-        result["complaint_text"]    = complaint_record["complaint_text"]
-        result["sentiment"]         = complaint_record.get("sentiment")
-        result["complaint_channel"] = complaint_record.get("complaint_channel")
-        result["linked_transaction"]= complaint_record.get("linked_transaction")
-        result["agent"]             = "DispatcherAgent"
+        # Complaint context (identical fields regardless of input mode)
+        result["complaint_id"]       = complaint_id
+        result["complaint_text"]     = complaint_record["complaint_text"]
+        result["customer_id"]        = complaint_record.get("customer_id")
+        result["sentiment"]          = complaint_record.get("sentiment")
+        result["complaint_channel"]  = complaint_record.get("complaint_channel")
+        result["linked_transaction"] = complaint_record.get("linked_transaction")
+        result["agent"]              = "DispatcherAgent"
 
         return result
 
 
-# Standalone entry point (dev / debug only)
-
+# Standalone entry point
 
 async def _main() -> None:
     """

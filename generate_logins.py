@@ -1,6 +1,4 @@
 """
-Sentinel Bank — Login Credential Generator
-==========================================
 Generates username + password for every customer in customers.csv.
 
 Password formula:

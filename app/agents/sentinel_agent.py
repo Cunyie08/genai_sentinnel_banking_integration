@@ -1,6 +1,5 @@
 """
-app/agents/sentinel_agent.py
-Sentinnel Bank — Sentinnel Agent  (v2)
+Sentinnel Bank - Sentinnel Agent
 
 Responsibilities:
     - Accept a transaction_id from the Orchestrator
@@ -30,9 +29,7 @@ import logging
 import traceback
 import pandas as pd
 from typing import Any, Dict, Optional
-
 from openai import RateLimitError
-
 from app.agents.abstract_agent import BaseAgent
 from app.data.db_connections import get_engine, get_async_session
 from app.data.dataset_loader import DatasetLoader
@@ -59,13 +56,13 @@ class SentinelAgent(BaseAgent):
     Fraud risk assessment agent.
 
     Pipeline per request:
-        1. Fetch transaction from DB             (async repository)
-        2. Deterministic RAG fraud scoring       (policy engine)
-        3. ML anomaly probability                (MLScorer)
-        4. Risk tier escalation if ML > 0.85    (LOW → MEDIUM only)
-        5. Card-channel override                 (ATM/POS always challenge)
-        6. Historical context                    (last 5 txns via repository)
-        7. LLM audit explanation                 (OpenAI → Gemini fallback)
+        1. Resolve transaction (DB fetch OR live payload)
+        2. Deterministic RAG fraud scoring
+        3. ML anomaly probability
+        4. Risk tier escalation if ML > 0.85  (LOW to MEDIUM only)
+        5. Card-channel mandatory challenge override (ATM / POS)
+        6. Historical context  (last 5 txns via repository, skipped for live)
+        7. LLM audit explanation  (OpenAI → Gemini fallback)
         8. Assemble + return structured result
 
     Args:
@@ -89,7 +86,7 @@ class SentinelAgent(BaseAgent):
         self.gemini_llm = gemini_llm
 
         # MLScorer is stateless and cheap to build here
-        # It no longer receives dataset_loader — it uses the repository
+        # It uses the repository
         self.ml_scorer = MLScorer()
 
 
@@ -99,49 +96,90 @@ class SentinelAgent(BaseAgent):
         """
         Run the full fraud assessment pipeline for a transaction.
 
-        Args:
-            payload: Must contain "transaction_id".
-                     e.g. {"transaction_id": "some-uuid", ...}
+        Payload modes:
+            DB mode:
+                {"transaction_id": "some-uuid"}
+                → fetches transaction from database
+
+            Live mode (demo / real-time):
+                {
+                    "amount": 15000,
+                    "channel": "pos",
+                    "merchant_name": "Shoprite",
+                    "merchant_category": "retail",
+                    "transaction_status": "pending",
+                    "transaction_timestamp": "2025-01-01T12:00:00",
+                    "customer_id": "optional-for-history",
+                    ...
+                }
+                → scores the payload directly, no DB fetch
 
         Returns:
-            Structured fraud result dict with risk level, score,
-            action, ML probability, policy explanation, and LLM narrative.
-
-        Raises:
-            ValueError  if transaction_id is missing or record not found.
-            Exception   re-raised to Orchestrator after logging.
+            Structured fraud result dict.
         """
         transaction_id: Optional[str] = payload.get("transaction_id")
+        is_live = _is_live_payload(payload)
 
         SystemLogger.log_event(
             event_type="sentinel_started",
             message="SentinelAgent started",
-            metadata={"transaction_id": transaction_id},
+            metadata={
+                "transaction_id": transaction_id,
+                "mode": "live" if is_live else "db",
+            },
         )
 
         try:
             # Validate + fetch transaction from DB (async)
-            if not transaction_id:
-                raise ValueError("transaction_id is required for SentinelAgent.")
+            if is_live:
+                # Use payload directly — demo/real-time path
+                transaction = payload
+                transaction_id = transaction_id or "live"
+                all_transactions = []
 
-            transaction = await self.repo.get_transaction(transaction_id)
-
-            if transaction is None:
-                raise ValueError(
-                    f"Transaction '{transaction_id}' not found in database."
+                SystemLogger.log_event(
+                    event_type="live_transaction_received",
+                    message="Processing live transaction payload",
+                    metadata={
+                        "amount":   transaction.get("amount"),
+                        "channel":  transaction.get("channel"),
+                        "merchant": transaction.get("merchant_name"),
+                    },
                 )
 
-            SystemLogger.log_event(
-                event_type="transaction_fetched",
-                message="Transaction fetched from database",
-                metadata={
-                    "transaction_id": transaction_id,
-                    "amount":         transaction.get("amount"),
-                    "channel":        transaction.get("channel"),
-                    "merchant":       transaction.get("merchant_name"),
-                    "status":         transaction.get("transaction_status"),
-                },
-            )
+            else:
+                # Fetch from database — normal agent pipeline path
+                if not transaction_id:
+                    raise ValueError(
+                        "Payload must contain 'transaction_id' "
+                        "or a full live transaction (amount + channel)."
+                    )
+
+                transaction = await self.repo.get_transaction(transaction_id)
+
+                if transaction is None:
+                    raise ValueError(
+                        f"Transaction '{transaction_id}' not found in database."
+                    )
+
+                SystemLogger.log_event(
+                    event_type="transaction_fetched",
+                    message="Transaction fetched from database",
+                    metadata={
+                        "transaction_id": transaction_id,
+                        "amount":         transaction.get("amount"),
+                        "channel":        transaction.get("channel"),
+                        "merchant":       transaction.get("merchant_name"),
+                        "status":         transaction.get("transaction_status"),
+                    },
+                )
+
+                # Fetch history for context (DB mode only)
+                customer_id = transaction.get("customer_id")
+                all_transactions = (
+                    await self.repo.get_customer_transactions(customer_id)
+                    if customer_id else []
+                )
 
             # RAG deterministic fraud scoring
             fraud_result = await self.rag_engine.calculate_fraud_risk(transaction)
@@ -168,18 +206,18 @@ class SentinelAgent(BaseAgent):
                 "policy_explanation": fraud_result["policy_explanation"],
             }
 
-            # Fetch transaction history via repository
-            customer_id = transaction.get("customer_id")
-            if customer_id:
-                all_transactions = await self.repo.get_customer_transactions(customer_id)
-                # Ensure we represent history as DataFrame for the builder
-                history_df = pd.DataFrame(all_transactions) if all_transactions else pd.DataFrame()
-            else:
-                all_transactions = []
-                history_df = pd.DataFrame()
+            # # Fetch transaction history via repository
+            # customer_id = transaction.get("customer_id")
+            # if customer_id:
+            #     all_transactions = await self.repo.get_customer_transactions(customer_id)
+            #     # Ensure we represent history as DataFrame for the builder
+            #     history_df = pd.DataFrame(all_transactions) if all_transactions else pd.DataFrame()
+            # else:
+            #     all_transactions = []
+            #     history_df = pd.DataFrame()
 
             # ML anomaly probability
-            ml_probability = self.ml_scorer.predict(transaction, history_df)
+            ml_probability = self.ml_scorer.predict(transaction)
             rag_decision["ml_probability"] = round(ml_probability, 3)
 
             SystemLogger.log_event(
@@ -209,8 +247,11 @@ class SentinelAgent(BaseAgent):
                 )
 
             # Historical context formatting for LLM
-            history_context = self._format_history_context(customer_id, current_transaction_id=transaction_id, history_data=all_transactions)
-
+            history_context = _format_history_context(
+                customer_id=transaction.get("customer_id"),
+                current_transaction_id=transaction_id,
+                history_data=all_transactions,
+            )
             # LLM audit explanation 
             llm_input  = self._build_explanation_prompt(
                 transaction, rag_decision, history_context
@@ -231,83 +272,44 @@ class SentinelAgent(BaseAgent):
                 event_type="sentinel_completed",
                 message="SentinelAgent execution completed",
                 metadata={
-                    "risk_level":  result["risk_level"],
+                    "risk_level":   result["risk_level"],
                     "should_block": result["should_block"],
+                    "mode":         "live" if is_live else "db",
                 },
             )
 
             return result
 
-        except Exception as exc:
+        except Exception as e:
             SystemLogger.log_event(
                 event_type="sentinel_failed",
-                message=str(exc),
+                message=str(e),
                 metadata={
                     "transaction_id": transaction_id,
                     "trace":          traceback.format_exc(),
                 },
             )
-            raise
+            raise e
 
-
+    
     # Private helpers
-
-    def _format_history_context(
-        self,
-        customer_id:            Optional[str],
-        current_transaction_id: Optional[str],
-        history_data:           List[Dict[str, Any]]
-    ) -> str:
-        """
-        Format retrieved transactions as a context string for the LLM prompt.
-        """
-        if not customer_id:
-            return (
-                "No customer ID available — historical context unavailable."
-            )
-
-        # Exclude the current transaction
-        history = [
-            t for t in history_data
-            if t.get("transaction_id") != current_transaction_id
-        ][:5]
-
-        if not history:
-            return (
-                "No prior transaction history found for this customer. "
-                "IMPORTANT: Do not penalise this transaction solely due "
-                "to lack of history (cold-start customer)."
-            )
-
-        lines = ["Customer's Last 5 Transactions:"]
-        for t in history:
-            lines.append(
-                f"  • {t.get('transaction_timestamp')}  "
-                f"₦{t.get('amount', 0):,.2f}  "
-                f"via {t.get('channel')}  "
-                f"at {t.get('merchant_name')}  "
-                f"({t.get('transaction_status')})"
-            )
-
-        return "\n".join(lines)
 
     def _build_explanation_prompt(
         self,
-        transaction:   Dict[str, Any],
-        rag_decision:  Dict[str, Any],
+        transaction:     Dict[str, Any],
+        rag_decision:    Dict[str, Any],
         history_context: str,
     ) -> str:
-        """Build the LLM input for the fraud audit explanation."""
         return (
             f"Transaction Details:\n"
-            f"  ID          : {transaction.get('transaction_id')}\n"
+            f"  ID          : {transaction.get('transaction_id', 'live')}\n"
             f"  Amount      : ₦{transaction.get('amount', 0):,.2f}\n"
             f"  Channel     : {transaction.get('channel')}\n"
             f"  Merchant    : {transaction.get('merchant_name')} "
             f"({transaction.get('merchant_category')})\n"
             f"  Status      : {transaction.get('transaction_status')}\n"
             f"  Timestamp   : {transaction.get('transaction_timestamp')}\n"
-            f"  Fraud Flags : {transaction.get('fraud_explainability_trace')}\n\n"
+            f"  Fraud Flags : {transaction.get('fraud_explainability_trace', 'N/A')}\n\n"
             f"Risk Assessment:\n"
             f"  Risk Level  : {rag_decision['risk_level']}\n"
             f"  Total Score : {rag_decision['total_risk_score']}\n"
@@ -320,34 +322,27 @@ class SentinelAgent(BaseAgent):
         )
 
     async def _call_llm_with_fallback(self, user_input: str) -> FraudResponse:
-        """
-        Call OpenAI primary. On RateLimitError fall back to Gemini.
-        Returns a FraudResponse Pydantic object.
-        """
         if self.openai_llm:
             try:
-
                 result = await self.openai_llm.generate(
                     system_prompt=Sentinel_System_Prompt,
                     user_input=user_input,
                 )
-
                 if isinstance(result, FraudResponse):
                     return result
             except RateLimitError:
                 SystemLogger.log_event(
                     event_type="llm_fallback",
-                    message="OpenAI rate limit hit — falling back to Gemini",
+                    message="OpenAI rate limit — falling back to Gemini",
                 )
 
         result = await self.gemini_llm.generate(
             system_prompt=Sentinel_System_Prompt,
             user_input=user_input,
         )
-
         if isinstance(result, FraudResponse):
             return result
-        raise ValueError("LLM response is not a valid FraudResponse object")
+        raise ValueError("Neither LLM returned a valid FraudResponse")
 
     def _build_result(
         self,
@@ -356,12 +351,6 @@ class SentinelAgent(BaseAgent):
         rag_decision:   Dict[str, Any],
         llm_result:     FraudResponse,
     ) -> Dict[str, Any]:
-        """
-        Merge RAG decision + DB transaction context + LLM explanation.
-
-        RAG values are always authoritative — LLM cannot override
-        risk_level, score, should_block, or requires_challenge.
-        """
         result = llm_result.model_dump()
 
         # RAG + ML decisions are authoritative
@@ -393,6 +382,47 @@ class SentinelAgent(BaseAgent):
 
         return result
 
+# Module-level helpers (no self, also usable outside the class)
+
+def _is_live_payload(payload: Dict[str, Any]) -> bool:
+    """
+    Returns True if the payload is a full live transaction dict
+    (has amount + channel) rather than just a transaction_id pointer.
+    """
+    return "amount" in payload and "channel" in payload
+
+
+def _format_history_context(
+    customer_id:            Optional[str],
+    current_transaction_id: Optional[str],
+    history_data:           List[Dict[str, Any]],
+) -> str:
+    """Format last-5-transactions list into an LLM-readable context string."""
+    if not customer_id:
+        return "No customer ID available, historical context unavailable."
+
+    history = [
+        t for t in history_data
+        if t.get("transaction_id") != current_transaction_id
+    ][:5]
+
+    if not history:
+        return (
+            "No prior transaction history found for this customer. "
+            "IMPORTANT: Do not penalise this transaction solely due "
+            "to lack of history (cold-start customer)."
+        )
+
+    lines = ["Customer's Last 5 Transactions:"]
+    for t in history:
+        lines.append(
+            f"  • {t.get('transaction_timestamp')}  "
+            f"₦{t.get('amount', 0):,.2f}  "
+            f"via {t.get('channel')}  "
+            f"at {t.get('merchant_name')}  "
+            f"({t.get('transaction_status')})"
+        )
+    return "\n".join(lines)
 
 
 # Standalone entry point (dev / debug only)
@@ -405,6 +435,7 @@ async def _main() -> None:
     from openai import AsyncOpenAI
     from google import genai
     from sqlalchemy import select
+    from Backend.models import Transaction
 
     # Bootstrap infrastructure 
     engine = get_engine()
@@ -439,19 +470,37 @@ async def _main() -> None:
 
     # Fetch a real transaction_id from the database 
     async with get_async_session(engine) as session:
-        result = await session.execute(
+        row = await session.execute(
             select(Transaction.transaction_id).limit(1).offset(9)
         )
-        transaction_id = result.scalar()
+        transaction_id = row.scalar()
 
     print(f"[Dev] Testing with transaction_id: {transaction_id}")
 
     result = await agent.run({"transaction_id": transaction_id})
+ 
+    _print_result(result)
 
+    # Live mode (demo)
+    print("\n[Dev] Live mode — simulated demo transaction")
+    live_payload = {
+        "amount":               75000.00,
+        "channel":              "pos",
+        "merchant_name":        "Shoprite Lekki",
+        "merchant_category":    "retail",
+        "transaction_status":   "pending",
+        "transaction_timestamp": "2025-06-01T14:32:00",
+        "customer_id":          None,   # no history for demo
+    }
+    result = await agent.run(live_payload)
+    _print_result(result)
+
+
+def _print_result(result: Dict[str, Any]) -> None:
     print("\n=== SENTINEL OUTPUT ===")
     for k, v in result.items():
         if k != "policy_explanation":
-            print(f"  {k:<28}: {v}")
+            print(f"  {k:<30}: {v}")
     print(f"\n  policy_explanation:\n{result.get('policy_explanation', '')}")
 
 

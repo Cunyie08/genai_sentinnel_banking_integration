@@ -1,6 +1,4 @@
 """
-populate_customer_credentials.py
-=================================
 Reads the `customers_with_login.csv` file and backfills the `username`
 and `password` columns for each matching customer in the database based on name matching.
 """
