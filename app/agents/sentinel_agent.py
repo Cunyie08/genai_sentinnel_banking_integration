@@ -112,7 +112,7 @@ class SentinelAgent(BaseAgent):
                     "customer_id": "optional-for-history",
                     ...
                 }
-                → scores the payload directly, no DB fetch
+                -> scores the payload directly, no DB fetch
 
         Returns:
             Structured fraud result dict.
