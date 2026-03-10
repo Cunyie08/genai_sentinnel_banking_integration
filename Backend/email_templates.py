@@ -180,3 +180,125 @@ def get_complaint_confirmation_template(
     </body>
     </html>
     """
+
+def get_department_routing_template(complaint_id: str, complaint_text: str, department: str, priority: str) -> str:
+    """Template for sending the actual complaint text to the corresponding department."""
+    
+    # Simple color mapping for Priority
+    priority_color = "#2aa146"  # Low
+    if priority.lower() == "high":
+        priority_color = "#d92323"
+    elif priority.lower() == "critical":
+        priority_color = "#8b0000"
+    elif priority.lower() == "medium":
+        priority_color = "#f2a000"
+
+    footer = _get_footer()
+    
+    return f"""
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <style>
+            body {{
+                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                background-color: #f8fafc;
+                margin: 0;
+                padding: 0;
+                color: #2b3a4a;
+            }}
+            .container {{
+                max-width: 600px;
+                margin: 40px auto;
+                background-color: #ffffff;
+                border-radius: 8px;
+                overflow: hidden;
+                box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
+            }}
+            .header {{
+                background-color: #001F3F;
+                padding: 30px 20px;
+                text-align: center;
+                border-bottom: 4px solid #00E5FF;
+            }}
+            .header h1 {{
+                color: #ffffff;
+                margin: 0;
+                font-size: 24px;
+                letter-spacing: 1px;
+            }}
+            .content {{
+                padding: 40px 30px;
+            }}
+            .info-box {{
+                background-color: #f1f5f9;
+                border-radius: 6px;
+                padding: 20px;
+                margin: 25px 0;
+                border-left: 4px solid #001F3F;
+            }}
+            .info-item {{
+                margin-bottom: 12px;
+                font-size: 15px;
+            }}
+            .info-item:last-child {{
+                margin-bottom: 0;
+            }}
+            .info-label {{
+                font-weight: 600;
+                color: #475569;
+                display: inline-block;
+                width: 120px;
+            }}
+            .priority-tag {{
+                font-weight: 600;
+                color: {priority_color};
+                padding: 4px 10px;
+                border-radius: 20px;
+                background-color: {priority_color}15;
+                font-size: 13px;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+            }}
+            .complaint-text {{
+                background-color: #ffffff;
+                border: 1px solid #e2e8f0;
+                padding: 20px;
+                border-radius: 6px;
+                font-family: monospace;
+                font-size: 14px;
+                white-space: pre-wrap;
+                margin-top: 10px;
+            }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">
+                <h1>SENTINEL BANK</h1>
+            </div>
+            <div class="content">
+                <h2 style="text-align: center; color: #001F3F;">New Routed Complaint</h2>
+                <p>A new customer complaint has been routed to <strong>{department}</strong> by the Sentinel AI Dispatcher.</p>
+                
+                <div class="info-box">
+                    <div class="info-item">
+                        <span class="info-label">Ticket ID:</span>
+                        <span style="font-family: monospace; font-weight: bold;">{complaint_id}</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">Priority:</span>
+                        <span class="priority-tag">{priority}</span>
+                    </div>
+                </div>
+
+                <h3 style="color: #475569; margin-bottom: 5px;">Customer Complaint Text:</h3>
+                <div class="complaint-text">{complaint_text}</div>
+            </div>
+            {footer}
+        </div>
+    </body>
+    </html>
+    """

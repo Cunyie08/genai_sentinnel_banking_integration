@@ -217,7 +217,7 @@ class SentinelAgent(BaseAgent):
             #     history_df = pd.DataFrame()
 
             # ML anomaly probability
-            ml_probability = self.ml_scorer.predict(transaction, history_df)
+            ml_probability = self.ml_scorer.predict(transaction)
             rag_decision["ml_probability"] = round(ml_probability, 3)
 
             SystemLogger.log_event(

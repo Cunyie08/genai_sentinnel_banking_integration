@@ -6,6 +6,7 @@ from Backend.email_templates import (
     get_otp_template,
     get_password_reset_template,
     get_complaint_confirmation_template,
+    get_department_routing_template
 )
 
 load_dotenv()
@@ -42,6 +43,17 @@ async def send_complaint_confirmation_email(
     )
     return await send_auth_email(
         to_email, f"Sentinel Bank - Complaint Received ({complaint_id})", html_content
+    )
+
+async def send_department_routing_email(
+    to_email: str, complaint_id: str, complaint_text: str, department: str, priority: str
+):
+    """Sends the actual complaint text to the department representative."""
+    html_content = get_department_routing_template(
+        complaint_id, complaint_text, department, priority
+    )
+    return await send_auth_email(
+        to_email, f"New Routed Complaint: {department} ({complaint_id})", html_content
     )
 
 

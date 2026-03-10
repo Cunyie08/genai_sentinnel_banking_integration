@@ -44,7 +44,7 @@ from Backend.audit import router as audit_router
 from Backend.cards import router as cards_router
 from Backend.notifications import router as notifications_router
 from Backend.settings_routes import router as settings_router
-from Backend.email import send_complaint_confirmation_email
+from Backend.email import send_complaint_confirmation_email, send_department_routing_email
 from app.settings import RESEND_WEBHOOK_SECRET, OPENAI_API_KEY, GEMINI_API_KEY
 from Backend.schemas import (
     TransactionRequest,
@@ -87,7 +87,7 @@ async def lifespan(app: FastAPI):
     await engine.dispose()
 
 
-app = FastAPI(title="Sentinel Bank API", version="1.0.0", lifespan=lifespan)
+app = FastAPI(title="Sentinnel Bank API", version="1.0.0", lifespan=lifespan)
 app.include_router(auth_router)
 
 app.add_middleware(
@@ -584,6 +584,7 @@ async def ai_chat(
 @app.post("/make_complaint", tags=["Agents"])
 async def make_complaint(
     query: ComplaintQuery,
+    background_tasks: BackgroundTasks,
     user: Customer = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -628,6 +629,7 @@ async def make_complaint(
             "type": "complaint",
             "department": "complaint",
             "complaint_id": new_complaint_id,
+            "complaint_text": query.complaint_text,
             "agent": "DispatcherAgent" 
         }
         
@@ -654,11 +656,14 @@ async def make_complaint(
         dept_code = new_complaint.department_code or ""
         target_email = department_emails.get(dept_code, "support@sentinelbank.com")
 
-        from Backend.email_templates import get_complaint_confirmation_template
-        email_body = get_complaint_confirmation_template(
-            new_complaint_id, 
-            new_complaint.department_name or "General Support", 
-            new_complaint.priority_level or "Low"
+        # Dispatch the email asynchronously to the appropriate department
+        background_tasks.add_task(
+            send_department_routing_email,
+            to_email=target_email,
+            complaint_id=new_complaint_id,
+            complaint_text=query.complaint_text,
+            department=new_complaint.department_name or "General Support",
+            priority=new_complaint.priority_level or "Low"
         )
 
         # Prepare the final response explicitly matching RoutingResponse schema + message
@@ -826,6 +831,11 @@ async def make_transaction(
             
 
 
+        from sqlalchemy import func
+        txn_count_stmt = select(func.count()).select_from(Transaction).where(Transaction.account_id == account.account_id)
+        txn_count_result = await db.execute(txn_count_stmt)
+        txn_count_so_far = txn_count_result.scalar() or 0
+
         payload = {
             "type": "transaction",
             "department": "fraud",
@@ -840,6 +850,7 @@ async def make_transaction(
             "counterparty_bank": request.counterparty_bank,
             "transaction_type": request.transaction_type,
             "currency": request.currency,
+            "txn_count_so_far": txn_count_so_far,
         }
 
         fraud_result = await orchestrator.handle_request(payload)
@@ -1061,8 +1072,6 @@ async def get_trajectory_popup(
                 detail="Authenticated user is not linked to a customer profile.",
             )
 
-        orchestrator = Orchestrator()
-        await orchestrator.initialize()
 
         payload = {
             "type": "recommendation",

@@ -162,7 +162,7 @@ class BankRepository:
 
             # Behavioral signal aggregation 
 
-            loan_signal_score = transactions[0].Loan_signal_score
+            loan_signal_score = next((t.Loan_signal_score for t in transactions if t.Loan_signal_score is not None), 0.0)
 
             monthly_inflow  = sum(
                 t.amount for t in transactions if t.transaction_type == "credit"
@@ -178,7 +178,7 @@ class BankRepository:
                 1 for t in transactions if t.merchant_name in RIDE_MERCHANTS
             )
 
-            recommended_product = transactions[0].recommended_product
+            recommended_product = next((t.recommended_product for t in transactions if t.recommended_product is not None), None)
 
             # Snapshot to dict while session is still open
             recent_transactions = [t.to_dict() for t in transactions[:10]]
