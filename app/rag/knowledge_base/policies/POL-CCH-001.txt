@@ -5,7 +5,7 @@ Sentinel Bank Nigeria - CUSTOMER COMPLAINT HANDLING & ROUTING POLICY
 Document ID     : POL-CCH-001
 Version         : 2.1
 Effective Date  : January 2025
-Classification  : Internal Use Only — AI Agent Operational Reference
+Classification  : Internal Use Only -- AI Agent Operational Reference
 Review Cycle    : Quarterly
 
 =========================================================================
@@ -28,7 +28,7 @@ Key Objectives:
      on first contact, eliminating manual re-routing overhead.
   2. Enforce SLA compliance by department (exact hours in Section 2).
   3. Provide deterministic escalation paths for every complaint tier.
-  4. Enable full auditability — every routing decision must cite a
+  4. Enable full auditability -- every routing decision must cite a
      policy section and department code from this document.
 
 Complaint Intake Channels (complaint_channel field values):
@@ -44,57 +44,57 @@ SECTION 2: COMPLAINT CATEGORIES & DEPARTMENT ROUTING
 =========================================================================
 
 ROUTING DECISION LOGIC FOR DISPATCHER AGENT
-─────────────────────────────────────────────
+---------------------------------------------
 The Dispatcher Agent MUST evaluate fields in this exact priority order:
 
   STEP 1: If fraud_related == 1 OR is_fraud_score == 1
-          → Route to FRM (Priority: Critical). STOP. Do not evaluate further.
+          -> Route to FRM (Priority: Critical). STOP.
 
   STEP 2: If transaction channel (channel field) is "atm" or "pos"
           AND transaction_status is NOT "successful"
-          → Route to COC (Priority: High). STOP.
+          -> Route to COC (Priority: High). STOP.
 
   STEP 3: If transaction_status is "failed", "timeout", or "reversed"
           AND channel is "nibss_transfer", "mobile_app", "web", or "ussd"
-          → Route to TSU (Priority: High). STOP.
+          -> Route to TSU (Priority: High). STOP.
 
   STEP 4: If complaint text references app, login, USSD, crash, error
-          → Route to DCS (Priority: Medium).
+          -> Route to DCS (Priority: Medium).
 
   STEP 5: If complaint text references statement, balance, charges,
           account closure, BVN
-          → Route to AOD (Priority: Medium or Low).
+          -> Route to AOD (Priority: Medium or Low).
 
   STEP 6: If complaint text references loan, credit, repayment,
           disbursement, overdraft
-          → Route to CLS (Priority: Medium).
+          -> Route to CLS (Priority: Medium).
 
   DEFAULT: Route to TSU (Priority: Medium).
 
 
-──────────────────────────────────────────────────────────────────────────
+--------------------------------------------------------------------------
 2.1  TRANSACTION SERVICES UNIT (TSU)
-──────────────────────────────────────────────────────────────────────────
+--------------------------------------------------------------------------
 Department Code   : TSU
 Department Name   : Transaction Services Unit
-SLA (Hours)       : 48 hours  ← sla_hours_limit = 48 in dataset
+SLA (Hours)       : 48 hours  <- sla_hours_limit = 48 in dataset
 Team Size         : 12 specialists + 2 managers
 
 HANDLES:
   - Transfer debited from sender but credit not received by beneficiary
   - Duplicate debit transactions (same amount charged twice)
-  - Incorrect transaction amounts (wrong figure debited or credited)
+  - Incorrect transaction amounts
   - Failed interbank NIP/NIBSS transfers (status = "failed" or "timeout")
   - Reversed transactions that customer disputes (status = "reversed")
-  - Missing inbound credit (expected credit not posted)
+  - Missing inbound credit
   - Transaction narration or reference number discrepancies
 
 CHANNELS THAT PRIMARILY GENERATE TSU COMPLAINTS:
   nibss_transfer, mobile_app, ussd, web, branch
 
 PRIORITY ASSIGNMENT RULES FOR TSU:
-  - High   : Amount > ₦100,000 OR status = "failed"/"timeout"/"reversed"
-  - Medium : Amount ≤ ₦100,000 AND status = "successful" (dispute only)
+  - High   : Amount > 100,000 OR status = "failed"/"timeout"/"reversed"
+  - Medium : Amount <= 100,000 AND status = "successful" (dispute only)
   - Low    : Narration/reference query, no financial impact
 
 SLA TARGETS:
@@ -103,41 +103,32 @@ SLA TARGETS:
   - Reversal (if due)  : Within 24 hours of confirmation
   - Interbank disputes : Up to 14 days (NIBSS coordination required)
 
-ESCALATION TRIGGERS:
-  - Unresolved after 72 hours
-  - Amount exceeds ₦500,000
-  - Customer threatens regulatory complaint to CBN
-
 COMPLAINT TEXT KEYWORDS THAT TRIGGER TSU ROUTING:
   "transfer", "debit", "not received", "wrong amount",
   "reversal", "failed transaction", "duplicate charge",
   "credited", "debited twice", "NIBSS", "interbank"
 
 EXAMPLES:
-  ✓ "I transferred ₦100,000 to GTBank but recipient has not received it."
-  ✓ "My account was debited twice for the same payment."
-  ✓ "ATM did not dispense cash but my account shows debit." (SEE NOTE)
-  ✗ "My card was declined at POS." → Route to COC, not TSU.
-
-NOTE: ATM dispense error (channel = "atm") is COC. Pure interbank
-      transfer failure (channel = "nibss_transfer") is TSU.
+  Correct : "I transferred N100,000 to GTBank but recipient has not received it."
+  Correct : "My account was debited twice for the same payment."
+  Incorrect: "My card was declined at POS." -> Route to COC, not TSU.
 
 
-──────────────────────────────────────────────────────────────────────────
+--------------------------------------------------------------------------
 2.2  CARD OPERATIONS CENTER (COC)
-──────────────────────────────────────────────────────────────────────────
+--------------------------------------------------------------------------
 Department Code   : COC
 Department Name   : Card Operations Center
-SLA (Hours)       : 48 hours  ← sla_hours_limit = 48 in dataset
+SLA (Hours)       : 48 hours  <- sla_hours_limit = 48 in dataset
 Team Size         : 8 specialists + 1 manager
 
 HANDLES:
-  - Card declined at POS terminal or ATM (domestic or international)
+  - Card declined at POS terminal or ATM
   - Card retained/swallowed by ATM machine
-  - Unauthorized card transactions (card present fraud)
+  - Unauthorized card transactions
   - Lost or stolen card blocking requests
   - PIN reset requests and PIN lock issues
-  - Card activation failures (new card not working)
+  - Card activation failures
   - Chip or magnetic stripe malfunction
   - Contactless payment failures
   - Card replacement requests
@@ -146,200 +137,124 @@ CHANNELS THAT PRIMARILY GENERATE COC COMPLAINTS:
   atm, pos
 
 PRIORITY ASSIGNMENT RULES FOR COC:
-  - Critical : Fraud amount > ₦100,000 AND is_fraud_score = 1
-  - High     : ATM card swallowed, POS failure with debit confirmed,
-               card declined while account has sufficient funds
+  - Critical : Fraud amount > N100,000 AND is_fraud_score = 1
+  - High     : ATM card swallowed, POS failure with debit confirmed
   - Medium   : PIN reset, card replacement request
-  - Low      : Card information query, contactless setup
+  - Low      : Card information query
 
 SLA TARGETS:
   - Emergency card blocking   : Immediate (within 5 minutes)
-  - Card replacement          : 3–5 business days
-  - Dispute investigation     : 7–14 days
+  - Card replacement          : 3-5 business days
+  - Dispute investigation     : 7-14 days
   - PIN reset                 : Same day (within 4 hours)
-  - ATM card retrieval        : 24–48 hours
-
-ESCALATION TRIGGERS:
-  - Fraud amount exceeds ₦100,000
-  - Multiple unauthorized transactions on same card
-  - International card fraud (higher complexity)
 
 COMPLAINT TEXT KEYWORDS THAT TRIGGER COC ROUTING:
   "card", "PIN", "swallowed", "declined", "POS", "chip",
   "contactless", "ATM", "blocked card", "card stolen"
 
-EXAMPLES:
-  ✓ "My card was declined at Shoprite POS even though I have money."
-  ✓ "ATM swallowed my card at First Bank Ikeja branch."
-  ✓ "I see card transactions I did not make."
-  ✗ "My NIBSS transfer was declined." → Route to TSU, not COC.
 
-
-──────────────────────────────────────────────────────────────────────────
+--------------------------------------------------------------------------
 2.3  FRAUD RISK MANAGEMENT (FRM)
-──────────────────────────────────────────────────────────────────────────
+--------------------------------------------------------------------------
 Department Code   : FRM
 Department Name   : Fraud Risk Management
-SLA (Hours)       : 24 hours  ← sla_hours_limit = 24 in dataset
+SLA (Hours)       : 24 hours  <- sla_hours_limit = 24 in dataset
 Team Size         : 6 specialists + 1 senior manager
 Operating Hours   : 24/7 including public holidays
 
 HANDLES:
   - All transactions where is_fraud_score = 1
   - All complaints where fraud_related = 1
-  - Suspected unauthorized account access or login
-  - Account takeover (ATO) suspicion
+  - Suspected unauthorized account access
+  - Account takeover suspicion
   - SIM swap fraud concerns
   - Social engineering scam reports
-  - Phishing attempt reporting
-  - Suspicious beneficiary additions
-  - Multiple authentication failures followed by successful transfer
 
 ROUTING TRIGGER (DETERMINISTIC):
-  IF fraud_related == 1 OR is_fraud_score == 1 → ALWAYS FRM, ALWAYS Critical.
+  IF fraud_related == 1 OR is_fraud_score == 1 -> ALWAYS FRM, ALWAYS Critical.
   This overrides ALL other routing rules. No exceptions.
 
-PRIORITY ASSIGNMENT RULES FOR FRM:
-  - Critical : ALL fraud cases are automatically Critical priority.
-               No FRM complaint is ever assigned Medium or Low.
-
 SLA TARGETS:
-  - Account freeze capability    : Immediate (within 2 minutes)
-  - Investigation initiation     : Within 1 hour of report
-  - Customer notification        : Within 4 hours
-  - Preliminary assessment       : Within 24 hours ← matches sla_hours_limit
-  - Full investigation           : 14–21 days
-  - Police report filing         : Within 48 hours (amounts > ₦1,000,000)
-
-ESCALATION TRIGGERS:
-  - Fraud amount exceeds ₦1,000,000
-  - Suspected insider involvement
-  - Multiple customers affected by same fraud pattern
-  - Media or social media exposure
+  - Account freeze          : Immediate (within 2 minutes)
+  - Investigation start     : Within 1 hour
+  - Preliminary assessment  : Within 24 hours <- matches sla_hours_limit
+  - Full investigation      : 14-21 days
 
 COMPLAINT TEXT KEYWORDS THAT TRIGGER FRM ROUTING:
   "fraud", "hacked", "unauthorized", "scam", "phishing",
-  "suspicious", "someone used my account", "account takeover",
-  "I did not authorize", "compromised"
-
-EXAMPLES:
-  ✓ "Someone is making transactions on my account that I did not initiate."
-  ✓ "I got a call asking for my OTP and now money is missing."
-  ✓ "My account shows login from a location I have never been to."
-  ✗ "I was charged twice for the same grocery purchase." → Route to TSU.
+  "suspicious", "someone used my account", "I did not authorize",
+  "compromised"
 
 CRITICAL OPERATIONAL NOTE:
-  NEVER route fraud cases to the IT department or Digital Channels Support.
-  NEVER delay a fraud complaint for documentation — freeze the account
-  first, gather paperwork second. Every minute of delay costs the customer.
+  NEVER route fraud cases to DCS or TSU even if the fraud occurred on
+  a digital channel. NEVER delay a fraud complaint for documentation.
 
 
-──────────────────────────────────────────────────────────────────────────
+--------------------------------------------------------------------------
 2.4  DIGITAL CHANNELS SUPPORT (DCS)
-──────────────────────────────────────────────────────────────────────────
+--------------------------------------------------------------------------
 Department Code   : DCS
 Department Name   : Digital Channels Support
-SLA (Hours)       : 72 hours  ← sla_hours_limit = 72 in dataset
+SLA (Hours)       : 72 hours  <- sla_hours_limit = 72 in dataset
 Team Size         : 10 specialists + 2 managers
 
 HANDLES:
-  - Mobile app login failures (password or biometric errors)
+  - Mobile app login failures
   - Internet banking access problems
-  - USSD service errors (unresponsive *737# or related codes)
-  - App crashes, hangs, or freezes during transactions
-  - Feature malfunction within digital channels
-  - Biometric authentication failures (fingerprint or face ID)
-  - App update issues causing functionality regression
-  - Slow app performance or session timeouts
-  - QR code payment failures
-  - OTP delivery failures linked to app/platform (not SIM issues)
+  - USSD service errors
+  - App crashes, hangs, or freezes
+  - Biometric authentication failures
+  - OTP delivery failures linked to app/platform
 
 CHANNELS THAT PRIMARILY GENERATE DCS COMPLAINTS:
   mobile_app, ussd, web
 
-PRIORITY ASSIGNMENT RULES FOR DCS:
-  - High   : Issue prevents all digital transactions for customer
-  - Medium : App feature broken but alternatives exist
-  - Low    : Performance issue, minor UX bug
-
 SLA TARGETS:
-  - Level 1 troubleshooting  : Immediate (phone or in-app chat)
+  - Level 1 troubleshooting  : Immediate
   - Technical escalation     : Within 4 hours
-  - Resolution               : 24–72 hours ← matches sla_hours_limit
-
-ESCALATION TRIGGERS:
-  - Issue affects multiple customers simultaneously (systemic outage)
-  - Security vulnerability suspected in digital channel
-  - App completely unusable (no transactions possible)
+  - Resolution               : 24-72 hours <- matches sla_hours_limit
 
 COMPLAINT TEXT KEYWORDS THAT TRIGGER DCS ROUTING:
   "app", "login", "password", "internet banking", "USSD",
   "crash", "freeze", "error message", "biometric", "fingerprint",
-  "face ID", "mobile app", "not loading"
-
-EXAMPLES:
-  ✓ "I cannot log into the mobile app. It says wrong password."
-  ✓ "The app crashes every time I try to initiate a transfer."
-  ✓ "USSD *737# is not responding at all."
-  ✗ "My transfer failed after I logged in." → Route to TSU, not DCS.
+  "mobile app", "not loading"
 
 
-──────────────────────────────────────────────────────────────────────────
+--------------------------------------------------------------------------
 2.5  ACCOUNT OPERATIONS DEPARTMENT (AOD)
-──────────────────────────────────────────────────────────────────────────
+--------------------------------------------------------------------------
 Department Code   : AOD
 Department Name   : Account Operations Department
-SLA (Hours)       : 72 hours  ← sla_hours_limit = 72 in dataset
+SLA (Hours)       : 72 hours  <- sla_hours_limit = 72 in dataset
 Team Size         : 15 specialists + 3 managers
 
 HANDLES:
-  - Account statement requests (any date range)
+  - Account statement requests
   - Account balance discrepancy inquiries
   - Account closure requests
-  - Service charge disputes (maintenance fees, SMS fees)
-  - Account type upgrade or downgrade requests
-  - Name or address update issues
-  - BVN linking or update issues
-  - NIN linking requests
+  - Service charge disputes
+  - BVN and NIN linking or update issues
   - Dormant account reactivation
   - Account freeze (non-fraud related)
-  - Cheque-related issues
-
-PRIORITY ASSIGNMENT RULES FOR AOD:
-  - High   : Balance discrepancy > ₦100,000, regulatory compliance issue
-  - Medium : Account modification, BVN/NIN update
-  - Low    : Statement request, service charge query, general account info
 
 SLA TARGETS:
   - Statement generation      : Within 24 hours
-  - Balance inquiry           : Immediate to 4 hours
-  - Account modification      : 2–3 business days
-  - Account closure           : 5–7 business days
-  - BVN/NIN updates           : 24–48 hours
-
-ESCALATION TRIGGERS:
-  - Regulatory compliance issue
-  - High-value customer (private banking tier)
-  - Legal or court-mandated account action
+  - Account modification      : 2-3 business days
+  - Account closure           : 5-7 business days
+  - BVN/NIN updates           : 24-48 hours
 
 COMPLAINT TEXT KEYWORDS THAT TRIGGER AOD ROUTING:
   "statement", "balance", "close account", "charges",
   "upgrade", "update details", "BVN", "NIN", "dormant",
   "maintenance fee", "account freeze"
 
-EXAMPLES:
-  ✓ "I need a bank statement for the last 6 months for a visa application."
-  ✓ "Why am I being charged a monthly maintenance fee?"
-  ✓ "I want to close my savings account."
-  ✗ "I want to check if my interbank transfer was received." → TSU.
 
-
-──────────────────────────────────────────────────────────────────────────
+--------------------------------------------------------------------------
 2.6  CREDIT & LOAN SERVICES (CLS)
-──────────────────────────────────────────────────────────────────────────
+--------------------------------------------------------------------------
 Department Code   : CLS
 Department Name   : Credit & Loan Services
-SLA (Hours)       : 96 hours  ← sla_hours_limit = 96 in dataset
+SLA (Hours)       : 96 hours  <- sla_hours_limit = 96 in dataset
 Team Size         : 6 specialists + 1 manager
 
 HANDLES:
@@ -350,96 +265,46 @@ HANDLES:
   - Loan restructuring requests
   - Early repayment and settlement queries
   - Loan documentation problems
-  - Overdraft facility queries and disputes
-
-PRIORITY ASSIGNMENT RULES FOR CLS:
-  - High   : Loan amount > ₦5,000,000, customer threatens default
-  - Medium : Standard loan queries, repayment schedule issues
-  - Low    : Information requests about loan products
+  - All five loan/investment product types:
+    Student Loan, Car Loan, Investment Plan, Trust Fund, Personal Loan
 
 SLA TARGETS:
   - Query response             : Within 48 hours
-  - Disbursement issue         : 3–5 business days
-  - Credit review              : 7–14 days
-  - Restructuring decision     : 14–21 days ← matches sla_hours_limit = 96h for first contact
+  - Disbursement issue         : 3-5 business days
+  - Credit review              : 7-14 days
+  - Restructuring decision     : 14-21 days
 
 COMPLAINT TEXT KEYWORDS THAT TRIGGER CLS ROUTING:
   "loan", "credit", "disbursement", "interest", "repayment",
-  "overdraft", "restructure", "settlement", "installment"
-
-EXAMPLES:
-  ✓ "My loan was approved but money has not been disbursed."
-  ✓ "The interest on my car loan seems higher than agreed."
-  ✓ "I want to pay off my personal loan early."
-  ✗ "My salary credit is missing." → Route to TSU, not CLS.
+  "overdraft", "restructure", "settlement", "installment",
+  "student loan", "car loan", "trust fund", "investment plan"
 
 
 =========================================================================
 SECTION 3: COMPLAINT PRIORITY CLASSIFICATION
 =========================================================================
 
-PRIORITY MATRIX — EXACT FIELD VALUES USED IN DATASET:
+  Critical : fraud_related = 1 OR is_fraud_score = 1 (always)
+             Response: IMMEDIATE (within 5 minutes)
 
-┌──────────┬──────────────────────────────────────────────────────────┐
-│ Priority │ Criteria                                                 │
-├──────────┼──────────────────────────────────────────────────────────┤
-│ Critical │ - fraud_related = 1 OR is_fraud_score = 1 (always)      │
-│          │ - Account access fully blocked (cannot transact)         │
-│          │ - Large unauthorized transfer > ₦500,000                 │
-│          │ - Suspected account takeover (ATO)                       │
-│          │ - SIM swap with simultaneous high-value transfer         │
-│          │ Response: IMMEDIATE (within 5 minutes)                   │
-├──────────┼──────────────────────────────────────────────────────────┤
-│ High     │ - ATM card retention (channel = "atm")                   │
-│          │ - Failed high-value transaction (₦100,000–₦500,000)      │
-│          │ - Repeated service failure (same issue 3+ times)         │
-│          │ - Corporate/business account issue                       │
-│          │ - International transaction problems                     │
-│          │ Response: Within 2 hours                                 │
-├──────────┼──────────────────────────────────────────────────────────┤
-│ Medium   │ - Standard transaction dispute < ₦100,000                │
-│          │ - App technical issue (non-critical)                     │
-│          │ - Service charge query                                   │
-│          │ - Statement request                                      │
-│          │ - General card issue (non-fraud)                         │
-│          │ Response: Within 4 hours                                 │
-├──────────┼──────────────────────────────────────────────────────────┤
-│ Low      │ - General inquiries (no financial impact)                │
-│          │ - Product information requests                           │
-│          │ - Non-urgent statement requests                          │
-│          │ - Educational queries                                    │
-│          │ Response: Within 24 hours                                │
-└──────────┴──────────────────────────────────────────────────────────┘
+  High     : ATM card retention, failed high-value transaction
+             Response: Within 2 hours
+
+  Medium   : Standard transaction dispute, app technical issue
+             Response: Within 4 hours
+
+  Low      : General inquiries, product information requests
+             Response: Within 24 hours
 
 
 =========================================================================
 SECTION 4: ESCALATION MATRIX
 =========================================================================
 
-LEVEL 1 — First Contact Resolution (FCR)
-  Handler    : Customer Service Representative (CSR) or AI Agent
-  Target     : 70% of complaints resolved at this level
-  Trigger Up : Cannot resolve within SLA OR requires specialist access
-
-LEVEL 2 — Specialist Escalation
-  Handler    : Departmental specialist (subject matter expert)
-  Target     : 25% of complaints escalate here
-  Trigger    : Level 1 SLA breached (sla_breach_flag = 1) OR complexity
-               requires backend system access OR high-value customer
-  Trigger Up : Unresolved after 48 hours OR customer escalation request
-
-LEVEL 3 — Management Escalation
-  Handler    : Department manager or team lead
-  Target     : ~4% of complaints escalate here
-  Trigger    : 7 days unresolved OR legal threat OR private banking client
-               OR media attention OR customer complaint to CBN
-  Trigger Up : 14 days unresolved OR regulatory involvement
-
-LEVEL 4 — Executive Escalation
-  Handler    : Executive Committee (C-level)
-  Target     : < 1% of complaints reach this level
-  Trigger    : CBN formal inquiry, systemic failure, board-level risk,
-               insider fraud suspicion, viral media damage
+  Level 1 : CSR or AI Agent (70% FCR target)
+  Level 2 : Specialist (sla_breach_flag = 1 or complexity)
+  Level 3 : Department Manager (7 days unresolved or legal threat)
+  Level 4 : Executive Committee (<1% of complaints)
 
 
 =========================================================================
@@ -447,47 +312,38 @@ SECTION 5: PROHIBITED ACTIONS
 =========================================================================
 
 1. NEVER route fraud_related=1 complaints to any department other than FRM.
-2. NEVER delay account freeze when fraud is suspected — act first, document second.
-3. NEVER promise resolution within a timeframe shorter than the SLA hours in Section 2.
-4. NEVER share customer PII via WhatsApp, personal email, or unencrypted SMS.
-5. NEVER close a complaint ticket without customer confirmation of resolution.
-6. NEVER route based on the intake channel — route based on issue type only.
-7. NEVER route an FRM complaint to DCS or TSU even if the fraud occurred on a
-   digital channel or during a failed transfer.
+2. NEVER delay account freeze when fraud is suspected.
+3. NEVER promise resolution within less than the SLA hours in Section 2.
+4. NEVER share customer PII via unencrypted channels.
+5. NEVER close a ticket without customer confirmation of resolution.
+6. NEVER route based on intake channel -- route based on issue type only.
 
 
 =========================================================================
 SECTION 6: DOCUMENTATION REQUIREMENTS
 =========================================================================
 
-MANDATORY FIELDS (all must be populated before ticket routing):
-
-  complaint_id              : System-generated (format: CMP-XXXXXX)
-  customer_id               : Account or customer UUID from system
-  linked_transaction_id     : UUID from transactions table (if applicable)
-  linked_reference          : transaction_reference_number (if applicable)
-  department_code           : TSU | COC | FRM | DCS | AOD | CLS
-  department_name           : Full name matching department_code
-  priority_level            : Critical | High | Medium | Low
-  sentiment                 : angry | neutral | calm
-  complaint_channel         : call_center | mobile_app | email | branch | social_media
-  assigned_agent_id         : Agent ID from department roster
-  complaint_timestamp       : ISO datetime of complaint receipt
-  sla_hours_limit           : Exact SLA hours from Section 2 per department
-  sla_breach_flag           : 1 if resolution_time_hours > sla_hours_limit; else 0
-  fraud_related             : 1 if is_fraud_score = 1; else 0
-  complaint_text            : Full verbatim customer complaint text
-  complaint_status          : open | resolved | escalated
+  complaint_id          : System-generated (format: CMP-XXXXXX)
+  customer_id           : Account or customer UUID
+  linked_transaction_id : UUID from transactions table (if applicable)
+  department_code       : TSU | COC | FRM | DCS | AOD | CLS
+  priority_level        : Critical | High | Medium | Low
+  sentiment             : angry | neutral | calm
+  complaint_channel     : call_center | mobile_app | email | branch | social_media
+  sla_hours_limit       : Exact SLA hours from Section 2 per department
+  sla_breach_flag       : 1 if resolution_time_hours > sla_hours_limit; else 0
+  fraud_related         : 1 if is_fraud_score = 1; else 0
+  complaint_status      : open | resolved | escalated
 
 
 =========================================================================
-SECTION 7: POLICY OWNERSHIP & GOVERNANCE
+DOCUMENT CONTROL
 =========================================================================
 
 Policy Owner    : Head of Customer Experience
 Approver        : Chief Operations Officer (COO)
 Review Cycle    : Quarterly
-Last Updated    : February 2026
+Last Updated    : March 2026
 Contact         : customer.experience@sentinelbank.ng | Ext. 5000
 
 

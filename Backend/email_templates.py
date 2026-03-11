@@ -277,7 +277,7 @@ def get_department_routing_template(complaint_id: str, complaint_text: str, depa
     <body>
         <div class="container">
             <div class="header">
-                <h1>SENTINEL BANK</h1>
+                <h1>SENTINNEL BANKING</h1>
             </div>
             <div class="content">
                 <h2 style="text-align: center; color: #001F3F;">New Routed Complaint</h2>

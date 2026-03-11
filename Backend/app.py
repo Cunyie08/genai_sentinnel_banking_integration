@@ -441,38 +441,69 @@ async def process_complaint_routing(complaint_id: str, complaint_text: str):
         except Exception as e:
             print(f"CRITICAL AI ROUTING FAILURE for {complaint_id}: {e}")
 
+class AIChatRequest(BaseModel):
+    user_prompt: str
+
+class IntentResponse(BaseModel):
+    intent: str
+
+class ChatBotResponse(BaseModel):
+    text: str
+
 
 @app.post("/ai/chat", tags=["Agents"])
 async def ai_chat(
-    payload: Dict[str, Any] = Body(...),
+    payload: AIChatRequest,
     user: Customer = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     try:
-        user_message = payload.get("message", "")
+        user_message = payload.user_prompt
         if not user_message:
-            raise HTTPException(status_code=400, detail="Missing message")
+            raise HTTPException(status_code=400, detail="Missing user_prompt")
 
         # 1. Initialize Infrastructure
         orchestrator = Orchestrator()
         await orchestrator.initialize()
         
-        # 2. Intent Classification using Gemini
-        intent_llm = LLMClient(
-            client=genai.Client(api_key=GEMINI_API_KEY),
-            model_name="gemini-2.5-flash",
-            response_schema=dict,
-        )
-
+        # 2. Intent Classification using OpenAI with Gemini Fallback
         intent_prompt = f"""
         Classify the user's intent into one of: 'fraud_check', 'complaint_routing', 'product_recommendation', or 'general_query'.
         User Message: "{user_message}"
         Return JSON with key "intent".
         """
-        intent_res = await intent_llm.generate(
-            "Intent Classification System", intent_prompt
-        )
-        intent = intent_res.get("intent", "general_query")
+        
+        try:
+            intent_llm = LLMClient(
+                client=AsyncOpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None,
+                model_name="gpt-4o",
+                response_schema=IntentResponse,
+            )
+            intent_res = await intent_llm.generate(
+                "Intent Classification System", intent_prompt
+            )
+        except Exception:
+            intent_res = None
+            
+        if not intent_res:
+            try:
+                intent_llm = LLMClient(
+                    client=genai.Client(api_key=GEMINI_API_KEY),
+                    model_name="gemini-2.0-flash",
+                    response_schema=IntentResponse,
+                )
+                intent_res = await intent_llm.generate(
+                    "Intent Classification System", intent_prompt
+                )
+            except Exception as e:
+                logger.error(f"Fallback Intent Classification failed: {e}")
+
+        if isinstance(intent_res, dict):
+            intent = intent_res.get("intent", "general_query")
+        elif hasattr(intent_res, "intent"):
+            intent = getattr(intent_res, "intent", "general_query")
+        else:
+            intent = "general_query"
 
         bot_text = "I'm here to help you with your banking needs."
 
@@ -544,24 +575,63 @@ async def ai_chat(
 
         else:
             # General query handling
+            faq_path = Path(__file__).parent.parent / "app" / "rag" / "knowledge_base" / "faqs" / "FAQ-001.txt"
+            faq_content = ""
+            if faq_path.exists():
+                with open(faq_path, "r", encoding="utf-8") as f:
+                    faq_content = f.read()
+
             prompt = f"""
             You are 'Sentinel AI', the internal banking chatbot for Sentinel Bank.
             User: {user.email} (Customer ID: {user.customer_id})
             
-            Context: You have access to Sentinel (Fraud), Dispatcher (Support), and Trajectory (Loans/Products) agents.
-            If the user asks about these specific things, relate your answer to being their concierge.
+            Here are the officially approved FAQs:
+            ---
+            {faq_content}
+            ---
             
+            INSTRUCTIONS:
+            1. You must answer the user's question using ONLY the provided FAQs.
+            2. If the user's question or prompt is not similar to any of the FAQs, or cannot be fully answered using the FAQs, you MUST output EXACTLY:
+            "Please refer to Customer Service"
+            Do not output any other text or explanation.
+
             User's Message: {user_message}
             """
-            response = await intent_llm.generate("Sentinel AI Persona", prompt)
-            bot_text = response.get(
-                "text",
-                (
-                    response
-                    if isinstance(response, str)
-                    else "I'm here to assist with your banking."
-                ),
-            )
+            
+            try:
+                chat_llm = LLMClient(
+                    client=AsyncOpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None,
+                    model_name="gpt-4o",
+                    response_schema=ChatBotResponse,
+                )
+                response = await chat_llm.generate("Sentinel AI Persona", prompt)
+            except Exception:
+                response = None
+                
+            if not response:
+                try:
+                    chat_llm = LLMClient(
+                        client=genai.Client(api_key=GEMINI_API_KEY),
+                        model_name="gemini-2.0-flash",
+                        response_schema=ChatBotResponse,
+                    )
+                    response = await chat_llm.generate("Sentinel AI Persona", prompt)
+                except Exception as e:
+                    logger.error(f"Fallback Chatbot failed: {e}")
+                    response = None
+            
+            
+            if isinstance(response, dict):
+                bot_text = response.get("text", "Please refer to Customer Service")
+            elif hasattr(response, "text"):
+                bot_text = getattr(response, "text", "Please refer to Customer Service")
+            else:
+                bot_text = str(response) if response else "Please refer to Customer Service"
+
+            # Enforcing strict adherence if LLM returns a variation
+            if "Please refer to Customer Service" in bot_text:
+                bot_text = "Please refer to Customer Service"
 
         return {
             "id": uuid.uuid4().hex,
@@ -571,13 +641,17 @@ async def ai_chat(
             "time": datetime.now().strftime("%I:%M %p"),
         }
 
+    except HTTPException as e:
+        raise e
     except Exception as e:
+        import traceback
         logger.error(f"Chat error: {e}")
+        logger.error(traceback.format_exc())
         return {
             "id": uuid.uuid4().hex,
             "sender": "ai",
             "type": "text",
-            "text": "I'm having a bit of trouble accessing my specialized banking agents right now. Please try again in a moment.",
+            "text": f"Error: {str(e)}",
             "time": datetime.now().strftime("%I:%M %p"),
         }
 

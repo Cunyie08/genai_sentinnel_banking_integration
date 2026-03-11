@@ -3,7 +3,7 @@ Sentinel Bank Nigeria - FRAUD DETECTION & PREVENTION GUIDELINES
 =========================================================================
 
 Document Code       : FRM-001
-Classification      : CONFIDENTIAL — AI Agent Operational Reference
+Classification      : CONFIDENTIAL -- AI Agent Operational Reference
 Version             : 4.0
 Effective Date      : January 2026
 Review Frequency    : Monthly
@@ -16,81 +16,48 @@ Emergency Contact   : fraud-desk@sentinelbank.ng (Active 24/7)
 SECTION 1: FRAUD EXPLAINABILITY TRACE FLAGS
 =========================================================================
 
-CRITICAL ALIGNMENT NOTE FOR SENTINEL AGENT:
 The fraud_explainability_trace field in transactions.csv contains a
-comma-separated list of flags from the set below. The field contains
-"normal_pattern" when no fraud is detected. The Sentinel Agent MUST
-parse this field and map each flag to its risk weight using this section.
+comma-separated list of flags. The field contains "normal_pattern" when
+no fraud is detected. The Sentinel Agent MUST parse this field and map
+each flag to its risk weight using this section.
 
-Each flag has a fixed risk weight (points). Risk score = sum of all
-active flags, capped at 100. See Section 2 for thresholds and actions.
-
-──────────────────────────────────────────────────────────────────────────
+--------------------------------------------------------------------------
 FLAG: mobile_channel_risk
-──────────────────────────────────────────────────────────────────────────
+--------------------------------------------------------------------------
 Risk Weight       : +15 points
 Trigger Condition : Transaction channel = "mobile_app"
                     AND is_fraud_score = 1
-Definition        : Transaction was initiated via the mobile application
-                    on a device that may not be the customer's primary
-                    registered device, or the session exhibits behavioral
-                    anomalies (velocity, geolocation, device fingerprint).
-Why It Matters    : Mobile banking is the primary attack surface for
-                    account takeover (ATO) and SIM-swap fraud in Nigeria.
-                    Fraudsters use stolen credentials on fresh devices.
-Standalone Action : +15 points added to risk score. Combine with other
-                    flags to determine final action.
-Example           : txn with channel="mobile_app" + is_fraud_score=1
-                    → mobile_channel_risk flag present in trace
+Definition        : Transaction initiated via mobile application on a
+                    device that may not be the customer's primary registered
+                    device, or the session exhibits behavioral anomalies.
 
 
-──────────────────────────────────────────────────────────────────────────
+--------------------------------------------------------------------------
 FLAG: high_amount_spike
-──────────────────────────────────────────────────────────────────────────
+--------------------------------------------------------------------------
 Risk Weight       : +25 points
-Trigger Condition : Transaction amount > (account current_balance × 0.6)
+Trigger Condition : Transaction amount > (account current_balance x 0.6)
                     AND is_fraud_score = 1
-Definition        : The transaction amount represents more than 60% of
-                    the account's current balance, indicating an attempt
-                    to rapidly drain the account in a single transaction.
-Why It Matters    : Fraudsters who gain account access attempt to extract
-                    the maximum possible amount in one move before
-                    detection. High percentage-of-balance withdrawals are
-                    a primary indicator of account draining behavior.
-Standalone Action : +25 points added to risk score.
-Example           : balance=₦750,000, amount=₦500,000 → 66.7% of balance
-                    → high_amount_spike flag triggered
+Definition        : The transaction represents more than 60% of the
+                    account balance -- characteristic of account draining.
 
 
-──────────────────────────────────────────────────────────────────────────
+--------------------------------------------------------------------------
 FLAG: multiple_failures
-──────────────────────────────────────────────────────────────────────────
+--------------------------------------------------------------------------
 Risk Weight       : +20 points
 Trigger Condition : transaction_status = "failed"
                     AND is_fraud_score = 1
-Definition        : The transaction failed after being initiated, but
-                    the attempt itself indicates abnormal retry behavior,
-                    rapid successive attempts, or credential testing
+Definition        : Failed transaction with abnormal retry behavior,
                     consistent with brute-force or card-testing attacks.
-Why It Matters    : Fraudsters test card details or account credentials
-                    by making small or repeated failed transactions to
-                    identify valid combinations before executing large
-                    unauthorized transfers.
-Standalone Action : +20 points added to risk score.
-Example           : status="failed" + is_fraud_score=1 → flag present
 
 
-──────────────────────────────────────────────────────────────────────────
+--------------------------------------------------------------------------
 FLAG: normal_pattern
-──────────────────────────────────────────────────────────────────────────
+--------------------------------------------------------------------------
 Risk Weight       : 0 points
-Trigger Condition : No fraud flags detected (is_fraud_score = 0 AND
-                    no behavioral anomalies present)
-Definition        : Transaction aligns with the customer's historical
-                    behavioral patterns: known device, usual channel,
-                    typical amount range, normal timing.
-Action            : Process transaction without friction. Issue standard
-                    SMS/app confirmation alert after completion.
+Trigger Condition : No fraud flags detected (is_fraud_score = 0)
+Action            : Process transaction normally. Issue standard SMS alert.
 
 
 =========================================================================
@@ -101,79 +68,46 @@ CALCULATION METHOD:
   risk_score = SUM of all active flag weights (from Section 1 + FRM-002)
   risk_score is CAPPED at 100.
 
-EXAMPLE CALCULATION:
-  mobile_channel_risk:   +15 points
-  high_amount_spike:     +25 points
-  merchant (fintech):    +25 points  [from FRM-002]
-  ─────────────────────────────────
-  Total:                  65 points → HIGH risk level
+EXAMPLE:
+  mobile_channel_risk:  +15
+  high_amount_spike:    +25
+  merchant (fintech):   +25  [from FRM-002]
+  Total:                 65 -> HIGH
 
-──────────────────────────────────────────────────────────────────────────
-RISK LEVEL: LOW  (Score 0–30)
-──────────────────────────────────────────────────────────────────────────
-Assessment      : Transaction aligns with normal customer behavior.
-                  Known device, typical amount, expected channel.
-Action          : PROCESS IMMEDIATELY — no challenge or friction.
+--------------------------------------------------------------------------
+RISK LEVEL: LOW  (Score 0-30)
+--------------------------------------------------------------------------
+Action          : PROCESS IMMEDIATELY -- no challenge or friction.
 Notification    : SMS + App push after transaction completes.
-                  "You sent ₦X to [Name] via Sentinel Bank."
-Channel Action  : All channels proceed normally.
 
-──────────────────────────────────────────────────────────────────────────
-RISK LEVEL: MEDIUM  (Score 31–60)
-──────────────────────────────────────────────────────────────────────────
-Assessment      : Single anomaly detected. Unusual but not definitively
-                  fraudulent (e.g., new merchant, slightly elevated amount).
+--------------------------------------------------------------------------
+RISK LEVEL: MEDIUM  (Score 31-60)
+--------------------------------------------------------------------------
 Action          : STEP-UP AUTHENTICATION via OTP.
-                  - Send SMS OTP to registered phone number.
-                  - OR email OTP to registered email.
-                  - Hold transaction in "Pending" state for 5 minutes.
-                  - Auto-decline if OTP not entered within 5 minutes.
-Notification    : "We detected unusual activity. Confirm with OTP sent
-                  to 080****1234."
-Channel Caveat  : If SIM swap detected in last 48 hours, escalate to HIGH
-                  and use push-to-app instead of SMS OTP.
+                  Hold transaction in "Pending" state for 5 minutes.
+                  Auto-decline if OTP not entered within 5 minutes.
 
-──────────────────────────────────────────────────────────────────────────
-RISK LEVEL: HIGH  (Score 61–85)
-──────────────────────────────────────────────────────────────────────────
-Assessment      : Multiple anomalies present. Strong fraud indicators.
-                  Transaction should not proceed without explicit biometric
-                  customer approval.
+--------------------------------------------------------------------------
+RISK LEVEL: HIGH  (Score 61-85)
+--------------------------------------------------------------------------
 Action          : MANDATORY PUSH-TO-APP BIOMETRIC CHALLENGE.
-                  Step 1: Place transaction in "Pending - Security Check".
-                  Step 2: Send encrypted push notification to registered app.
-                  Step 3: Display in app:
-                          - Beneficiary Name (bold)
-                          - Beneficiary Bank
-                          - Amount + fees
-                          - Risk reason (e.g., "New device detected")
-                          - Transaction reference
-                  Step 4: Customer must tap APPROVE or REJECT.
-                  Step 5: APPROVE requires biometric (FaceID/Fingerprint/PIN).
-                  Step 6: 5-minute timeout → auto-decline if no response.
+                  Place transaction in "Pending - Security Check".
+                  Customer must tap APPROVE or REJECT in app.
+                  5-minute timeout -> auto-decline if no response.
 requires_challenge : True
 should_block       : False
-Notification    : "Security Alert: Verify this transaction in your
-                  Sentinel app."
 
-──────────────────────────────────────────────────────────────────────────
-RISK LEVEL: CRITICAL  (Score 86–100)
-──────────────────────────────────────────────────────────────────────────
-Assessment      : Pattern matches confirmed fraud profile. Transaction
-                  must not proceed under any circumstances.
+--------------------------------------------------------------------------
+RISK LEVEL: CRITICAL  (Score 86-100)
+--------------------------------------------------------------------------
 Action          : BLOCK TRANSACTION IMMEDIATELY.
-                  Step 1: Decline transaction instantly (no OTP/challenge).
-                  Step 2: Freeze account — ALL channels disabled.
-                  Step 3: Block all cards linked to account.
-                  Step 4: Disable mobile app, internet banking, USSD.
-                  Step 5: Generate URGENT FRM alert (highest priority queue).
-                  Step 6: Send security alert to registered EMAIL only
-                          (NOT SMS — phone number may be compromised).
-                  Step 7: Assign to FRM specialist within 30 minutes.
+                  Freeze account -- ALL channels disabled.
+                  Block all cards linked to account.
+                  Disable mobile app, internet banking, USSD.
+                  Generate URGENT FRM alert.
+                  Send security alert to registered EMAIL only.
 requires_challenge : False
 should_block       : True
-Notification    : Email: "Your account has been temporarily frozen due to
-                  suspicious activity. Contact: fraud-desk@sentinelbank.ng"
 
 
 =========================================================================
@@ -181,40 +115,18 @@ SECTION 3: PUSH-TO-APP AUTHORIZATION PROTOCOL
 =========================================================================
 
 WHY PUSH-TO-APP REPLACES SMS OTP:
-  - SIM swap attacks intercept SMS — push-to-app is device-bound.
-  - OTP via SMS can be delayed; push is near-instant.
+  - SIM swap attacks intercept SMS -- push-to-app is device-bound.
   - Biometric binding means only the real customer can approve.
-  - Full transaction details shown — customer knows exactly what to approve.
+  - Full transaction details shown in app before approval.
 
 COMPLETE PUSH-TO-APP SEQUENCE:
   1. Transaction placed in "Pending - Security Verification" (max 300 seconds)
-  2. Encrypted push notification sent to registered device (device-specific key)
-  3. App displays full transaction context:
-       - Beneficiary full name
-       - Beneficiary bank name
-       - Principal amount
-       - NIP transfer fee (if applicable)
-       - Cybersecurity levy (0.5% of principal)
-       - Total debit from account
-       - Risk reason triggering the challenge
-       - Unique transaction reference number
-  4. Customer taps APPROVE or REJECT (large, clear buttons)
-  5. APPROVE flow:
-       - FaceID / Fingerprint / 6-digit secure transaction PIN required
-       - Transaction processed immediately on biometric success
-       - Confirmation: "Transaction successful — ₦X sent to [Name]"
-  6. REJECT flow:
-       - Transaction cancelled immediately
-       - Account access blocked (security hold)
-       - FRM alert generated (URGENT priority)
-       - SMS: "Transaction blocked per your request. Account frozen.
-               Contact fraud-desk@sentinelbank.ng"
-       - FRM specialist assigned within 30 minutes
-  7. TIMEOUT flow (no response in 5 minutes):
-       - Transaction auto-declined
-       - SMS: "Transaction timed out. If you did not initiate this,
-               contact us immediately."
-       - Account flagged for review (not frozen yet)
+  2. Encrypted push notification sent to registered device
+  3. App displays: Beneficiary name, bank, amount, fees, risk reason,
+     reference number
+  4. Customer taps APPROVE (requires biometric) or REJECT
+  5. REJECT -> transaction cancelled, FRM alert generated
+  6. TIMEOUT (5 minutes) -> transaction auto-declined
 
 
 =========================================================================
@@ -222,120 +134,49 @@ SECTION 4: COMMON FRAUD SCENARIOS IN NIGERIA (2026)
 =========================================================================
 
 4.1 SIM SWAP FRAUD
-──────────────────────────────────────────────────────────────────────────
-Attack Pattern:
-  1. Fraudster obtains customer BVN/NIN via phishing or data breach.
-  2. Fraudster presents fake ID at MNO store to swap phone number to new SIM.
-  3. Fraudster now receives all SMS including banking OTPs.
-  4. Fraudster resets banking password using SMS OTP.
-  5. Fraudster drains account before customer notices.
-
-Detection:
-  - Real-time SIM swap detection via MNO API query on every login.
-  - SIM swap in last 48 hours → automatic 48-hour transfer freeze.
-  - Notify customer via EMAIL only (SMS compromised).
-
-Mitigation:
-  - Push-to-app replaces SMS OTP as primary challenge method.
-  - Branch visit required to reactivate transfers after SIM swap.
-  - Biometric re-enrollment mandatory after SIM swap event.
+  Attack: Fraudster swaps SIM to receive banking OTPs.
+  Detection: SIM swap in last 48 hours -> 48-hour transfer freeze.
+  Mitigation: Push-to-app replaces SMS OTP as primary challenge.
 
 4.2 ACCOUNT TAKEOVER (ATO)
-──────────────────────────────────────────────────────────────────────────
-Fraud Trace Flags Commonly Present:
-  mobile_channel_risk + high_amount_spike (two flags → 40 points minimum)
-
-Attack Pattern:
-  1. Fraudster obtains login credentials via phishing.
-  2. Fraudster changes registered email and phone in account profile.
-  3. Fraudster resets password (OTP goes to fraudster's new contact).
-  4. Fraudster withdraws maximum amount.
-
-Detection:
-  - Profile change alert sent to OLD contact immediately.
-  - 24-hour cooling-off period after profile changes before high-value
-    transfers are permitted.
-  - New device flag (mobile_channel_risk) triggers on first login.
+  Flags: mobile_channel_risk + high_amount_spike
+  Attack: Fraudster obtains login credentials via phishing,
+          changes profile, withdraws maximum amount.
+  Detection: 24-hour cooling-off period after profile changes.
 
 4.3 PHISHING & SOCIAL ENGINEERING
-──────────────────────────────────────────────────────────────────────────
-Attack Pattern:
-  1. Customer receives call/SMS from "bank official."
-  2. Fraudster creates urgency: "Your account will be blocked!"
-  3. Fraudster obtains OTP/PIN from panicked customer.
-  4. Fraudster completes transfer while on call with customer.
+  Attack: Fraudster impersonates bank official to obtain OTP/PIN.
+  Detection: In-app warning during high-risk transfers:
+    "SENTINEL BANK WILL NEVER ASK FOR YOUR PIN VIA PHONE."
 
-Detection:
-  - In-app warning during high-risk transfers:
-    "SENTINEL BANK WILL NEVER ASK FOR YOUR PIN VIA PHONE.
-    Are you being pressured into this transaction? If YES, tap REJECT."
-
-4.4 POS & AGENCY BANKING FRAUD
-──────────────────────────────────────────────────────────────────────────
-Flags: multiple_failures (card testing at POS terminals)
-
-Detection:
-  - Duplicate charge detection: same terminal, similar amount (±5%),
-    within 5 minutes → auto-reverse second charge.
-  - Unusual terminal activity pattern → terminal blacklist.
-
-4.5 FINTECH & CRYPTO FRAUD
-──────────────────────────────────────────────────────────────────────────
-Merchant Category: fintech (high-risk per FRM-002)
-
-Pattern:
-  - Large one-time transfers to fintech gateways from accounts with no
-    prior fintech transaction history.
-  - Elderly or "Vulnerable" segment customers sending to crypto exchanges.
-
-Detection:
-  - Combine merchant_category="fintech" risk (+25 from FRM-002) with
-    mobile_channel_risk or high_amount_spike for composite score.
+4.4 FINTECH & CRYPTO FRAUD
+  Merchant Category: fintech (high-risk per FRM-002)
+  Detection: Combine merchant risk with mobile_channel_risk or
+             high_amount_spike for composite score.
 
 
 =========================================================================
 SECTION 5: FRAUD RESPONSE PROTOCOLS
 =========================================================================
 
-IMMEDIATE (Automated within 2 minutes of Critical detection):
-  - Freeze account (all channels)
-  - Block all linked cards
-  - Disable app, internet banking, USSD
+IMMEDIATE (within 2 minutes of Critical detection):
+  - Freeze account, block cards, disable all channels
   - Send security alert to registered EMAIL only
-  - Generate urgent FRM alert (highest priority)
-  - Log all transactions from last 48 hours for forensics
+  - Generate urgent FRM alert
 
 WITHIN 1 HOUR:
   - FRM specialist assigned
-  - Preliminary investigation: transaction logs, device IDs, locations
-  - Customer contacted via original registered contact (not new details)
-  - Temporary credit up to ₦200,000 if customer confirmed as victim
+  - Preliminary investigation: transaction logs, device IDs
 
 WITHIN 24 HOURS (SLA target for FRM):
-  - Full forensic analysis: IP, device fingerprint, network/money trail
+  - Full forensic analysis
   - NIBSS coordination if funds transferred out
   - Contact destination bank to freeze beneficiary account
-  - Police report filed (amounts > ₦1,000,000)
-  - Preliminary determination: customer fraud vs. bank fraud
+  - Police report filed (amounts > N1,000,000)
 
-RESOLUTION (14–21 DAYS):
-  - Full investigation report
-  - Permanent credit/debit adjustments
+RESOLUTION (14-21 days):
+  - Full investigation report, permanent credit/debit adjustments
   - Account reactivation with new credentials
-  - Fraud database updates (blacklist devices, beneficiaries, patterns)
-  - Customer education session
-
-
-=========================================================================
-SECTION 6: REGULATORY COMPLIANCE REFERENCES
-=========================================================================
-
-  - CBN Consumer Protection Framework
-  - Nigeria Data Protection Regulation (NDPR) 2019
-  - CBN Guidance on Electronic Fraud Management (revised 2024)
-  - CBN Exposure Draft on Cyber Resilience (2025)
-  - ISO 27001 Information Security Management
-  - PCI DSS v4.0
 
 
 =========================================================================
@@ -344,7 +185,7 @@ DOCUMENT CONTROL
 
 Owner           : Chief Risk Officer (CRO)
 Review Freq     : Monthly
-Last Updated    : February 2026
+Last Updated    : March 2026
 Emergency       : fraud-desk@sentinelbank.ng | +234-1-FRAUD-24 (24/7)
 
 
