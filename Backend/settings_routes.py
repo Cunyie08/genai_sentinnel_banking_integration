@@ -3,7 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from Backend.database import get_db
-from Backend.models import User, UserSettings
+from Backend.models import Customer, UserSettings
 from Backend.middleware import get_current_user
 from Backend.schemas import (
     ThemeUpdate,
@@ -15,12 +15,12 @@ from Backend.schemas import (
 router = APIRouter(prefix="/settings", tags=["Settings"])
 
 
-async def _get_or_create_settings(db: AsyncSession, user_id: str) -> UserSettings:
-    stmt = select(UserSettings).filter(UserSettings.user_id == user_id)
+async def _get_or_create_settings(db: AsyncSession, customer_id: str) -> UserSettings:
+    stmt = select(UserSettings).filter(UserSettings.customer_id == customer_id)
     result = await db.execute(stmt)
     settings = result.scalars().first()
     if not settings:
-        settings = UserSettings(user_id=user_id)
+        settings = UserSettings(customer_id=customer_id)
         db.add(settings)
         await db.commit()
         await db.refresh(settings)
@@ -29,9 +29,9 @@ async def _get_or_create_settings(db: AsyncSession, user_id: str) -> UserSetting
 
 @router.get("/")
 async def get_settings(
-    db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)
+    db: AsyncSession = Depends(get_db), user: Customer = Depends(get_current_user)
 ):
-    settings = await _get_or_create_settings(db, user.user_id)
+    settings = await _get_or_create_settings(db, user.customer_id)
     return settings
 
 
@@ -39,9 +39,9 @@ async def get_settings(
 async def update_theme(
     payload: ThemeUpdate,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: Customer = Depends(get_current_user),
 ):
-    settings = await _get_or_create_settings(db, user.user_id)
+    settings = await _get_or_create_settings(db, user.customer_id)
     settings.theme = payload.theme
     await db.commit()
     await db.refresh(settings)
@@ -52,9 +52,9 @@ async def update_theme(
 async def update_language(
     payload: LanguageUpdate,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: Customer = Depends(get_current_user),
 ):
-    settings = await _get_or_create_settings(db, user.user_id)
+    settings = await _get_or_create_settings(db, user.customer_id)
     settings.language = payload.language
     await db.commit()
     await db.refresh(settings)
@@ -65,9 +65,9 @@ async def update_language(
 async def update_notifications(
     payload: NotificationsUpdate,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: Customer = Depends(get_current_user),
 ):
-    settings = await _get_or_create_settings(db, user.user_id)
+    settings = await _get_or_create_settings(db, user.customer_id)
     # The model has notify_transactions and notify_promotions
     # We update both based on the 'enabled' flag as a simplification
     settings.notify_transactions = payload.enabled
@@ -80,9 +80,9 @@ async def update_notifications(
 async def update_security(
     payload: SecurityUpdate,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: Customer = Depends(get_current_user),
 ):
-    settings = await _get_or_create_settings(db, user.user_id)
+    settings = await _get_or_create_settings(db, user.customer_id)
     if payload.mfa_enabled is not None:
         settings.two_factor_enabled = payload.mfa_enabled
     await db.commit()

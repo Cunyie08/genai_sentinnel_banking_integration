@@ -22,7 +22,6 @@ if sys.platform == "win32":
 
 from Backend.database import engine, get_db, Base
 from Backend.models import (
-    User,
     Customer,
     Account,
     Transaction,
@@ -80,64 +79,64 @@ def generate_otp(length: int = 6) -> str:
     return "".join(secrets.choice(string.digits) for _ in range(length))
 
 
-@router.post("/auth/register", response_model=RegisterResponse)
-async def register(user: UserCreate, db: AsyncSession = Depends(get_db)):
-    try:
-        stmt_user = select(User).filter(User.email == user.email)
-        result_user = await db.execute(stmt_user)
-        db_user = result_user.scalars().first()
-
-        if db_user:
-            raise HTTPException(status_code=400, detail="Email already registered")
-
-        stmt_customer = select(Customer).filter(Customer.email == user.email)
-        result_customer = await db.execute(stmt_customer)
-        db_customer = result_customer.scalars().first()
-
-        if not db_customer:
-            raise HTTPException(
-                status_code=403,
-                detail="No bank account found with this email. You need to open a bank account first.",
-            )
-
-        hashed_pw = get_password_hash(user.password)
-
-        new_user = User(
-            user_id=f"USR-{uuid.uuid4().hex[:10].upper()}",
-            email=user.email,
-            password_hash=hashed_pw,
-            customer_id=db_customer.customer_id,
-            is_active=False,  # User is inactive until OTP verified
-        )
-
-        db.add(new_user)
-
-        # Generate and Send OTP
-        otp_code = generate_otp()
-        otp_token = OTPToken(
-            user_id=new_user.user_id,
-            otp_code=otp_code,
-            purpose="registration",
-            expires_at=datetime.now() + timedelta(minutes=15),
-        )
-        db.add(otp_token)
-
-        await db.commit()
-        await db.refresh(new_user)
-
-        await send_otp_email(to_email=user.email, otp_code=otp_code)
-
-        return {
-            "message": "User registered successfully. Please verify your email with the OTP sent.",
-            "user_id": new_user.user_id,
-        }
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        await db.rollback()
-        print(f"Registration failed: {e}")
-        raise HTTPException(status_code=500, detail="Internal server error")
+# @router.post("/auth/register", response_model=RegisterResponse)
+# async def register(user: UserCreate, db: AsyncSession = Depends(get_db)):
+#     try:
+#         stmt_user = select(User).filter(User.email == user.email)
+#         result_user = await db.execute(stmt_user)
+#         db_user = result_user.scalars().first()
+# 
+#         if db_user:
+#             raise HTTPException(status_code=400, detail="Email already registered")
+# 
+#         stmt_customer = select(Customer).filter(Customer.email == user.email)
+#         result_customer = await db.execute(stmt_customer)
+#         db_customer = result_customer.scalars().first()
+# 
+#         if not db_customer:
+#             raise HTTPException(
+#                 status_code=403,
+#                 detail="No bank account found with this email. You need to open a bank account first.",
+#             )
+# 
+#         hashed_pw = get_password_hash(user.password)
+# 
+#         new_user = User(
+#             user_id=f"USR-{uuid.uuid4().hex[:10].upper()}",
+#             email=user.email,
+#             password_hash=hashed_pw,
+#             customer_id=db_customer.customer_id,
+#             is_active=False,  # User is inactive until OTP verified
+#         )
+# 
+#         db.add(new_user)
+# 
+#         # Generate and Send OTP
+#         otp_code = generate_otp()
+#         otp_token = OTPToken(
+#             user_id=new_user.user_id,
+#             otp_code=otp_code,
+#             purpose="registration",
+#             expires_at=datetime.now() + timedelta(minutes=15),
+#         )
+#         db.add(otp_token)
+# 
+#         await db.commit()
+#         await db.refresh(new_user)
+# 
+#         await send_otp_email(to_email=user.email, otp_code=otp_code)
+# 
+#         return {
+#             "message": "User registered successfully. Please verify your email with the OTP sent.",
+#             "user_id": new_user.user_id,
+#         }
+# 
+#     except HTTPException:
+#         raise
+#     except Exception as e:
+#         await db.rollback()
+#         print(f"Registration failed: {e}")
+#         raise HTTPException(status_code=500, detail="Internal server error")
 
 
 import traceback
@@ -149,26 +148,20 @@ async def login_for_access_token(
     db: AsyncSession = Depends(get_db),
 ):
     try:
-        stmt = select(User).filter(User.email == form_data.username)
+        stmt = select(Customer).filter(Customer.email == form_data.username)
         result = await db.execute(stmt)
-        user = result.scalars().first()
+        customer = result.scalars().first()
 
-        if not user or not verify_password(form_data.password, user.password_hash):
+        if not customer or customer.password != form_data.password:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Incorrect email or password",
                 headers={"WWW-Authenticate": "Bearer"},
             )
 
-        if not user.is_active:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="User account is not active. Please verify your OTP.",
-            )
-
         access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
         access_token = create_access_token(
-            data={"sub": user.email}, expires_delta=access_token_expires
+            data={"sub": customer.email}, expires_delta=access_token_expires
         )
 
         return {"access_token": access_token, "token_type": "bearer"}
@@ -180,15 +173,15 @@ async def login_for_access_token(
 
 @router.post("/auth/verify-otp")
 async def verify_otp(request: OTPVerifyRequest, db: AsyncSession = Depends(get_db)):
-    stmt = select(User).filter(User.email == request.email)
+    stmt = select(Customer).filter(Customer.email == request.email)
     result = await db.execute(stmt)
-    user = result.scalars().first()
+    customer = result.scalars().first()
 
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+    if not customer:
+        raise HTTPException(status_code=404, detail="Customer not found")
 
     stmt_otp = select(OTPToken).filter(
-        OTPToken.user_id == user.user_id,
+        OTPToken.customer_id == customer.customer_id,
         OTPToken.otp_code == request.otp_code,
         OTPToken.purpose == request.purpose,
         OTPToken.is_used == False,
@@ -202,9 +195,6 @@ async def verify_otp(request: OTPVerifyRequest, db: AsyncSession = Depends(get_d
 
     otp.is_used = True
 
-    if request.purpose == "registration":
-        user.is_active = True
-
     await db.commit()
 
     return {"message": "OTP verified successfully"}
@@ -214,16 +204,16 @@ async def verify_otp(request: OTPVerifyRequest, db: AsyncSession = Depends(get_d
 async def resend_otp(
     email: str = Body(..., embed=True), db: AsyncSession = Depends(get_db)
 ):
-    stmt = select(User).filter(User.email == email)
+    stmt = select(Customer).filter(Customer.email == email)
     result = await db.execute(stmt)
-    user = result.scalars().first()
+    customer = result.scalars().first()
 
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+    if not customer:
+        raise HTTPException(status_code=404, detail="Customer not found")
 
     otp_code = generate_otp()
     otp_token = OTPToken(
-        user_id=user.user_id,
+        customer_id=customer.customer_id,
         otp_code=otp_code,
         purpose="registration",  # Assuming resend for registration
         expires_at=datetime.now() + timedelta(minutes=15),
@@ -240,14 +230,14 @@ async def resend_otp(
 async def forgot_password(
     request: PasswordResetRequest, db: AsyncSession = Depends(get_db)
 ):
-    stmt = select(User).filter(User.email == request.email)
+    stmt = select(Customer).filter(Customer.email == request.email)
     result = await db.execute(stmt)
-    user = result.scalars().first()
+    customer = result.scalars().first()
 
-    if user:
+    if customer:
         token = secrets.token_urlsafe(32)
         reset_token = PasswordResetToken(
-            user_id=user.user_id,
+            customer_id=customer.customer_id,
             token=token,
             expires_at=datetime.now() + timedelta(minutes=15),
         )
@@ -264,15 +254,15 @@ async def forgot_password(
 async def verify_magic_link(
     email: str, otp_code: str, purpose: str, db: AsyncSession = Depends(get_db)
 ):
-    stmt = select(User).filter(User.email == email)
+    stmt = select(Customer).filter(Customer.email == email)
     result = await db.execute(stmt)
-    user = result.scalars().first()
+    customer = result.scalars().first()
 
-    if not user:
+    if not customer:
         return "<h3>User not found.</h3>"
 
     stmt_otp = select(OTPToken).filter(
-        OTPToken.user_id == user.user_id,
+        OTPToken.customer_id == customer.customer_id,
         OTPToken.otp_code == otp_code,
         OTPToken.purpose == purpose,
         OTPToken.is_used == False,
@@ -285,9 +275,6 @@ async def verify_magic_link(
         return "<h3>Invalid or expired verification link.</h3>"
 
     otp.is_used = True
-    if purpose == "registration":
-        user.is_active = True
-
     await db.commit()
 
     return f"""
@@ -318,11 +305,11 @@ async def reset_password(
     if not reset_token:
         raise HTTPException(status_code=400, detail="Invalid or expired reset token")
 
-    stmt_user = select(User).filter(User.user_id == reset_token.user_id)
+    stmt_user = select(Customer).filter(Customer.customer_id == reset_token.customer_id)
     result_user = await db.execute(stmt_user)
-    user = result_user.scalars().first()
+    customer = result_user.scalars().first()
 
-    user.password_hash = get_password_hash(request.new_password)
+    customer.password = request.new_password
     reset_token.is_used = True
 
     await db.commit()
@@ -332,18 +319,18 @@ async def reset_password(
 @router.patch("/auth/change-password")
 async def change_password(
     request: ChangePasswordRequest,
-    current_user: Annotated[User, Depends(get_current_user)],
+    current_user: Annotated[Customer, Depends(get_current_user)],
     db: AsyncSession = Depends(get_db),
 ):
-    # current_user from middleware might be a dict or model, ensure it's the User model or fetch it
-    stmt = select(User).filter(User.email == current_user.get("sub"))
+    # current_user from middleware might be a dict or model, ensure it's the Customer model or fetch it
+    stmt = select(Customer).filter(Customer.email == current_user.get("sub") if isinstance(current_user, dict) else Customer.email == current_user.email)
     result = await db.execute(stmt)
-    user = result.scalars().first()
+    customer = result.scalars().first()
 
-    if not verify_password(request.current_password, user.password_hash):
+    if request.current_password != customer.password:
         raise HTTPException(status_code=400, detail="Incorrect current password")
 
-    user.password_hash = get_password_hash(request.new_password)
+    customer.password = request.new_password
     await db.commit()
 
     return {"message": "Password changed successfully"}

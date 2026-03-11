@@ -164,7 +164,6 @@ class BankRepository:
 
             loan_signal_score = next((t.Loan_signal_score for t in transactions if t.Loan_signal_score is not None), 0.0)
 
-
             monthly_inflow  = sum(
                 t.amount for t in transactions if t.transaction_type == "credit"
             )

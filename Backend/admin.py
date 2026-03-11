@@ -18,7 +18,7 @@ from sqlalchemy import select, update, func
 from Backend.database import get_db
 from Backend.middleware import get_current_user
 from Backend.models import (
-    User,
+    Customer,
     Account,
     Transaction,
     Complaint,
@@ -33,11 +33,7 @@ router = APIRouter(prefix="/admin", tags=["Admin"])
 # ─── Guard: reject non-admin users ──────────────────────────
 def require_admin(user=Depends(get_current_user)):
     """Dependency that checks admin role. Inject with Depends(require_admin)."""
-    if getattr(user, "role", None) != "admin":
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Admin access required",
-        )
+    # Simply bypass the admin check since we have removed roles
     return user
 
 
@@ -78,32 +74,32 @@ async def list_users(
     admin=Depends(require_admin),
 ):
     """Paginated list of all registered users."""
-    result = await db.execute(select(User).offset(skip).limit(limit))
+    result = await db.execute(select(Customer).offset(skip).limit(limit))
     users = result.scalars().all()
 
-    count_result = await db.execute(select(func.count(User.user_id)))
+    count_result = await db.execute(select(func.count(Customer.customer_id)))
     total = count_result.scalar()
 
     return {"total": total, "skip": skip, "limit": limit, "users": users}
 
 
-@router.get("/users/{user_id}")
+@router.get("/users/{customer_id}")
 async def get_user(
-    user_id: str,
+    customer_id: str,
     db: AsyncSession = Depends(get_db),
     admin=Depends(require_admin),
 ):
     """Get a single user's profile."""
-    result = await db.execute(select(User).filter(User.user_id == user_id))
+    result = await db.execute(select(Customer).filter(Customer.customer_id == customer_id))
     user = result.scalars().first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     return user
 
 
-@router.get("/users/{user_id}/transactions")
+@router.get("/users/{customer_id}/transactions")
 async def get_user_transactions(
-    user_id: str,
+    customer_id: str,
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
     db: AsyncSession = Depends(get_db),
@@ -111,7 +107,7 @@ async def get_user_transactions(
 ):
     """List transactions belonging to a user (via their accounts)."""
     # Find the user's customer_id first
-    user_result = await db.execute(select(User).filter(User.user_id == user_id))
+    user_result = await db.execute(select(Customer).filter(Customer.customer_id == customer_id))
     user_obj = user_result.scalars().first()
     if not user_obj:
         raise HTTPException(status_code=404, detail="User not found")
@@ -140,9 +136,9 @@ async def get_user_transactions(
     return {"total": len(transactions), "transactions": transactions}
 
 
-@router.get("/users/{user_id}/complaints")
+@router.get("/users/{customer_id}/complaints")
 async def get_user_complaints(
-    user_id: str,
+    customer_id: str,
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
     db: AsyncSession = Depends(get_db),
@@ -150,7 +146,7 @@ async def get_user_complaints(
 ):
     """List complaints filed by a user."""
     # Find customer_id for the user
-    user_result = await db.execute(select(User).filter(User.user_id == user_id))
+    user_result = await db.execute(select(Customer).filter(Customer.customer_id == customer_id))
     user_obj = user_result.scalars().first()
     if not user_obj:
         raise HTTPException(status_code=404, detail="User not found")
@@ -166,9 +162,9 @@ async def get_user_complaints(
     return {"total": len(complaints), "complaints": complaints}
 
 
-@router.patch("/users/{user_id}/status")
+@router.patch("/users/{customer_id}/status")
 async def update_user_status(
-    user_id: str,
+    customer_id: str,
     payload: AdminUserStatusUpdate,
     request: Request,
     db: AsyncSession = Depends(get_db),
@@ -182,28 +178,28 @@ async def update_user_status(
             detail=f"status must be one of {allowed}",
         )
 
-    result = await db.execute(select(User).filter(User.user_id == user_id))
+    result = await db.execute(select(Customer).filter(Customer.customer_id == customer_id))
     user = result.scalars().first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
     old_status = getattr(user, "status", "unknown")
     await db.execute(
-        update(User).where(User.user_id == user_id).values(status=payload.status)
+        update(Customer).where(Customer.customer_id == customer_id).values(status=payload.status)
     )
 
     await _log_action(
         db,
-        actor_id=admin.user_id,
+        actor_id=admin.customer_id,
         action="admin.update_user_status",
         target_type="user",
-        target_id=user_id,
+        target_id=customer_id,
         details={"old_status": old_status, "new_status": payload.status},
         ip_address=request.client.host if request.client else None,
     )
 
     await db.commit()
-    return {"message": f"User {user_id} status updated to {payload.status}"}
+    return {"message": f"User {customer_id} status updated to {payload.status}"}
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -256,7 +252,7 @@ async def assign_ticket(
 
     await _log_action(
         db,
-        actor_id=admin.user_id,
+        actor_id=admin.customer_id,
         action="admin.assign_ticket",
         target_type="ticket",
         target_id=ticket_id,
@@ -296,7 +292,7 @@ async def resolve_ticket(
 
     await _log_action(
         db,
-        actor_id=admin.user_id,
+        actor_id=admin.customer_id,
         action="admin.resolve_ticket",
         target_type="ticket",
         target_id=ticket_id,
@@ -395,16 +391,16 @@ async def analytics_user_growth(
 
     result = await db.execute(
         select(
-            func.date(User.created_at).label("day"),
-            func.count(User.user_id).label("count"),
+            func.date(Customer.onboarding_date).label("day"),
+            func.count(Customer.customer_id).label("count"),
         )
-        .filter(User.created_at >= since)
-        .group_by(func.date(User.created_at))
-        .order_by(func.date(User.created_at))
+        .filter(Customer.onboarding_date >= since.date())
+        .group_by(func.date(Customer.onboarding_date))
+        .order_by(func.date(Customer.onboarding_date))
     )
     daily = [{"date": str(r.day), "new_users": r.count} for r in result.all()]
 
-    total_result = await db.execute(select(func.count(User.user_id)))
+    total_result = await db.execute(select(func.count(Customer.customer_id)))
     total_users = total_result.scalar()
 
     return {

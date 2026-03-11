@@ -34,63 +34,44 @@ class Customer(Base):
     residential_state: Mapped[Optional[str]] = mapped_column(String(100))
     banking_branch: Mapped[Optional[str]] = mapped_column(String(100))
     onboarding_date: Mapped[Optional[date]] = mapped_column(Date)
+    username: Mapped[Optional[str]] = mapped_column(String(100))
+    password: Mapped[Optional[str]] = mapped_column(String(100))
+    solo_candidate: Mapped[bool] = mapped_column(Boolean, default=False)
 
     # Relationships
     accounts: Mapped[List["Account"]] = relationship(
         back_populates="customer", cascade="all, delete"
     )
-    users: Mapped[List["User"]] = relationship(
+    transactions: Mapped[List["Transaction"]] = relationship(
         back_populates="customer", cascade="all, delete"
     )
     complaints: Mapped[List["Complaint"]] = relationship(
         back_populates="customer", cascade="all, delete"
     )
-
-
-class User(Base):
-    __tablename__ = "users"
-
-    user_id: Mapped[str] = mapped_column(String(50), primary_key=True)
-    customer_id: Mapped[Optional[str]] = mapped_column(
-        String(50), ForeignKey("customers.customer_id", ondelete="SET NULL")
-    )
-    email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
-    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
-    role: Mapped[Optional[str]] = mapped_column(
-        String(50), default="customer", server_default="customer"
-    )
-    is_active: Mapped[bool] = mapped_column(
-        Boolean, default=True, server_default="true"
-    )
-
-    # Relationships
-    customer: Mapped[Optional["Customer"]] = relationship(back_populates="users")
     otp_tokens: Mapped[List["OTPToken"]] = relationship(
-        back_populates="user", cascade="all, delete"
+        back_populates="customer", cascade="all, delete"
     )
     refresh_tokens: Mapped[List["RefreshToken"]] = relationship(
-        back_populates="user", cascade="all, delete"
+        back_populates="customer", cascade="all, delete"
     )
     reset_tokens: Mapped[List["PasswordResetToken"]] = relationship(
-        back_populates="user", cascade="all, delete"
+        back_populates="customer", cascade="all, delete"
     )
     notifications: Mapped[List["Notification"]] = relationship(
-        back_populates="user", cascade="all, delete"
+        back_populates="customer", cascade="all, delete"
     )
     settings: Mapped[Optional["UserSettings"]] = relationship(
-        back_populates="user", cascade="all, delete"
+        back_populates="customer", cascade="all, delete"
     )
     chat_sessions: Mapped[List["ChatSession"]] = relationship(
-        back_populates="user", cascade="all, delete"
+        back_populates="customer", cascade="all, delete"
     )
     service_transactions: Mapped[List["ServiceTransaction"]] = relationship(
-        back_populates="user", cascade="all, delete"
+        back_populates="customer", cascade="all, delete"
     )
     fraud_alerts: Mapped[List["FraudAlert"]] = relationship(
-        back_populates="user", cascade="all, delete"
+        back_populates="customer", cascade="all, delete"
     )
-
-
 class Account(Base):
     __tablename__ = "accounts"
 
@@ -149,12 +130,16 @@ class Transaction(Base):
     merchant_category: Mapped[Optional[str]] = mapped_column(String(100))
     merchant_name: Mapped[Optional[str]] = mapped_column(String(150))
     salary_detected: Mapped[Optional[bool]] = mapped_column(Boolean, default=False)
-    car_loan_signal_score: Mapped[Optional[float]] = mapped_column(Numeric(5, 2))
+    Loan_signal_score: Mapped[Optional[float]] = mapped_column(Numeric(5, 2))
     recommended_product: Mapped[Optional[str]] = mapped_column(String(150))
     transaction_timestamp: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    customer_id: Mapped[Optional[str]] = mapped_column(
+        String(50), ForeignKey("customers.customer_id", ondelete="CASCADE")
+    )
 
     # Relationships
     account: Mapped["Account"] = relationship(back_populates="transactions")
+    customer: Mapped["Customer"] = relationship(back_populates="transactions")
     complaints: Mapped[List["Complaint"]] = relationship(back_populates="transaction")
 
 
@@ -183,7 +168,9 @@ class Complaint(Base):
     complaint_status: Mapped[Optional[str]] = mapped_column(String(50))
     fraud_related: Mapped[Optional[bool]] = mapped_column(Boolean, default=False)
     complaint_text: Mapped[Optional[str]] = mapped_column(Text)
-    complaint_narration: Mapped[Optional[str]] = mapped_column(Text)
+    account_id: Mapped[Optional[str]] = mapped_column(
+        String(50), ForeignKey("accounts.account_id", ondelete="CASCADE")
+    )
 
     # Relationships
     customer: Mapped["Customer"] = relationship(back_populates="complaints")
@@ -196,8 +183,8 @@ class OTPToken(Base):
     __tablename__ = "otp_tokens"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    user_id: Mapped[str] = mapped_column(
-        String(50), ForeignKey("users.user_id", ondelete="CASCADE")
+    customer_id: Mapped[str] = mapped_column(
+        String(50), ForeignKey("customers.customer_id", ondelete="CASCADE")
     )
     otp_code: Mapped[str] = mapped_column(String(10), nullable=False)
     purpose: Mapped[str] = mapped_column(String(50), nullable=False)
@@ -205,37 +192,37 @@ class OTPToken(Base):
     is_used: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
 
-    user: Mapped["User"] = relationship(back_populates="otp_tokens")
+    customer: Mapped["Customer"] = relationship(back_populates="otp_tokens")
 
 
 class RefreshToken(Base):
     __tablename__ = "refresh_tokens"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    user_id: Mapped[str] = mapped_column(
-        String(50), ForeignKey("users.user_id", ondelete="CASCADE")
+    customer_id: Mapped[str] = mapped_column(
+        String(50), ForeignKey("customers.customer_id", ondelete="CASCADE")
     )
     token: Mapped[str] = mapped_column(String, unique=True, nullable=False)
     expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     is_revoked: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
 
-    user: Mapped["User"] = relationship(back_populates="refresh_tokens")
+    customer: Mapped["Customer"] = relationship(back_populates="refresh_tokens")
 
 
 class PasswordResetToken(Base):
     __tablename__ = "password_reset_tokens"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    user_id: Mapped[str] = mapped_column(
-        String(50), ForeignKey("users.user_id", ondelete="CASCADE")
+    customer_id: Mapped[str] = mapped_column(
+        String(50), ForeignKey("customers.customer_id", ondelete="CASCADE")
     )
     token: Mapped[str] = mapped_column(String, unique=True, nullable=False)
     expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     is_used: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
 
-    user: Mapped["User"] = relationship(back_populates="reset_tokens")
+    customer: Mapped["Customer"] = relationship(back_populates="reset_tokens")
 
 
 class Card(Base):
@@ -260,8 +247,8 @@ class Notification(Base):
     __tablename__ = "notifications"
 
     notification_id: Mapped[str] = mapped_column(String(50), primary_key=True)
-    user_id: Mapped[str] = mapped_column(
-        String(50), ForeignKey("users.user_id", ondelete="CASCADE")
+    customer_id: Mapped[str] = mapped_column(
+        String(50), ForeignKey("customers.customer_id", ondelete="CASCADE")
     )
     title: Mapped[str] = mapped_column(String(200), nullable=False)
     message: Mapped[str] = mapped_column(Text, nullable=False)
@@ -269,7 +256,7 @@ class Notification(Base):
     is_read: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
 
-    user: Mapped["User"] = relationship(back_populates="notifications")
+    customer: Mapped["Customer"] = relationship(back_populates="notifications")
 
 
 class UserSettings(Base):
@@ -278,8 +265,8 @@ class UserSettings(Base):
     setting_id: Mapped[int] = mapped_column(
         Integer, primary_key=True, autoincrement=True
     )
-    user_id: Mapped[str] = mapped_column(
-        String(50), ForeignKey("users.user_id", ondelete="CASCADE"), unique=True
+    customer_id: Mapped[str] = mapped_column(
+        String(50), ForeignKey("customers.customer_id", ondelete="CASCADE"), unique=True
     )
     theme: Mapped[str] = mapped_column(String(20), default="light")
     language: Mapped[str] = mapped_column(String(10), default="en")
@@ -290,21 +277,21 @@ class UserSettings(Base):
         DateTime, default=datetime.now, onupdate=datetime.now
     )
 
-    user: Mapped["User"] = relationship(back_populates="settings")
+    customer: Mapped["Customer"] = relationship(back_populates="settings")
 
 
 class ChatSession(Base):
     __tablename__ = "chat_sessions"
 
     session_id: Mapped[str] = mapped_column(String(50), primary_key=True)
-    user_id: Mapped[str] = mapped_column(
-        String(50), ForeignKey("users.user_id", ondelete="CASCADE")
+    customer_id: Mapped[str] = mapped_column(
+        String(50), ForeignKey("customers.customer_id", ondelete="CASCADE")
     )
     status: Mapped[str] = mapped_column(String(20), default="active")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
     ended_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
 
-    user: Mapped["User"] = relationship(back_populates="chat_sessions")
+    customer: Mapped["Customer"] = relationship(back_populates="chat_sessions")
     messages: Mapped[List["ChatMessage"]] = relationship(
         back_populates="session", cascade="all, delete"
     )
@@ -330,8 +317,8 @@ class ServiceTransaction(Base):
     __tablename__ = "service_transactions"
 
     service_tx_id: Mapped[str] = mapped_column(String(50), primary_key=True)
-    user_id: Mapped[str] = mapped_column(
-        String(50), ForeignKey("users.user_id", ondelete="CASCADE")
+    customer_id: Mapped[str] = mapped_column(
+        String(50), ForeignKey("customers.customer_id", ondelete="CASCADE")
     )
     account_id: Mapped[str] = mapped_column(
         String(50), ForeignKey("accounts.account_id", ondelete="CASCADE")
@@ -351,7 +338,7 @@ class ServiceTransaction(Base):
     status: Mapped[str] = mapped_column(String(20), default="completed")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
 
-    user: Mapped["User"] = relationship(back_populates="service_transactions")
+    customer: Mapped["Customer"] = relationship(back_populates="service_transactions")
     account: Mapped["Account"] = relationship(back_populates="service_transactions")
 
 
@@ -362,8 +349,8 @@ class FraudAlert(Base):
     transaction_id: Mapped[str] = mapped_column(
         String(50), ForeignKey("transactions.transaction_id", ondelete="CASCADE")
     )
-    user_id: Mapped[str] = mapped_column(
-        String(50), ForeignKey("users.user_id", ondelete="CASCADE")
+    customer_id: Mapped[str] = mapped_column(
+        String(50), ForeignKey("customers.customer_id", ondelete="CASCADE")
     )
     risk_score: Mapped[Optional[float]] = mapped_column(Numeric(5, 2))
     decision: Mapped[Optional[str]] = mapped_column(String(20))
@@ -371,7 +358,7 @@ class FraudAlert(Base):
     resolved: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
 
-    user: Mapped["User"] = relationship(back_populates="fraud_alerts")
+    customer: Mapped["Customer"] = relationship(back_populates="fraud_alerts")
 
 
 class AuditLog(Base):

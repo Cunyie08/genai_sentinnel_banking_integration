@@ -45,7 +45,6 @@ async def migrate():
 
     print(f"[Migration] Connecting to: {db_url[:50]}...")
     engine = get_engine()
-
     async with engine.begin() as conn:
 
         # customers: login columns 
@@ -65,7 +64,6 @@ async def migrate():
 
     await engine.dispose()
     print("[Migration] Done. Re-run your agent now.")
-
 
 if __name__ == "__main__":
     asyncio.run(migrate())

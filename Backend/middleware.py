@@ -5,7 +5,7 @@ from sqlalchemy import select
 
 from Backend.auth import verify_access_token
 from Backend.database import get_db
-from Backend.models import User
+from Backend.models import Customer
 
 oauth2_scheme = HTTPBearer()
 
@@ -30,15 +30,15 @@ async def get_current_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    stmt = select(User).filter(User.email == email)
+    stmt = select(Customer).filter(Customer.email == email)
     result = await db.execute(stmt)
-    user = result.scalars().first()
+    customer = result.scalars().first()
 
-    if user is None:
+    if customer is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="The user belonging to this token no longer exists",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    return user 
+    return customer

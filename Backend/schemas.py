@@ -18,7 +18,7 @@ class UserLogin(BaseModel):
 
 class RegisterResponse(BaseModel):
     message: str
-    user_id: str
+    customer_id: str
 
 
 class Token(BaseModel):
@@ -31,8 +31,7 @@ class TokenData(BaseModel):
 
 
 class UserResponse(UserBase):
-    user_id: str
-    role: str
+    customer_id: str
 
     class Config:
         from_attributes = True
@@ -52,7 +51,7 @@ class OnboardingSubmission(BaseModel):
 
 class OnboardingResponse(BaseModel):
     id: str
-    user_id: str
+    customer_id: str
     answers: Dict[str, Any]
     derived_profile: Optional[Dict[str, Any]] = None
 
@@ -96,7 +95,7 @@ class FraudResponse(BaseModel):
 
 class TransactionRequest(BaseModel):
     account_number: str = Field(..., description="The 10-digit account number")
-    channel: str
+    channel: str = "mobile"
     device_id: str
     counterparty_bank: str
     narration: str
@@ -104,6 +103,11 @@ class TransactionRequest(BaseModel):
     amount: float = Field(gt=0)
     currency: str
     merchant_name: str | None = None
+
+
+class TransactionConfirmRequest(BaseModel):
+    transaction_id: str
+    password: str
 
 
 class ReportFailedRequest(BaseModel):
@@ -196,6 +200,22 @@ class SettingsResponse(BaseModel):
     class Config:
         from_attributes = True
 
+# --- Account Schemas ---
+
+
+class AccountResponse(BaseModel):
+    account_id: str
+    account_number: str
+    account_type: Optional[str] = None
+    currency: Optional[str] = None
+    balance: float
+    current_balance: float
+    status: Optional[str] = None
+    opened_date: Optional[date] = None
+
+    class Config:
+        from_attributes = True
+        
 
 # --- Account Schemas ---
 
@@ -277,7 +297,7 @@ class AdminUserStatusUpdate(BaseModel):
 
 class TicketAssign(BaseModel):
     assigned_to: str = Field(
-        ..., description="user_id of the agent to assign the ticket to"
+        ..., description="customer_id of the agent to assign the ticket to"
     )
 
 
@@ -306,6 +326,9 @@ class AuditLogOut(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+
 
 
 # --- Card Schemas ---

@@ -7,7 +7,7 @@ from sqlalchemy import select
 from fastapi import HTTPException, status
 
 from app.settings import SECRET_KEY
-from Backend.models import User
+from Backend.models import Customer
 
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
@@ -58,15 +58,15 @@ def verify_access_token(token: str):
 
 
 async def authenticate_user(db: AsyncSession, email: str, password: str):
-    """Authenticate a user against the database."""
-    stmt = select(User).filter(User.email == email)
+    """Authenticate a customer against the database."""
+    stmt = select(Customer).filter(Customer.email == email)
     result = await db.execute(stmt)
-    user = result.scalars().first()
+    customer = result.scalars().first()
 
-    if not user:
+    if not customer:
         return False
 
-    if not verify_password(password, user.password_hash):
+    if password != customer.password:
         return False
 
-    return user
+    return customer

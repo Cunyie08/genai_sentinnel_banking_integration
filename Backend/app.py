@@ -25,13 +25,13 @@ from app.core.orchestrator import Orchestrator
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from Backend.database import engine, Base, SessionLocal, get_db
-from Backend.models import Complaint, Account, Transaction, Customer, User, UserSettings
+from Backend.models import Complaint, Account, Transaction, Customer, UserSettings
 from Backend.middleware import get_current_user
 from app.utils.schemas import RoutingResponse, FraudResponse, RiskBreakdown, TrajectoryResponse
 from app.agents.dispatcher_agent import DispatcherAgent
 from app.agents.sentinel_agent import SentinelAgent
 from app.agents.trajectory_agent import TrajectoryAgent
-from app.database.dataset_loader import DatasetLoader
+# from app.database.dataset_loader import DatasetLoader
 from app.data.repository import BankRepository
 from app.rag.rag_system.rag_querys import create_engine
 from app.utils.llm_client import LLMClient
@@ -44,10 +44,11 @@ from Backend.audit import router as audit_router
 from Backend.cards import router as cards_router
 from Backend.notifications import router as notifications_router
 from Backend.settings_routes import router as settings_router
-from Backend.email import send_complaint_confirmation_email
+from Backend.email import send_complaint_confirmation_email, send_department_routing_email
 from app.settings import RESEND_WEBHOOK_SECRET, OPENAI_API_KEY, GEMINI_API_KEY
 from Backend.schemas import (
     TransactionRequest,
+    TransactionConfirmRequest,
     CustomerCreate,
     ProfileUpdate,
     PreferencesUpdate,
@@ -59,6 +60,7 @@ from Backend.schemas import (
     InternalTransferRequest, 
 )
 from Backend.email import send_auth_email
+from Backend.auth import verify_password
 
 
 class ComplaintQuery(BaseModel):
@@ -71,16 +73,21 @@ class ComplaintQuery(BaseModel):
 
 logger = logging.getLogger(__name__)
 
+orchestrator = Orchestrator()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    global orchestrator
+    print("Initializing Orchestrator globally...")
+    await orchestrator.initialize()
+    print("Orchestrator Initialization complete.")
     yield
 
     print("Shutting down: Disposing database engine...")
     await engine.dispose()
 
 
-app = FastAPI(title="Sentinel Bank API", version="1.0.0", lifespan=lifespan)
+app = FastAPI(title="Sentinnel Bank API", version="1.0.0", lifespan=lifespan)
 app.include_router(auth_router)
 
 app.add_middleware(
@@ -107,7 +114,7 @@ profile_router = APIRouter(tags=["User Profile"])
 
 @profile_router.get("/users/me", response_model=FullUserResponse)
 async def get_me(
-    current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)
+    current_user: Customer = Depends(get_current_user), db: AsyncSession = Depends(get_db)
 ):
     # Fetch customer and account details
     stmt = select(Customer).filter(Customer.customer_id == current_user.customer_id)
@@ -134,9 +141,8 @@ async def get_me(
         )
 
     return {
-        "user_id": current_user.user_id,
+        "customer_id": current_user.customer_id,
         "email": current_user.email,
-        "role": current_user.role,
         "customer_details": (
             {
                 "first_name": customer.first_name,
@@ -155,7 +161,7 @@ async def get_me(
 @profile_router.patch("/users/update-profile")
 async def update_profile(
     update_data: ProfileUpdate,
-    current_user: User = Depends(get_current_user),
+    current_user: Customer = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     if not current_user.customer_id:
@@ -183,15 +189,15 @@ async def update_profile(
 
 @profile_router.get("/users/settings", response_model=SettingsResponse)
 async def get_settings(
-    current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)
+    current_user: Customer = Depends(get_current_user), db: AsyncSession = Depends(get_db)
 ):
-    stmt = select(UserSettings).filter(UserSettings.user_id == current_user.user_id)
+    stmt = select(UserSettings).filter(UserSettings.customer_id == current_user.customer_id)
     result = await db.execute(stmt)
     settings = result.scalars().first()
 
     if not settings:
         # Create default if missing
-        settings = UserSettings(user_id=current_user.user_id)
+        settings = UserSettings(customer_id=current_user.customer_id)
         db.add(settings)
         await db.commit()
         await db.refresh(settings)
@@ -202,15 +208,15 @@ async def get_settings(
 @profile_router.patch("/users/update-preferences")
 async def update_preferences(
     prefs: PreferencesUpdate,
-    current_user: User = Depends(get_current_user),
+    current_user: Customer = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    stmt = select(UserSettings).filter(UserSettings.user_id == current_user.user_id)
+    stmt = select(UserSettings).filter(UserSettings.customer_id == current_user.customer_id)
     result = await db.execute(stmt)
     settings = result.scalars().first()
 
     if not settings:
-        settings = UserSettings(user_id=current_user.user_id)
+        settings = UserSettings(customer_id=current_user.customer_id)
         db.add(settings)
 
     if prefs.theme:
@@ -227,16 +233,16 @@ async def update_preferences(
 
 
 # Admin Endpoints
-@profile_router.get("/users/{userId}", dependencies=[Depends(get_current_user)])
+@profile_router.get("/users/{customerId}", dependencies=[Depends(get_current_user)])
 async def admin_get_user(
-    userId: str,
-    current_user: User = Depends(get_current_user),
+    customerId: str,
+    current_user: Customer = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    if current_user.role != "admin":
-        raise HTTPException(status_code=403, detail="Admin access required")
+    # if getattr(current_user, "role", None) != "admin":
+    #     raise HTTPException(status_code=403, detail="Admin access required")
 
-    stmt = select(User).filter(User.user_id == userId)
+    stmt = select(Customer).filter(Customer.customer_id == customerId)
     result = await db.execute(stmt)
     user = result.scalars().first()
     if not user:
@@ -245,25 +251,25 @@ async def admin_get_user(
     return user
 
 
-@profile_router.delete("/users/{userId}")
+@profile_router.delete("/users/{customerId}")
 async def admin_delete_user(
-    userId: str,
-    current_user: User = Depends(get_current_user),
+    customerId: str,
+    current_user: Customer = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    if current_user.role != "admin":
-        raise HTTPException(status_code=403, detail="Admin access required")
+    # if getattr(current_user, "role", None) != "admin":
+    #     raise HTTPException(status_code=403, detail="Admin access required")
 
-    stmt = select(User).filter(User.user_id == userId)
+    stmt = select(Customer).filter(Customer.customer_id == customerId)
     result = await db.execute(stmt)
     user = result.scalars().first()
 
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    user.is_active = False 
+    # user.is_active = False 
     await db.commit()
-    return {"message": f"User {userId} deactivated successfully"}
+    return {"message": f"User {customerId} deactivated successfully"}
 
 
 app.include_router(profile_router)
@@ -283,7 +289,6 @@ webhook_router = APIRouter(tags=["Webhooks"])
 @webhook_router.post("/webhooks/inbound-email")
 async def inbound_email_webhook(
     request: Request,
-    background_tasks: BackgroundTasks = None,
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -320,7 +325,7 @@ async def inbound_email_webhook(
         raise HTTPException(status_code=422, detail="Missing 'from' field")
 
     # 4. Find the user by from_email
-    stmt = select(User).filter(User.email == from_email)
+    stmt = select(Customer).filter(Customer.email == from_email)
     result = await db.execute(stmt)
     user = result.scalars().first()
 
@@ -343,9 +348,8 @@ async def inbound_email_webhook(
     db.add(new_complaint)
     await db.commit()
 
-    # 3. Trigger AI Routing in background
-    background_tasks.add_task(
-        process_complaint_routing,
+    # 3. Trigger AI Routing synchronously
+    await process_complaint_routing(
         complaint_id=new_complaint_id,
         complaint_text=text,
     )
@@ -365,7 +369,7 @@ async def process_complaint_routing(complaint_id: str, complaint_text: str):
     async with SessionLocal() as db:
         try:
             # Initialize required components
-            dataset_loader = DatasetLoader()
+            # dataset_loader = DatasetLoader()
             orchestrator = Orchestrator()
             await orchestrator.initialize()
             # await dataset_loader.load()
@@ -418,7 +422,7 @@ async def process_complaint_routing(complaint_id: str, complaint_text: str):
                     f"Successfully routed complaint {complaint_id} to {complaint.department_name}"
                 )
 
-                user_stmt = select(User).filter(
+                user_stmt = select(Customer).filter(
                     User.customer_id == complaint.customer_id
                 )
                 user_result = await db.execute(user_stmt)
@@ -437,41 +441,69 @@ async def process_complaint_routing(complaint_id: str, complaint_text: str):
         except Exception as e:
             print(f"CRITICAL AI ROUTING FAILURE for {complaint_id}: {e}")
 
+class AIChatRequest(BaseModel):
+    user_prompt: str
+
+class IntentResponse(BaseModel):
+    intent: str
+
+class ChatBotResponse(BaseModel):
+    text: str
+
 
 @app.post("/ai/chat", tags=["Agents"])
 async def ai_chat(
-    payload: Dict[str, Any] = Body(...),
-    user: User = Depends(get_current_user),
+    payload: AIChatRequest,
+    user: Customer = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     try:
-        user_message = payload.get("message", "")
+        user_message = payload.user_prompt
         if not user_message:
-            raise HTTPException(status_code=400, detail="Missing message")
+            raise HTTPException(status_code=400, detail="Missing user_prompt")
 
         # 1. Initialize Infrastructure
-        dataset_loader = DatasetLoader()
-        # await dataset_loader.load()
-        repo = BankRepository(dataset_loader)
-        rag_engine = await create_engine()
-        openai_client = AsyncOpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
-
-        # 2. Intent Classification using Gemini
-        intent_llm = LLMClient(
-            client=genai.Client(api_key=GEMINI_API_KEY),
-            model_name="gemini-2.0-flash",
-            response_schema=dict,
-        )
-
+        orchestrator = Orchestrator()
+        await orchestrator.initialize()
+        
+        # 2. Intent Classification using OpenAI with Gemini Fallback
         intent_prompt = f"""
         Classify the user's intent into one of: 'fraud_check', 'complaint_routing', 'product_recommendation', or 'general_query'.
         User Message: "{user_message}"
         Return JSON with key "intent".
         """
-        intent_res = await intent_llm.generate(
-            "Intent Classification System", intent_prompt
-        )
-        intent = intent_res.get("intent", "general_query")
+        
+        try:
+            intent_llm = LLMClient(
+                client=AsyncOpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None,
+                model_name="gpt-4o",
+                response_schema=IntentResponse,
+            )
+            intent_res = await intent_llm.generate(
+                "Intent Classification System", intent_prompt
+            )
+        except Exception:
+            intent_res = None
+            
+        if not intent_res:
+            try:
+                intent_llm = LLMClient(
+                    client=genai.Client(api_key=GEMINI_API_KEY),
+                    model_name="gemini-2.0-flash",
+                    response_schema=IntentResponse,
+                )
+                intent_res = await intent_llm.generate(
+                    "Intent Classification System", intent_prompt
+                )
+            except Exception as e:
+                logger.error(f"Fallback Intent Classification failed: {e}")
+
+        if isinstance(intent_res, dict):
+            intent = intent_res.get("intent", "general_query")
+        elif hasattr(intent_res, "intent"):
+            intent = getattr(intent_res, "intent", "general_query")
+        else:
+            intent = "general_query"
 
         bot_text = "I'm here to help you with your banking needs."
 
@@ -489,21 +521,16 @@ async def ai_chat(
             last_txn = res.scalars().first()
 
             if last_txn:
-                agent = SentinelAgent(
-                    repo=repo,
-                    rag_engine=rag_engine,
-                    openai_llm=(
-                        LLMClient(openai_client, "gpt-4o", FraudResponse)
-                        if openai_client
-                        else None
-                    ),
-                    gemini_llm=LLMClient(
-                        genai.Client(api_key=GEMINI_API_KEY),
-                        "gemini-2.0-flash",
-                        FraudResponse,
-                    ),
-                )
-                agent_res = await agent.run({"transaction_id": last_txn.transaction_id})
+                payload = {
+                    "type": "transaction",
+                    "department": "fraud",
+                    "transaction_id": last_txn.transaction_id,
+                    "agent": "SentinelAgent",
+                    "account_id": last_txn.account_id,
+                    "amount": float(last_txn.amount),
+                    "channel": last_txn.channel
+                }
+                agent_res = await orchestrator.handle_request(payload)
                 risk = agent_res.get("risk_level", "UNKNOWN")
                 bot_text = f"I've analyzed your latest transaction ({last_txn.transaction_reference_number}). Risk Level: **{risk}**. {agent_res.get('risk_summary', '')}"
             else:
@@ -521,37 +548,25 @@ async def ai_chat(
             last_comp = res.scalars().first()
 
             if last_comp:
-                agent = DispatcherAgent(
-                    repo=repo,
-                    rag_engine=rag_engine,
-                    openai_llm=(
-                        LLMClient(openai_client, "gpt-4o", RoutingResponse)
-                        if openai_client
-                        else None
-                    ),
-                    gemini_llm=LLMClient(
-                        genai.Client(api_key=GEMINI_API_KEY),
-                        "gemini-2.0-flash",
-                        RoutingResponse,
-                    ),
-                )
-                agent_res = await agent.run({"complaint_id": last_comp.complaint_id})
+                payload = {
+                    "type": "complaint",
+                    "department": "complaint",
+                    "complaint_id": last_comp.complaint_id,
+                    "agent": "DispatcherAgent" 
+                }
+                agent_res = await orchestrator.handle_request(payload)
                 bot_text = f"Regarding your complaint **{last_comp.complaint_id}**: It has been routed to the **{agent_res.get('department_name')}** department. Priority: **{agent_res.get('priority_level')}**."
             else:
                 bot_text = "You don't have any active complaints. You can file one by sending an email to support@sentinelbank.com."
 
         elif intent == "product_recommendation":
-            agent = TrajectoryAgent(
-                repo=repo,
-                rag_engine=rag_engine,
-                openai_llm=(
-                    LLMClient(openai_client, "gpt-4o", dict) if openai_client else None
-                ),
-                gemini_llm=LLMClient(
-                    genai.Client(api_key=GEMINI_API_KEY), "gemini-2.0-flash", dict
-                ),
-            )
-            agent_res = await agent.run({"customer_id": user.customer_id})
+            payload = {
+                "type": "recommendation",
+                "department": "recommendation",
+                "customer_id": user.customer_id,
+                "agent": "TrajectoryAgent"
+            }
+            agent_res = await orchestrator.handle_request(payload)
             product = agent_res.get("primary_product")
             if product and product != "None":
                 bot_text = f"Based on your financial trajectory, I recommend the **{product}**. {agent_res.get('reasoning', '')}"
@@ -560,24 +575,63 @@ async def ai_chat(
 
         else:
             # General query handling
+            faq_path = Path(__file__).parent.parent / "app" / "rag" / "knowledge_base" / "faqs" / "FAQ-001.txt"
+            faq_content = ""
+            if faq_path.exists():
+                with open(faq_path, "r", encoding="utf-8") as f:
+                    faq_content = f.read()
+
             prompt = f"""
             You are 'Sentinel AI', the internal banking chatbot for Sentinel Bank.
             User: {user.email} (Customer ID: {user.customer_id})
             
-            Context: You have access to Sentinel (Fraud), Dispatcher (Support), and Trajectory (Loans/Products) agents.
-            If the user asks about these specific things, relate your answer to being their concierge.
+            Here are the officially approved FAQs:
+            ---
+            {faq_content}
+            ---
             
+            INSTRUCTIONS:
+            1. You must answer the user's question using ONLY the provided FAQs.
+            2. If the user's question or prompt is not similar to any of the FAQs, or cannot be fully answered using the FAQs, you MUST output EXACTLY:
+            "Please refer to Customer Service"
+            Do not output any other text or explanation.
+
             User's Message: {user_message}
             """
-            response = await intent_llm.generate("Sentinel AI Persona", prompt)
-            bot_text = response.get(
-                "text",
-                (
-                    response
-                    if isinstance(response, str)
-                    else "I'm here to assist with your banking."
-                ),
-            )
+            
+            try:
+                chat_llm = LLMClient(
+                    client=AsyncOpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None,
+                    model_name="gpt-4o",
+                    response_schema=ChatBotResponse,
+                )
+                response = await chat_llm.generate("Sentinel AI Persona", prompt)
+            except Exception:
+                response = None
+                
+            if not response:
+                try:
+                    chat_llm = LLMClient(
+                        client=genai.Client(api_key=GEMINI_API_KEY),
+                        model_name="gemini-2.0-flash",
+                        response_schema=ChatBotResponse,
+                    )
+                    response = await chat_llm.generate("Sentinel AI Persona", prompt)
+                except Exception as e:
+                    logger.error(f"Fallback Chatbot failed: {e}")
+                    response = None
+            
+            
+            if isinstance(response, dict):
+                bot_text = response.get("text", "Please refer to Customer Service")
+            elif hasattr(response, "text"):
+                bot_text = getattr(response, "text", "Please refer to Customer Service")
+            else:
+                bot_text = str(response) if response else "Please refer to Customer Service"
+
+            # Enforcing strict adherence if LLM returns a variation
+            if "Please refer to Customer Service" in bot_text:
+                bot_text = "Please refer to Customer Service"
 
         return {
             "id": uuid.uuid4().hex,
@@ -587,13 +641,17 @@ async def ai_chat(
             "time": datetime.now().strftime("%I:%M %p"),
         }
 
+    except HTTPException as e:
+        raise e
     except Exception as e:
+        import traceback
         logger.error(f"Chat error: {e}")
+        logger.error(traceback.format_exc())
         return {
             "id": uuid.uuid4().hex,
             "sender": "ai",
             "type": "text",
-            "text": "I'm having a bit of trouble accessing my specialized banking agents right now. Please try again in a moment.",
+            "text": f"Error: {str(e)}",
             "time": datetime.now().strftime("%I:%M %p"),
         }
 
@@ -601,7 +659,7 @@ async def ai_chat(
 async def make_complaint(
     query: ComplaintQuery,
     background_tasks: BackgroundTasks,
-    user: User = Depends(get_current_user),
+    user: Customer = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     try:
@@ -619,6 +677,7 @@ async def make_complaint(
         new_complaint = Complaint(
             complaint_id=new_complaint_id,
             customer_id=user.customer_id,
+            account_id=account.account_id,
             linked_transaction_id=(
                 query.linked_transaction_id
                 if query.linked_transaction_id
@@ -638,46 +697,61 @@ async def make_complaint(
         )
 
         db.add(new_complaint)
+        await db.flush()
+        
+        complaint_request = {
+            "type": "complaint",
+            "department": "complaint",
+            "complaint_id": new_complaint_id,
+            "complaint_text": query.complaint_text,
+            "agent": "DispatcherAgent" 
+        }
+        
+        result1 = await orchestrator.handle_request(complaint_request)
+
+        # Update the complaint with the AI's routing decision
+        new_complaint.department_code = result1.get("department_code")
+        new_complaint.department_name = result1.get("department_name")
+        new_complaint.priority_level = result1.get("priority_level")
+        new_complaint.sentiment = result1.get("sentiment")
+
         await db.commit()
 
-        # Append the new complaint to complaints.csv for the DatasetLoader
+        # Map department to the proper representative email
+        department_emails = {
+            "TSU": "jofesdavid@gmail.com",
+            "COC": "dekpo231998@gmail.com",
+            "FRM": "ekpodavid120@gmail.com",
+            "DCS": "oshoridwanullah@gmail.com",
+            "AOD": "dekpo255@stu.ui.edu.ng",
+            "CLS": "businesskaoshi@gmail.com"
+        }
         
-        base_dir = Path(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-        csv_path = base_dir / "complaints.csv"
-        
-        with open(csv_path, mode="a", newline="", encoding="utf-8") as file:
-            writer = csv.writer(file)
-            writer.writerow([
-                new_complaint_id,
-                user.customer_id,
-                account.account_id,
-                new_complaint.linked_transaction_id or "",
-                new_complaint.linked_reference or "",
-                "",
-                "Pending AI Routing",
-                "",
-                "",
-                query.complaint_channel,
-                "",
-                new_complaint.complaint_timestamp.strftime("%Y-%m-%d %H:%M:%S"),
-                "",
-                "",
-                "",
-                "",
-                "open",
-                "0",
-                query.complaint_text
-            ])
+        dept_code = new_complaint.department_code or ""
+        target_email = department_emails.get(dept_code, "support@sentinelbank.com")
 
+        # Dispatch the email asynchronously to the appropriate department
         background_tasks.add_task(
-            process_complaint_routing,
+            send_department_routing_email,
+            to_email=target_email,
             complaint_id=new_complaint_id,
             complaint_text=query.complaint_text,
+            department=new_complaint.department_name or "General Support",
+            priority=new_complaint.priority_level or "Low"
         )
 
+        # Prepare the final response explicitly matching RoutingResponse schema + message
         return {
-            "message": "Complaint submitted successfully and is being routed.",
+            "message": "Complaint processed and routed successfully.",
             "complaint_id": new_complaint_id,
+            "department_code": result1.get("department_code"),
+            "department_name": result1.get("department_name"),
+            "priority_level": result1.get("priority_level"),
+            "sla_hours": result1.get("sla_hours"),
+            "routing_method": result1.get("routing_method"),
+            "keyword_matches": result1.get("keyword_matches"),
+            "confidence": result1.get("confidence"),
+            "reasoning": result1.get("reasoning")
         }
     except Exception as e:
         await db.rollback()
@@ -806,7 +880,7 @@ async def create_customer(
 @app.post("/make_transaction", tags=["Agents"])
 async def make_transaction(
     request: TransactionRequest,
-    user: User = Depends(get_current_user),
+    user: Customer = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     try:
@@ -828,35 +902,13 @@ async def make_transaction(
         # Build payload with mock transaction_id for initial scoring
         txn_id = f"TXN-{uuid.uuid4().hex[:10].upper()}"
         safe_amount = Decimal(str(request.amount))
-        
-        # Append pending transaction to transactions.csv for the DatasetLoader to read
-        base_dir = Path(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-        csv_path_txn = base_dir / "transactions.csv"
-        
-        import csv
-        with open(csv_path_txn, mode="a", newline="", encoding="utf-8") as file:
-            writer = csv.writer(file)
-            writer.writerow([
-                txn_id,
-                account.account_id,
-                f"REF-{uuid.uuid4().hex[:10].upper()}",
-                datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                request.amount,
-                "pending", # transaction_status
-                "NGN",
-                request.transaction_type,
-                "", # fee
-                request.channel,
-                "", # destination_account
-                "", # merchant_name
-                "", # merchant_category
-                "0", # is_fraud_flag
-                "",
-                ""
-            ])
             
-        orchestrator = Orchestrator()
-        await orchestrator.initialize()
+
+
+        from sqlalchemy import func
+        txn_count_stmt = select(func.count()).select_from(Transaction).where(Transaction.account_id == account.account_id)
+        txn_count_result = await db.execute(txn_count_stmt)
+        txn_count_so_far = txn_count_result.scalar() or 0
 
         payload = {
             "type": "transaction",
@@ -865,7 +917,14 @@ async def make_transaction(
             "agent": "SentinelAgent",
             "account_id": account.account_id,
             "amount": float(safe_amount),
-            "channel": request.channel
+            "channel": request.channel,
+            "device_id": request.device_id,
+            "merchant_name": request.merchant_name,
+            "narration": request.narration,
+            "counterparty_bank": request.counterparty_bank,
+            "transaction_type": request.transaction_type,
+            "currency": request.currency,
+            "txn_count_so_far": txn_count_so_far,
         }
 
         fraud_result = await orchestrator.handle_request(payload)
@@ -873,14 +932,8 @@ async def make_transaction(
         # In case the result is structured differently
         risk_score = fraud_result.get("total_risk_score", 0)
 
-        if risk_score > 80:
-            return {
-                "status": "blocked",
-                "message": "Transaction flagged as risk",
-                "fraud_analysis": fraud_result,
-            }
+        is_pending = risk_score > 80
 
-        safe_amount = Decimal(str(request.amount))
         if request.transaction_type == "debit":
             if account.current_balance < safe_amount:
                 raise HTTPException(status_code=400, detail="Insufficient funds")
@@ -889,22 +942,39 @@ async def make_transaction(
             new_balance = account.current_balance + safe_amount
 
         transaction = Transaction(
-            transaction_id=f"TXN-{uuid.uuid4().hex[:10].upper()}",
+            transaction_id=txn_id,
             transaction_reference_number=f"REF-{uuid.uuid4().hex[:10].upper()}",
             account_id=account.account_id,
+            customer_id=account.customer_id,
             channel=request.channel,
+            device_id=request.device_id,
             counterparty_bank=request.counterparty_bank,
+            narration=request.narration,
             amount=safe_amount,
+            currency=request.currency,
+            merchant_name=request.merchant_name,
             transaction_type=request.transaction_type,
-            transaction_balance=new_balance,
-            transaction_status="completed",
+            transaction_balance=new_balance if not is_pending else account.current_balance,
+            transaction_status="pending" if is_pending else "completed",
             is_fraud_score=int(risk_score),
+            fraud_explainability_trace=fraud_result.get("policy_explanation") or fraud_result.get("reasoning") or "No explanation provided.",
             transaction_timestamp=datetime.now(),
         )
 
-        account.current_balance = new_balance
         db.add(transaction)
+        
+        if not is_pending:
+            account.current_balance = new_balance
+            
         await db.commit()
+
+        if is_pending:
+            return {
+                "status": "PENDING_CONFIRMATION",
+                "message": "Transaction requires customer confirmation",
+                "transaction_id": txn_id,
+                "fraud_analysis": fraud_result,
+            }
 
         return fraud_result
     
@@ -915,15 +985,157 @@ async def make_transaction(
         await db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/transactions/confirm", tags=["Agents"])
+async def confirm_transaction(
+    request: TransactionConfirmRequest,
+    user: Customer = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        # Verify the password (stored as plain text)
+        if request.password != user.password_hash:
+            raise HTTPException(status_code=401, detail="Invalid password")
+            
+        stmt = select(Transaction).filter(
+            Transaction.transaction_id == request.transaction_id,
+            Transaction.transaction_status == "pending"
+        ).with_for_update()
+        
+        result = await db.execute(stmt)
+        transaction = result.scalars().first()
+        
+        if not transaction:
+            raise HTTPException(status_code=404, detail="Pending transaction not found")
+            
+        # Get the account to update its balance
+        stmt_acc = select(Account).filter(Account.account_id == transaction.account_id).with_for_update()
+        res_acc = await db.execute(stmt_acc)
+        account = res_acc.scalars().first()
+        
+        if not account:
+            raise HTTPException(status_code=404, detail="Account not found")
+            
+        # Perform the balance adjustment
+        safe_amount = Decimal(str(transaction.amount))
+        if transaction.transaction_type == "debit":
+            if account.current_balance < safe_amount:
+                raise HTTPException(status_code=400, detail="Insufficient funds")
+            account.current_balance -= safe_amount
+        else:
+            account.current_balance += safe_amount
+            
+        transaction.transaction_status = "completed"
+        transaction.transaction_balance = account.current_balance
+        
+        await db.commit()
+        
+        return {"status": "success", "message": "Transaction verified and completed successfully"}
+    except HTTPException:
+        await db.rollback()
+        raise
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/card_transaction", tags=["Agents"])
+async def card_transaction(
+    request: TransactionRequest,
+    user: Customer = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        stmt = (
+            select(Account)
+            .filter(
+                Account.account_number == request.account_number,
+                Account.customer_id == user.customer_id,
+            )
+            .with_for_update()
+        )
+
+        result = await db.execute(stmt)
+        account = result.scalars().first()
+
+        if not account:
+            raise HTTPException(status_code=403, detail="Unauthorized account access")
+
+        txn_id = f"TXN-{uuid.uuid4().hex[:10].upper()}"
+        safe_amount = Decimal(str(request.amount))
+            
+
+
+        payload = {
+            "type": "transaction",
+            "department": "fraud",
+            "transaction_id": txn_id,
+            "agent": "SentinelAgent",
+            "account_id": account.account_id,
+            "amount": float(safe_amount),
+            "channel": "pos", # Default card channel to enforce challenge policy
+            "device_id": request.device_id,
+            "merchant_name": request.merchant_name,
+            "narration": request.narration,
+            "counterparty_bank": request.counterparty_bank,
+            "transaction_type": "debit",
+            "currency": request.currency,
+        }
+
+        fraud_result = await orchestrator.handle_request(payload)
+
+        # Force card transactions to always require confirmation via popup
+        is_pending = True
+
+        transaction = Transaction(
+            transaction_id=txn_id,
+            transaction_reference_number=f"REF-{uuid.uuid4().hex[:10].upper()}",
+            account_id=account.account_id,
+            customer_id=account.customer_id,
+            channel="pos",
+            device_id=request.device_id,
+            counterparty_bank=request.counterparty_bank,
+            narration=request.narration,
+            amount=safe_amount,
+            currency=request.currency,
+            merchant_name=request.merchant_name,
+            transaction_type=request.transaction_type,
+            transaction_balance=account.current_balance, # Don't deduct yet
+            transaction_status="pending",
+            is_fraud_score=int(fraud_result.get("total_risk_score", 0)),
+            fraud_explainability_trace=fraud_result.get("policy_explanation") or fraud_result.get("reasoning") or "Mandatory card challenge override.",
+            transaction_timestamp=datetime.now(),
+        )
+
+        db.add(transaction)
+        await db.commit()
+
+        return {
+            "status": "PENDING_CONFIRMATION",
+            "message": "Card transaction requires confirmation",
+            "transaction_id": txn_id,
+            "fraud_analysis": fraud_result
+        }
+    except Exception as e:
+        await db.rollback()
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+        return {
+            "status": "success",
+            "content": content
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 
 @app.get("/trajectory/popup_recommendations", tags=["Agents"])
 async def get_trajectory_popup(
-    user: User = Depends(get_current_user),
+    user: Customer = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     try:
         # Force fetch the user from DB to ensure customer_id is mapped just in case the JWT middleware detached it
-        stmt = select(User).filter(User.email == user.email)
+        stmt = select(Customer).filter(Customer.email == user.email)
         res = await db.execute(stmt)
         active_user = res.scalars().first()
 
@@ -934,8 +1146,6 @@ async def get_trajectory_popup(
                 detail="Authenticated user is not linked to a customer profile.",
             )
 
-        orchestrator = Orchestrator()
-        await orchestrator.initialize()
 
         payload = {
             "type": "recommendation",
@@ -991,74 +1201,15 @@ async def get_trajectory_popup(
 
 
 
-@app.post("/trajectory/email_recommendations", tags=["Agents"])
-async def post_trajectory_email(
-    user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    try:
-        # Force fetch the user from DB to ensure customer_id is mapped just in case the JWT middleware detached it
-        stmt = select(User).filter(User.email == user.email)
-        res = await db.execute(stmt)
-        active_user = res.scalars().first()
+# @app.post("/trajectory/email_recommendations", tags=["Agents"])
+# async def post_trajectory_email(
+# ... endpoint disabled to rely purely on frontend popups
 
-        customer_id = active_user.customer_id if active_user else user.customer_id
-        if not customer_id:
-            raise HTTPException(
-                status_code=400,
-                detail="Authenticated user is not linked to a customer profile.",
-            )
-
-        orchestrator = Orchestrator()
-        await orchestrator.initialize()
-
-        payload = {
-            "type": "recommendation",
-            "agent": "TrajectoryAgent",
-            "customer_id": customer_id
-        }
-        
-        recommendation_result = await orchestrator.handle_request(payload)
-
-        # If there's a primary recommendation, send it via email
-        primary_product = recommendation_result.get("primary_product")
-        if primary_product and primary_product != "None":
-            # Format appealing HTML email
-            email_html = f"""
-            <h2>Special Offer Just for You!</h2>
-            <p>Based on your recent activity, we think you'd love our <strong>{primary_product}</strong>.</p>
-            <p><strong>Benefits:</strong> {recommendation_result.get('reasoning', 'Tailored to your financial journey.')}</p>
-            <p>Log in to your Sentinel Banking app to claim this offer.</p>
-            """
-
-            # Send the email
-            await send_auth_email(
-                to_email=user.email,
-                subject="Your Exclusive Sentinel Bank Recommendation",
-                html_content=email_html,
-            )
-
-            return {
-                "status": "success",
-                "message": "Recommendation email sent successfully.",
-                "primary_product": primary_product,
-            }
-        else:
-            return {
-                "status": "success",
-                "message": "No specific product recommended to email at this time.",
-            }
-
-    except Exception as e:
-        import traceback
-
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/accounts", tags=["Accounts"], response_model=List[AccountResponse])
 async def list_accounts(
-    db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)
+    db: AsyncSession = Depends(get_db), user: Customer = Depends(get_current_user)
 ):
     stmt = select(Account).filter(Account.customer_id == user.customer_id)
     result = await db.execute(stmt)
@@ -1069,7 +1220,7 @@ async def list_accounts(
 async def get_account_details(
     accountNumber: str,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: Customer = Depends(get_current_user),
 ):
     stmt = select(Account).filter(
         Account.account_number == accountNumber, Account.customer_id == user.customer_id
@@ -1085,7 +1236,7 @@ async def get_account_details(
 async def get_account_balance(
     accountNumber: str,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: Customer = Depends(get_current_user),
 ):
     stmt = select(Account).filter(
         Account.account_number == accountNumber, Account.customer_id == user.customer_id
@@ -1104,7 +1255,7 @@ async def get_account_balance(
 async def get_account_status(
     accountNumber: str,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: Customer = Depends(get_current_user),
 ):
     stmt = select(Account).filter(
         Account.account_number == accountNumber, Account.customer_id == user.customer_id
@@ -1120,7 +1271,7 @@ async def get_account_status(
 async def freeze_account(
     accountNumber: str,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: Customer = Depends(get_current_user),
 ):
     stmt = select(Account).filter(
         Account.account_number == accountNumber, Account.customer_id == user.customer_id
@@ -1139,7 +1290,7 @@ async def freeze_account(
 async def activate_account(
     accountNumber: str,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: Customer = Depends(get_current_user),
 ):
     stmt = select(Account).filter(
         Account.account_number == accountNumber, Account.customer_id == user.customer_id
@@ -1159,7 +1310,7 @@ async def activate_account(
 
 @app.get("/transactions", tags=["Transactions"])
 async def list_transactions(
-    db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)
+    db: AsyncSession = Depends(get_db), user: Customer = Depends(get_current_user)
 ):
     # Find all accounts linked to the user's customer record
     acc_stmt = select(Account.account_id).filter(
@@ -1184,7 +1335,7 @@ async def list_transactions(
 async def get_transaction_details(
     transactionId: str,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: Customer = Depends(get_current_user),
 ):
     # Join with Account to verify ownership
     stmt = (
@@ -1206,7 +1357,7 @@ async def get_transaction_details(
 async def list_transactions_for_account(
     accountNumber: str,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: Customer = Depends(get_current_user),
 ):
     # Verify account ownership
     acc_stmt = select(Account).filter(
@@ -1234,7 +1385,7 @@ async def filter_transactions(
     max_amount: Optional[float] = None,
     transaction_type: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: Customer = Depends(get_current_user),
 ):
     # Find all accounts linked to the user's customer record
     acc_stmt = select(Account.account_id).filter(
@@ -1268,7 +1419,7 @@ async def filter_transactions(
 async def get_transaction_status(
     transactionId: str,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: Customer = Depends(get_current_user),
 ):
     stmt = (
         select(Transaction)
@@ -1295,7 +1446,7 @@ async def get_transaction_status(
 async def report_failed_transaction(
     request: ReportFailedRequest,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: Customer = Depends(get_current_user),
 ):
     stmt = (
         select(Transaction)
@@ -1322,7 +1473,7 @@ async def report_failed_transaction(
 async def internal_transfer(
     request: InternalTransferRequest,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: Customer = Depends(get_current_user),
 ):
     # Verify sender account belongs to user and is locked for update
     from_stmt = (
@@ -1433,6 +1584,7 @@ async def internal_transfer(
         transaction_id=f"TXN-{uuid.uuid4().hex[:10].upper()}",
         transaction_reference_number=f"REF-{uuid.uuid4().hex[:10].upper()}",
         account_id=from_account.account_id,
+        customer_id=from_account.customer_id,
         channel="in-app",
         counterparty_bank="Sentinel",
         narration=request.narration or "Internal Transfer",
@@ -1448,6 +1600,7 @@ async def internal_transfer(
         transaction_id=f"TXN-{uuid.uuid4().hex[:10].upper()}",
         transaction_reference_number=f"REF-{uuid.uuid4().hex[:10].upper()}",
         account_id=to_account.account_id,
+        customer_id=to_account.customer_id,
         channel="in-app",
         counterparty_bank="Sentinel",
         narration=request.narration or "Internal Transfer",
@@ -1469,6 +1622,100 @@ async def internal_transfer(
         "reference": debit_txn.transaction_reference_number,
     }
 
+
+@app.get("/faqs", tags=["Support"])
+async def get_faqs(prompt: Optional[str] = None):
+    """
+    Reads and parses the static FAQ-001.txt knowledge base file.
+    Returns structured JSON with sections, questions, and answers for the frontend UI.
+    """
+    base_dir = Path(__file__).resolve().parent.parent
+    faq_path = base_dir / "app" / "rag" / "knowledge_base" / "faqs" / "FAQ-001.txt"
+
+    if not faq_path.exists():
+        raise HTTPException(status_code=404, detail="FAQ file not found.")
+
+    with open(faq_path, "r", encoding="utf-8") as file:
+        lines = file.readlines()
+
+    faqs = []
+    current_category = "General"
+    current_q = None
+    current_a = []
+    in_answer = False
+
+    for line in lines:
+        stripped = line.strip()
+
+        # Check for Category/Section Header
+        if stripped.startswith("SECTION "):
+            current_category = stripped.split(":", 1)[-1].strip()
+            continue
+
+        # Check for Question
+        if stripped.startswith("Q") and ":" in stripped:
+            if current_q and current_a:
+                faqs.append({
+                    "category": current_category,
+                    "question": current_q,
+                    "answer": "\n".join(current_a).strip()
+                })
+            
+            # Extract new question
+            current_q = stripped.split(":", 1)[-1].strip()
+            current_a = []
+            in_answer = False
+            continue
+
+        # Check for Answer starting 
+        if stripped.startswith("A:"):
+            in_answer = True
+            current_a.append(stripped[2:].strip())
+            continue
+            
+        # Append continuing answer text
+        if in_answer and stripped and not stripped.startswith("──") and not stripped.startswith("=="):
+            current_a.append(stripped)
+
+    # Append the last Q/A pair
+    if current_q and current_a:
+        faqs.append({
+            "category": current_category,
+            "question": current_q,
+            "answer": "\n".join(current_a).strip()
+        })
+
+    if prompt:
+        prompt_lower = prompt.lower()
+        best_match = None
+        best_score = 0
+        prompt_words = set([w for w in prompt_lower.split() if len(w) > 3])
+
+        for faq in faqs:
+            q_lower = faq["question"].lower()
+            a_lower = faq["answer"].lower()
+            
+            score = 0
+            for word in prompt_words:
+                if word in q_lower:
+                    score += 3
+                if word in a_lower:
+                    score += 1
+
+            if score > best_score:
+                best_score = score
+                best_match = faq
+
+        threshold = 3 
+        if best_match and best_score >= threshold:
+            return {"answer": best_match["answer"], "question_matched": best_match["question"], "match_found": True}
+        else:
+            return {
+                "answer": "I couldn't find a specific answer to your question in our FAQs. Please contact our 24/7 customer care team for further assistance.",
+                "match_found": False
+            }
+
+    return {"faqs": faqs}
 
 if __name__ == "__main__":
     uvicorn.run(app, host="127.0.0.1", port=8080)
