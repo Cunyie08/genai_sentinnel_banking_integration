@@ -1,17 +1,21 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
 import { api } from '../api/axiosConfig'; 
 
-
 export const loginUser = createAsyncThunk(
   'auth/login',
   async (credentials, { rejectWithValue }) => {
     try {
-      const response = await api.login(credentials);
-      
-      localStorage.setItem('sentinel_token', response.data.token);
+      let response;
+      if (credentials.isSignup) {
+        response = await api.signup(credentials);
+      } else {
+        response = await api.login(credentials);
+      }
+      // Token is already set in localStorage by axiosConfig.js login()
+      // Just return the user object to store in redux
       return response.data.user;
     } catch (err) {
-      return rejectWithValue(err.message || 'Login failed');
+      return rejectWithValue(err.message || 'Authentication failed');
     }
   }
 );

@@ -20,9 +20,9 @@ const accountSlice = createSlice({
   initialState: {
     details: {
       balance: 0,
-      number: '....',
-      status: 'Active',
-      tier: 'Tier 1'
+      number: '',
+      status: '',
+      tier: ''
     },
     stats: null,
     isLoading: false,
@@ -41,9 +41,17 @@ const accountSlice = createSlice({
       })
       .addCase(fetchDashboard.fulfilled, (state, action) => {
         state.isLoading = false;
-        
-        state.details = action.payload.account;
-        state.stats = action.payload.stats;
+        // The real backend returns account_details array, while mock returns .account
+        const acc = action.payload.account || (action.payload.account_details && action.payload.account_details[0]);
+        if (acc) {
+          state.details = {
+            balance: acc.balance ?? acc.current_balance ?? 0,
+            number:  acc.account_number || '....',
+            status:  acc.status || 'Active',
+            tier:    acc.tier || 'Tier 3'
+          };
+        }
+        state.stats = action.payload.stats || null;
       })
       .addCase(fetchDashboard.rejected, (state, action) => {
         state.isLoading = false;

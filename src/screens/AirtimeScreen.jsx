@@ -30,7 +30,13 @@ const AirtimeScreen = () => {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    dispatch(buyAirtime({ network, phone: isSelf ? user?.phone : phone, amount }));
+    const accountId = user?.accounts?.[0]?.account_id;
+    dispatch(buyAirtime({ 
+      network, 
+      phone: isSelf ? user?.phone : phone, 
+      amount: Number(amount),
+      account_id: accountId
+    }));
   };
 
   const handleReset = () => {
@@ -75,7 +81,7 @@ const AirtimeScreen = () => {
         </div>
       </header>
 
-      <div className="w-full px-4 sm:px-6 xl:px-8 py-6 max-w-2xl xl:max-w-none">
+      <div className="w-full px-4 sm:px-6 xl:px-8 py-6 pb-28 max-w-2xl xl:max-w-none">
 
         {error && (
           <div className="mb-5 p-3 bg-red-50 border border-red-100 text-red-600 rounded-xl text-xs font-bold flex items-center gap-2">

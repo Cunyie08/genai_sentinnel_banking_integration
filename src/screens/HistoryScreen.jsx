@@ -54,7 +54,7 @@ const HistoryScreen = () => {
         </div>
       </header>
 
-      <div className="w-full px-4 sm:px-6 xl:px-8 py-5 space-y-4">
+      <div className="w-full px-4 sm:px-6 xl:px-8 py-5 pb-28 space-y-4">
 
         <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-2xl px-4 shadow-sm focus-within:border-[#A01030] focus-within:ring-2 focus-within:ring-[#A01030]/10 transition-all">
           <Search size={16} className="text-gray-400 shrink-0" />

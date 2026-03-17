@@ -143,7 +143,11 @@ const AuthScreens = () => {
   const navigate = useNavigate();
   const { isLoading, error } = useSelector(state => state.auth);
   const [view, setView]       = useState('login');
-  const [formData, setFormData] = useState({ phone: '', password: '', name: '', email: '' });
+  const [formData, setFormData] = useState({ 
+    phone: '', password: '', name: '', email: '',
+    gender: 'Other', date_of_birth: '', bvn: '', nin: '',
+    telco_provider: '', state_of_origin: '', residential_state: '', banking_branch: ''
+  });
   const [showPass, setShowPass] = useState(false);
   const [authError, setAuthError] = useState('');
 
@@ -166,12 +170,12 @@ const AuthScreens = () => {
   const handleLogin = async (e) => {
     e.preventDefault();
     setAuthError('');
-    if (!formData.phone || !formData.password) {
+    if (!formData.email || !formData.password) {
       setAuthError('Please fill in all fields');
       return;
     }
     try {
-      await dispatch(loginUser({ phone: formData.phone, password: formData.password })).unwrap();
+      await dispatch(loginUser({ email: formData.email, password: formData.password })).unwrap();
       dispatch(triggerWelcome());
       navigate('/home');
     } catch (err) { setAuthError(err.message || 'Login failed'); }
@@ -180,8 +184,14 @@ const AuthScreens = () => {
   const handleSignup = async (e) => {
     e.preventDefault();
     setAuthError('');
-    if (!formData.name || !formData.phone || !formData.email || !formData.password) {
+    if (!formData.name || !formData.phone || !formData.email || !formData.password || 
+        !formData.date_of_birth || !formData.bvn || !formData.nin || !formData.telco_provider || 
+        !formData.state_of_origin || !formData.residential_state || !formData.banking_branch) {
       setAuthError('Please fill in all fields');
+      return;
+    }
+    if (formData.bvn.length !== 11 || formData.nin.length !== 11) {
+      setAuthError('BVN and NIN must be exactly 11 digits');
       return;
     }
     if (!isPasswordValid(formData.password)) {
@@ -190,7 +200,7 @@ const AuthScreens = () => {
     }
     try {
       // Create user context manually passing isSignup param
-      await dispatch(loginUser({ phone: formData.phone, password: formData.password, name: formData.name, email: formData.email, isSignup: true })).unwrap();
+      await dispatch(loginUser({ ...formData, phone: formData.phone, password: formData.password, name: formData.name, email: formData.email, isSignup: true })).unwrap();
       dispatch(triggerWelcome());
       navigate('/home');
     } catch (err) { setAuthError(err.message || 'Signup failed'); }
@@ -241,7 +251,7 @@ const AuthScreens = () => {
                 <div className="au au1 mb-7 xl:mb-8">
                   <p className="text-[10px] xl:text-xs font-bold text-gray-400 uppercase tracking-widest mb-1.5">Secure Login</p>
                   <h2 className="text-2xl sm:text-3xl xl:text-4xl font-black text-gray-900 leading-tight mb-2">
-                    Welcome back,<br />Reuben
+                    Welcome back<br />
                   </h2>
                   <p className="text-gray-500 text-sm xl:text-base leading-relaxed">
                     Securely access your account to manage your finances.
@@ -256,15 +266,11 @@ const AuthScreens = () => {
 
                 <form onSubmit={handleLogin} className="space-y-5 au au3">
 
-                  {/* Phone */}
+                  {/* Email */}
                   <div>
-                    <label className="block text-xs xl:text-sm font-bold text-gray-700 mb-2 ml-1">Phone Number</label>
-                    <div className={fieldWrap}>
-                      <div className="px-4 py-4 bg-gray-100 text-gray-500 text-sm font-bold border-r border-gray-200 flex items-center shrink-0">+234</div>
-                      <input name="phone" type="text" placeholder="800 000 0000"
-                        className="flex-1 px-4 py-4 bg-transparent outline-none text-sm font-medium text-gray-900 placeholder:text-gray-400 min-w-0"
-                        value={formData.phone} onChange={handleChange} />
-                    </div>
+                    <label className="block text-xs xl:text-sm font-bold text-gray-700 mb-2 ml-1">Email Address</label>
+                    <input name="email" type="email" placeholder="you@example.com"
+                      className={inputBase} value={formData.email} onChange={handleChange} />
                   </div>
 
                   {/* Password */}
@@ -360,6 +366,66 @@ const AuthScreens = () => {
                     <label className="block text-xs xl:text-sm font-bold text-gray-700 mb-2 ml-1">Email Address</label>
                     <input name="email" type="email" placeholder="you@example.com"
                       className={inputBase} value={formData.email} onChange={handleChange} />
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs xl:text-sm font-bold text-gray-700 mb-2 ml-1">Gender</label>
+                      <select name="gender" className={inputBase} value={formData.gender} onChange={handleChange}>
+                        <option value="Male">Male</option>
+                        <option value="Female">Female</option>
+                        <option value="Other">Other</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs xl:text-sm font-bold text-gray-700 mb-2 ml-1">Date of Birth</label>
+                      <input name="date_of_birth" type="date"
+                        className={inputBase} value={formData.date_of_birth} onChange={handleChange} />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs xl:text-sm font-bold text-gray-700 mb-2 ml-1">BVN</label>
+                      <input name="bvn" type="text" placeholder="11 digits" maxLength={11}
+                        className={inputBase} value={formData.bvn} onChange={handleChange} />
+                    </div>
+                    <div>
+                      <label className="block text-xs xl:text-sm font-bold text-gray-700 mb-2 ml-1">NIN</label>
+                      <input name="nin" type="text" placeholder="11 digits" maxLength={11}
+                        className={inputBase} value={formData.nin} onChange={handleChange} />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs xl:text-sm font-bold text-gray-700 mb-2 ml-1">State of Origin</label>
+                      <input name="state_of_origin" type="text" placeholder="e.g. Lagos"
+                        className={inputBase} value={formData.state_of_origin} onChange={handleChange} />
+                    </div>
+                    <div>
+                      <label className="block text-xs xl:text-sm font-bold text-gray-700 mb-2 ml-1">Residential State</label>
+                      <input name="residential_state" type="text" placeholder="e.g. Abuja"
+                        className={inputBase} value={formData.residential_state} onChange={handleChange} />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs xl:text-sm font-bold text-gray-700 mb-2 ml-1">Telco Provider</label>
+                      <select name="telco_provider" className={inputBase} value={formData.telco_provider} onChange={handleChange}>
+                        <option value="">Select</option>
+                        <option value="MTN">MTN</option>
+                        <option value="Airtel">Airtel</option>
+                        <option value="Glo">Glo</option>
+                        <option value="9mobile">9mobile</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs xl:text-sm font-bold text-gray-700 mb-2 ml-1">Banking Branch</label>
+                      <input name="banking_branch" type="text" placeholder="e.g. Digital HQ"
+                        className={inputBase} value={formData.banking_branch} onChange={handleChange} />
+                    </div>
                   </div>
 
                   {/* Password */}

@@ -59,7 +59,7 @@ const ProfileScreen = () => {
         <h1 className="text-lg font-extrabold text-gray-900">Profile & Settings</h1>
       </header>
 
-      <div className="w-full px-4 sm:px-6 xl:px-8 py-6 max-w-2xl xl:max-w-none space-y-5">
+      <div className="w-full px-4 sm:px-6 xl:px-8 py-6 pb-28 max-w-2xl xl:max-w-none space-y-5">
 
         {}
         <div className="bg-gradient-to-br from-[#800020] via-[#A01030] to-[#5a0a1e] rounded-2xl p-6 text-white shadow-lg shadow-red-900/20 relative overflow-hidden">

@@ -24,7 +24,7 @@ const FundScreen = () => {
   const [amount,   setAmount]   = useState('');
   const [copied,   setCopied]   = useState(false);
 
-  const ACCOUNT_NUMBER = user?.account || '0123456789';
+  const ACCOUNT_NUMBER = user?.accounts?.[0]?.account_number || '0123456789';
 
   const handleCopy = () => {
     navigator.clipboard?.writeText(ACCOUNT_NUMBER);
@@ -34,7 +34,12 @@ const FundScreen = () => {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    dispatch(fundWallet({ amount, method }));
+    const accountNumber = user?.accounts?.[0]?.account_number;
+    dispatch(fundWallet({ 
+      amount: Number(amount), 
+      method,
+      account_number: accountNumber
+    }));
   };
 
   const handleReset = () => {
@@ -79,7 +84,7 @@ const FundScreen = () => {
         </div>
       </header>
 
-      <div className="w-full px-4 sm:px-6 xl:px-8 py-6 max-w-2xl xl:max-w-none">
+      <div className="w-full px-4 sm:px-6 xl:px-8 py-6 pb-28 max-w-2xl xl:max-w-none">
 
         {}
         <div className="bg-gradient-to-br from-[#800020] via-[#A01030] to-[#5a0a1e] rounded-2xl p-5 text-white mb-5 relative overflow-hidden shadow-lg shadow-red-900/20">

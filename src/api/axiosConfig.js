@@ -1,7 +1,7 @@
 
 import axios from 'axios';
-const MOCK_MODE    = true;
-const API_BASE_URL = 'https://api.nexusbank.com/v1';
+const MOCK_MODE    = false;
+const API_BASE_URL = 'http://127.0.0.1:8080';
 
 const apiClient = axios.create({
   baseURL: API_BASE_URL,
@@ -283,21 +283,177 @@ export const api = {
   // 3. The `apiClient` requests below will then automatically use real endpoints.
   // =========================================================================
 
-  login:               (body) => MOCK_MODE ? mock.login(body)  : apiClient.post('/auth/login', body),
-  signup:              (body) => MOCK_MODE ? mock.signup(body) : apiClient.post('/auth/signup', body),
+  login: async (body) => {
+    if (MOCK_MODE) return mock.login(body);
+    
+    const formParams = new URLSearchParams();
+    formParams.append('username', body.email);
+    formParams.append('password', body.password);
+    
+    const response = await apiClient.post('/auth/token', formParams, {
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+    });
+    
+    const token = response.data.access_token;
+    localStorage.setItem('sentinel_token', token);
+    
+    const meRes = await apiClient.get('/users/me', {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    
+    const profile = meRes.data;
+    const fullName = profile?.customer_details?.full_name || profile?.customer_details?.first_name || profile?.email;
+    
+    return {
+      data: {
+        token,
+        user: {
+          id: profile?.customer_id,
+          name: fullName,
+          email: profile?.email,
+          accounts: profile?.account_details || [],
+        }
+      }
+    };
+  },
   
-  getDashboard:        ()     => MOCK_MODE ? mock.getDashboard() : apiClient.get('/account/dashboard'),
+  signup: async (body) => {
+    if (MOCK_MODE) return mock.signup(body);
+    
+    const payload = {
+      first_name: body.name?.split(' ')[0] || 'New',
+      last_name: body.name?.split(' ').slice(1).join(' ') || 'User',
+      email: body.email,
+      phone_number: body.phone,
+      password: body.password,
+      gender: body.gender || "Other",
+      date_of_birth: body.date_of_birth || "2000-01-01",
+      bvn: body.bvn,
+      nin: body.nin,
+      address: body.address || 'Address',
+      state_of_residence: body.state_of_residence || 'Lagos',
+      lga: body.lga || 'Ikeja',
+      bvn_verified: false,
+      nin_verified: false,
+    };
+    await apiClient.post('/customers', payload);
+    
+    // The backend register endpoint theoretically gives us back the created user. We then log them in.
+    const formParams = new URLSearchParams();
+    formParams.append('username', payload.email);
+    formParams.append('password', payload.password);
+    
+    const response = await apiClient.post('/auth/token', formParams, {
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+    });
+    
+    const token = response.data.access_token;
+    localStorage.setItem('sentinel_token', token);
+    const meRes = await apiClient.get('/users/me', {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    const profile = meRes.data;
+    const fullName = profile?.customer_details?.full_name || profile?.customer_details?.first_name || profile?.email;
+    return {
+      data: {
+        token,
+        user: {
+          id: profile?.customer_id,
+          name: fullName,
+          email: profile?.email,
+          accounts: profile?.account_details || [],
+        }
+      }
+    };
+  },
+  
+  getDashboard:        ()     => MOCK_MODE ? mock.getDashboard() : apiClient.get('/users/me'),
   
   getTransactions:     (p)    => MOCK_MODE ? mock.getTransactions(p) : apiClient.get('/transactions', { params: p }),
-  sendMoney:           (body) => MOCK_MODE ? mock.sendMoney(body)    : apiClient.post('/transactions/send', body),
-  fundWallet:          (body) => MOCK_MODE ? mock.fundWallet(body)    : apiClient.post('/transactions/fund', body),
+  sendMoney:           (body) => {
+    if (MOCK_MODE) return mock.sendMoney(body);
+    return apiClient.post('/make_transaction', {
+      account_number: body.from_account_number,
+      channel: 'mobile',
+      device_id: 'WEB-CLIENT',
+      counterparty_bank: body.bank,
+      narration: body.note || 'Transfer',
+      transaction_type: 'debit',
+      amount: Number(body.amount),
+      currency: 'NGN'
+    });
+  },
+  fundWallet:          (body) => {
+    if (MOCK_MODE) return mock.fundWallet(body);
+    return apiClient.post('/make_transaction', {
+      account_number: body.account_number,
+      channel: 'web',
+      device_id: 'WEB-CLIENT',
+      counterparty_bank: 'INTERNAL',
+      narration: `Fund wallet via ${body.method}`,
+      transaction_type: 'credit',
+      amount: Number(body.amount),
+      currency: 'NGN'
+    });
+  },
   
-  buyAirtime:          (body) => MOCK_MODE ? mock.buyAirtime(body)  : apiClient.post('/services/airtime', body),
-  buyData:             (body) => MOCK_MODE ? mock.buyData(body)     : apiClient.post('/services/data', body),
-  payBill:             (body) => MOCK_MODE ? mock.payBill(body)     : apiClient.post('/services/bills', body),
-  fundBetting:         (body) => MOCK_MODE ? mock.fundBetting(body) : apiClient.post('/services/betting', body),
+  buyAirtime:          (body) => {
+    if (MOCK_MODE) return mock.buyAirtime(body);
+    return apiClient.post('/services/airtime/purchase', {
+      account_id: body.account_id,
+      provider: body.provider,
+      phone_number: body.phone_number,
+      amount: Number(body.amount)
+    });
+  },
+  buyData:             (body) => {
+    if (MOCK_MODE) return mock.buyData(body);
+    return apiClient.post('/services/data/purchase', {
+      account_id: body.account_id,
+      provider: body.provider,
+      phone_number: body.phone_number,
+      data_plan: body.data_plan,
+      amount: Number(body.amount)
+    });
+  },
+  payBill:             (body) => {
+    if (MOCK_MODE) return mock.payBill(body);
+    return apiClient.post('/services/bills/pay', {
+      account_id: body.account_id,
+      provider: body.provider,
+      category: body.category,
+      bill_account_number: body.bill_account_number,
+      amount: Number(body.amount)
+    });
+  },
+  fundBetting:         (body) => {
+    if (MOCK_MODE) return mock.fundBetting(body);
+    return apiClient.post('/make_transaction', {
+      account_number: body.account_number,
+      channel: 'mobile',
+      device_id: 'WEB-CLIENT',
+      counterparty_bank: body.provider,
+      narration: `Betting funding: ${body.customer_id}`,
+      transaction_type: 'debit',
+      amount: Number(body.amount),
+      currency: 'NGN',
+      merchant_name: body.provider
+    });
+  },
   
-  getSmartFeed:        (p)    => MOCK_MODE ? mock.getSmartFeed()          : apiClient.get('/feed', { params: p }),
+  getSmartFeed:        ()     => MOCK_MODE ? mock.getSmartFeed()          : apiClient.get('/trajectory/popup_recommendations'),
+  getFaqs:             (prompt) => MOCK_MODE ? mock.sendMessage({ message: prompt }) : apiClient.get('/faqs', { params: prompt ? { prompt } : {} }),
+  makeComplaint:       (body) => {
+    if (MOCK_MODE) return mock.sendMessage({ message: body.complaint_text });
+    return apiClient.post('/make_complaint', {
+      account_number: body.account_number,
+      complaint_channel: body.complaint_channel || 'Mobile App',
+      complaint_text: body.complaint_text,
+      linked_transaction_id: body.linked_transaction_id,
+      linked_reference: body.linked_reference
+    });
+  },
+
   checkPaymentRequest: ()     => MOCK_MODE ? mock.checkPaymentRequest()   : apiClient.get('/notifications/payment-requests'),
   approvePayment:      (id)   => MOCK_MODE ? mock.approvePayment(id)      : apiClient.post(`/notifications/payment-requests/${id}/approve`),
   declinePayment:      (id)   => MOCK_MODE ? mock.declinePayment(id)      : apiClient.post(`/notifications/payment-requests/${id}/decline`),
@@ -305,6 +461,6 @@ export const api = {
   getChatHistory:      ()     => MOCK_MODE ? mock.getChatHistory()   : apiClient.get('/ai/history'),
   sendMessage:         (body) => MOCK_MODE ? mock.sendMessage(body)  : apiClient.post('/ai/message', body),
   
-  getAdminDashboard:   ()     => MOCK_MODE ? mock.getAdminDashboard() : apiClient.get('/admin/dashboard'),
+  getAdminDashboard:   ()     => MOCK_MODE ? mock.getAdminDashboard() : apiClient.get('/admin/analytics/transactions'),
   getAdminUsers:       ()     => MOCK_MODE ? mock.getAdminUsers()     : apiClient.get('/admin/users'),
 };

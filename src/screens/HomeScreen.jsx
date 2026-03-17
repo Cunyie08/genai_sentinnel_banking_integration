@@ -54,30 +54,21 @@ const HomeScreen = () => {
 
     const loadFeed = async () => {
       try {
+        // Trajectory AI call can take up to 60s — use a dedicated long-timeout client
         const res = await api.getSmartFeed({ userId: user?.id });
         if (res?.data?.cards) {
           setFeedCards(res.data.cards);
         }
       } catch (err) {
-        console.error("Feed error:", err);
+        // Feed is non-critical — fail silently (the marquee just stays empty)
+        console.warn('Smart feed unavailable:', err?.message || err);
       } finally {
         setLoadingFeed(false);
       }
     };
 
-    const checkPayments = async () => {
-      try {
-        setTimeout(async () => {
-          const res = await api.checkPaymentRequest();
-          if (res.data && res.data.id) {
-            dispatch(triggerPayment()); 
-          }
-        }, 2000);
-      } catch (err) {}
-    };
-
     loadFeed();
-    checkPayments();
+    // Payment-request polling disabled (endpoint not supported)
   }, [dispatch, user?.id]);
 
   useEffect(() => {
@@ -138,7 +129,7 @@ const HomeScreen = () => {
             </div>
             <div>
               <p className="text-white/90 text-[13px] font-medium leading-none mb-1">Good Afternoon</p>
-              <h2 className="text-lg font-bold leading-tight">{user?.name || "Lukman"}</h2>
+              <h2 className="text-lg font-bold leading-tight">{user?.name}</h2>
             </div>
           </div>
           <div className="flex gap-2">
@@ -153,7 +144,7 @@ const HomeScreen = () => {
         </div>
 
         <div className="flex items-center gap-2 mb-4 fu fu2">
-          <span className="text-white/80 text-[12px] sm:text-[13px] font-medium">Tier {account?.tier || '3'} Savings Account | <span className="text-white font-bold">{account?.number || '0244037192'}</span></span>
+          <span className="text-white/80 text-[12px] sm:text-[13px] font-medium">Tier {account?.tier} Savings Account | <span className="text-white font-bold">{account?.number}</span></span>
           <button className="text-white hover:text-white/80 transition-colors">
             <Copy size={16} />
           </button>
@@ -166,7 +157,7 @@ const HomeScreen = () => {
           <p className="text-white text-sm font-medium mb-1.5">Account Balance</p>
           <div className="flex items-center gap-2 mb-6">
             <h1 className="text-4xl font-extrabold tracking-tight">
-              {showBal ? `₦${Number(account?.balance || 336.97).toLocaleString(undefined, { minimumFractionDigits: 2 })}` : "••••••••"}
+              {showBal ? `₦${Number(account?.balance ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}` : "••••••••"}
             </h1>
             <button onClick={() => setShowBal(!showBal)} className="text-white/80 hover:text-white transition-colors focus:outline-none">
               {showBal ? <EyeOff size={22} /> : <Eye size={22} />}
@@ -184,7 +175,7 @@ const HomeScreen = () => {
         </div>
       </div>
 
-      <div className="w-full px-4 sm:px-6 xl:px-8 py-2 pb-24 md:pb-10 space-y-6">
+      <div className="w-full px-4 sm:px-6 xl:px-8 py-2 pb-28 space-y-6">
 
         {/* Send Action */}
         <div className="fu fu3 grid grid-cols-3 gap-3 sm:gap-4 xl:gap-6 w-full">

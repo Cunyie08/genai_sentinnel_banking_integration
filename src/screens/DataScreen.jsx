@@ -58,7 +58,14 @@ const DataScreen = () => {
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!plan) return;
-    dispatch(buyData({ network, phone: isSelf ? user?.phone : phone, plan }));
+    const accountId = user?.accounts?.[0]?.account_id;
+    dispatch(buyData({ 
+      network, 
+      phone: isSelf ? user?.phone : phone, 
+      plan: plan.id,
+      amount: plan.price,
+      account_id: accountId
+    }));
   };
 
   const handleReset = () => { dispatch(resetService()); setPlan(null); setPhone(''); };
@@ -97,7 +104,7 @@ const DataScreen = () => {
         </div>
       </header>
 
-      <div className="w-full px-4 sm:px-6 xl:px-8 py-6 max-w-2xl xl:max-w-none">
+      <div className="w-full px-4 sm:px-6 xl:px-8 py-6 pb-28 max-w-2xl xl:max-w-none">
         {error && (
           <div className="mb-5 p-3 bg-red-50 border border-red-100 text-red-600 rounded-xl text-xs font-bold flex items-center gap-2">
             <AlertCircle size={15} /> {error}

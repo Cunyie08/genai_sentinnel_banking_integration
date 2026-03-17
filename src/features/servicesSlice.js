@@ -1,48 +1,75 @@
 
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
+import { api } from '../api/axiosConfig';
 
 
 export const buyAirtime = createAsyncThunk(
   'services/buyAirtime',
-  async ({ network, phone, amount }, { rejectWithValue }) => {
+  async ({ network, phone, amount, account_id }, { rejectWithValue }) => {
     try {
-      await new Promise(res => setTimeout(res, 1400));
-      if (!phone || !amount) throw new Error('Phone and amount are required');
-      return { service: 'airtime', network, phone, amount: Number(amount), ref: 'AIR' + Date.now() };
-    } catch (err) { return rejectWithValue(err.message); }
+      const response = await api.buyAirtime({
+        account_id,
+        provider: network,
+        phone_number: phone,
+        amount
+      });
+      return response.data;
+    } catch (err) {
+      return rejectWithValue(err.detail || err.message || 'Airtime purchase failed');
+    }
   }
 );
 
 export const buyData = createAsyncThunk(
   'services/buyData',
-  async ({ network, phone, plan }, { rejectWithValue }) => {
+  async ({ network, phone, plan, amount, account_id }, { rejectWithValue }) => {
     try {
-      await new Promise(res => setTimeout(res, 1400));
-      if (!phone || !plan) throw new Error('Phone and plan are required');
-      return { service: 'data', network, phone, plan, ref: 'DAT' + Date.now() };
-    } catch (err) { return rejectWithValue(err.message); }
+      const response = await api.buyData({
+        account_id,
+        provider: network,
+        phone_number: phone,
+        data_plan: plan,
+        amount
+      });
+      return response.data;
+    } catch (err) {
+      return rejectWithValue(err.detail || err.message || 'Data purchase failed');
+    }
   }
 );
 
 export const payBill = createAsyncThunk(
   'services/payBill',
-  async ({ billType, meterNumber, amount }, { rejectWithValue }) => {
+  async ({ billType, meterNumber, amount, provider, category, account_id }, { rejectWithValue }) => {
     try {
-      await new Promise(res => setTimeout(res, 1600));
-      if (!meterNumber || !amount) throw new Error('Meter number and amount required');
-      return { service: 'bills', billType, meterNumber, amount: Number(amount), ref: 'BIL' + Date.now() };
-    } catch (err) { return rejectWithValue(err.message); }
+      const response = await api.payBill({
+        account_id,
+        provider: provider,
+        category: category,
+        bill_account_number: meterNumber,
+        amount
+      });
+      return response.data;
+    } catch (err) {
+      return rejectWithValue(err.detail || err.message || 'Bill payment failed');
+    }
   }
 );
 
 export const fundBetting = createAsyncThunk(
   'services/fundBetting',
-  async ({ platform, userId, amount }, { rejectWithValue }) => {
+  async ({ platform, userId, amount, account_number }, { rejectWithValue }) => {
     try {
-      await new Promise(res => setTimeout(res, 1400));
-      if (!userId || !amount) throw new Error('User ID and amount required');
-      return { service: 'betting', platform, userId, amount: Number(amount), ref: 'BET' + Date.now() };
-    } catch (err) { return rejectWithValue(err.message); }
+      const response = await api.fundBetting({
+        provider: platform,
+        customer_id: userId,
+        amount,
+        account_number
+      });
+      return response.data;
+    } catch (err) {
+      return rejectWithValue(err.detail || err.message || 'Betting funding failed');
+    }
   }
 );
 

@@ -26,9 +26,17 @@ const BettingScreen = () => {
   const [userId,   setUserId]   = useState('');
   const [amount,   setAmount]   = useState('');
 
+  const user = useSelector(s => s.auth.user);
+  
   const handleSubmit = (e) => {
     e.preventDefault();
-    dispatch(fundBetting({ platform, userId, amount }));
+    const account = user?.accounts?.[0];
+    dispatch(fundBetting({ 
+      platform, 
+      userId, 
+      amount: Number(amount),
+      account_number: account?.account_number
+    }));
   };
 
   const handleReset = () => { dispatch(resetService()); setAmount(''); setUserId(''); };
@@ -67,7 +75,7 @@ const BettingScreen = () => {
         </div>
       </header>
 
-      <div className="w-full px-4 sm:px-6 xl:px-8 py-6 max-w-2xl xl:max-w-none">
+      <div className="w-full px-4 sm:px-6 xl:px-8 py-6 pb-28 max-w-2xl xl:max-w-none">
         {error && (
           <div className="mb-5 p-3 bg-red-50 border border-red-100 text-red-600 rounded-xl text-xs font-bold flex items-center gap-2">
             <AlertCircle size={15} /> {error}
