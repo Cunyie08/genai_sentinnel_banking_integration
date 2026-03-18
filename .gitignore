@@ -107,6 +107,7 @@ a_venv/
 *.log
 logs/
 app/logs/
+app/logs/*.log
 
 # Database
 *.db
