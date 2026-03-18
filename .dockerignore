@@ -1,0 +1,177 @@
+# Environment
+.env
+.env.bak
+
+app/.env
+.env.example
+
+# Virtual env
+.venv
+a_venv
+
+# Logs
+app\logs\reasoning.log
+*.log
+
+# Python cache
+__pycache__/
+*.pyc
+app\__pycache__
+app\rag\knowledge_base\__pycache__
+app\rag\rag_system\__pycache__
+
+
+# Sensitive / internal docs
+DAVID_HANDOVER.md
+STANDUP_REPORT_2026_02_27.md
+
+# VS Code
+.vscode/
+
+# Misc
+sentinnel_banking_dataset\test.ipynb
+dataset
+ignore_folder
+system_architecture_banking_.pdf
+schema.pgerd
+test.sql
+create_schema.py
+
+
+__pycache__/
+*.pyc
+*.log
+app\__pycache__
+app\rag\knowledge_base\__pycache__
+app\rag\rag_system\__pycache__
+
+# ─── Python ───────────────────────────────────────────────────
+
+# ─────────────────────────────────────────
+# PYTHON
+# ─────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+*.pyd
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+eggs/
+parts/
+var/
+sdist/
+wheels/
+*.spec
+pip-log.txt
+pip-delete-this-directory.txt
+.Python
+
+# Virtual Environments
+.venv/
+venv/
+env/
+ENV/
+a_venv/
+.python-version
+
+# Environment Variables
+.env
+.env.*
+!.env.example
+.env.bak
+
+# Logs
+*.log
+logs/
+app/logs/
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+database/*.sql
+
+# Test & Coverage
+.coverage
+.coverage.*
+htmlcov/
+.pytest_cache/
+.tox/
+nosetests.xml
+coverage.xml
+*.cover
+
+# ─────────────────────────────────────────
+# NODE / VITE / FRONTEND
+# ─────────────────────────────────────────
+node_modules/
+dist/
+dist-ssr/
+.vite/
+*.local
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# ─────────────────────────────────────────
+# EDITORS
+# ─────────────────────────────────────────
+.vscode/*
+!.vscode/extensions.json
+.idea
+
+# ─────────────────────────────────────────
+# OS FILES
+# ─────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ─────────────────────────────────────────
+# PROJECT SPECIFIC
+# ─────────────────────────────────────────
+system_architecture_banking_.pdf
+schema.pgerd
+sentinnel_banking_dataset/
+dataset/
+ignore_folder/
+chroma_db/
+app/rag/chroma_db/
+
+# Test Scripts
+test_*.py
+*_test.py
+scripts/
+setup_test_db_user.py
+find_test_accounts.py
+end_to_end_test.py
+verify_ai_routing_flow.py
+create_schema.py
+
+# Documentation
+ONBOARDING.md
+PLANNING.md
+PRODUCTION_READY.md
+PROGRESS.md
+SWAGGER_TEST_GUIDE.md
+WORK_DISTRIBUTION.md
+
+# CSV Data
+
+Frontend\package-lock.json
+
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+models/
+.env
+__pycache__/
+*.pyc
