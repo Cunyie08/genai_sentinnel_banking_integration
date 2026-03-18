@@ -31,15 +31,15 @@ class Orchestrator:
     Central coordinator for all Sentinel Bank agents.
 
     Lifecycle:
-        1. __init__()      — synchronous, sets up placeholders only
-        2. initialize()    — async, bootstraps DB + RAG + agents
-        3. handle_request() — async, routes + executes + evaluates
+        1. __init__()      - synchronous, sets up placeholders only
+        2. initialize()    - async, bootstraps DB + RAG + agents
+        3. handle_request() - async, routes + executes + evaluates
 
     Never call handle_request() before awaiting initialize().
     """
 
     def __init__(self) -> None:
-        # ── Placeholders (populated in initialize()) ──────────────────────────
+        # Placeholders (populated in initialize()) 
         self._initialized: bool = False
 
         self.engine:      Optional[Any] = None
@@ -50,7 +50,7 @@ class Orchestrator:
         self.sentinel:    Optional[SentinelAgent]    = None
         self.trajectory:  Optional[TrajectoryAgent]  = None
 
-        # Graph is stateless — safe to build synchronously
+        # Graph is stateless - safe to build synchronously
         self.graph = AgentGraph()
 
 
@@ -62,9 +62,9 @@ class Orchestrator:
         calling handle_request().
 
         Order:
-            1. Validate API keys (fail fast — no point going further)
+            1. Validate API keys (fail fast - no point going further)
             2. Create DB engine + async repository
-            3. Seed database from CSVs (idempotent — skips if already seeded)
+            3. Seed database from CSVs (idempotent - skips if already seeded)
             4. Initialize RAG engine
             5. Build one LLM client pair per agent (each with correct schema)
             6. Instantiate agents with their dependencies
@@ -108,7 +108,7 @@ class Orchestrator:
 
         SystemLogger.log_event(
             event_type="orchestrator_ready",
-            message="Orchestrator initialized — all agents online",
+            message="Orchestrator initialized - all agents online",
             metadata={
                 "agents": ["DispatcherAgent", "SentinelAgent", "TrajectoryAgent"],
                 "db_rows": health,
@@ -260,14 +260,17 @@ class Orchestrator:
         """
         if agent_name == "DispatcherAgent":
             result  = await self.dispatcher.run(request)
+            result  = self._sanitize(result)          # ← add this
             metrics = Metrics.evaluate_triage(result)
 
         elif agent_name == "SentinelAgent":
             result  = await self.sentinel.run(request)
+            result  = self._sanitize(result)          # ← add this
             metrics = Metrics.evaluate_fraud(result)
 
         elif agent_name == "TrajectoryAgent":
             result  = await self.trajectory.run(request)
+            result  = self._sanitize(result)         
             metrics = Metrics.evaluate_product_recommendation(result)
 
         else:
@@ -283,7 +286,7 @@ class Orchestrator:
         Instantiate one LLM client pair per agent, each bound to the
         correct response schema, then construct the three agents.
 
-        This is the critical fix vs v1 — v1 reassigned self.openai_llm /
+        This is the critical fix vs v1 - v1 reassigned self.openai_llm /
         self.gemini_llm three times so every agent received the
         TrajectoryResponse schema regardless of type.
         """
@@ -358,6 +361,20 @@ class Orchestrator:
                 f"Missing required API keys: {', '.join(missing)}. "
                 "Set them in your .env file or environment."
             )
+    @staticmethod
+    def _sanitize(obj):
+        """Recursively convert Decimal/datetime to JSON-safe types."""
+        from decimal import Decimal
+        from datetime import datetime, date
+        if isinstance(obj, dict):
+            return {k: Orchestrator._sanitize(v) for k, v in obj.items()}
+        if isinstance(obj, list):
+            return [Orchestrator._sanitize(i) for i in obj]
+        if isinstance(obj, Decimal):
+            return float(obj)
+        if isinstance(obj, (datetime, date)):
+            return str(obj)
+        return obj
 
 
 
