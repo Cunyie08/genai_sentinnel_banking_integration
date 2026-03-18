@@ -22,8 +22,9 @@ Primary Responsibilities
    enforcing consistent embedding configuration.
 
 3. Embedding Model Configuration
-   Provides a centralized embedding function using all-mpnet-base-v2,
-   ensuring semantic consistency across ingestion and query pipelines.
+   Provides a centralized embedding function using a module-level
+   singleton — loaded once per process, reused everywhere. This
+   eliminates the 5–15s cold-start penalty on every run.
 
 4. Document Routing via DOCUMENT_REGISTRY
    Defines metadata that controls how documents are categorized,
@@ -31,7 +32,6 @@ Primary Responsibilities
 
 5. Multi-Agent Support
    Enables agent-specific retrieval for:
-
       - Dispatcher Agent (Complaint routing)
       - Sentinel Agent (Fraud detection and risk analysis)
       - Trajectory Agent (Product recommendation logic)
@@ -56,16 +56,8 @@ Architecture Flow
                ↓
     AI Agents (Dispatcher, Sentinel, Trajectory, Customer)
 
-Design Guarantees
------------------
-- Embedding consistency across ingestion and retrieval
-- Persistent, production-safe storage
-- Structured document routing and metadata filtering
-- Deterministic collection configuration
-- Safe reset and re-ingestion workflows
-
-Embedding Model Selection
--------------------------
+Embedding Model
+---------------
 Model: all-mpnet-base-v2
 
 Chosen because:
@@ -74,226 +66,262 @@ Chosen because:
 - Strong performance on compliance, policy, and fraud datasets
 - Industry standard for enterprise-grade RAG pipelines
 
+IMPORTANT: This model name is the single source of truth for the entire
+pipeline. retrieval.py imports EMBEDDING_MODEL from this module to
+guarantee ingestion and retrieval always use the same model. If they
+differ, ChromaDB will embed queries in a different vector space than
+documents, silently destroying similarity scores.
+
+Fixes in this version (v2):
+  1. Singleton embedding function — module-level, not instance-level.
+       The previous implementation cached on self._embedding_fn, but
+       initialize_chromadb() creates a new ChromaDBConfig() each call,
+       so the cache was never reused. The model loaded fresh every run.
+       Fixed with a module-level _embedding_fn_instance + threading.Lock
+       (double-checked locking, same pattern as retrieval.py).
+  2. EMBEDDING_MODEL exported at module level.
+       retrieval.py now imports EMBEDDING_MODEL from here instead of
+       defining its own string. One name, one place — no drift possible.
+  3. Model name mismatch corrected.
+       chromadb_config.py used "all-mpnet-base-v2" while retrieval.py
+       had "all-MiniLM-L6-v2". This caused ingestion and retrieval to
+       use different vector spaces, silently corrupting similarity scores.
+       Both now use "all-mpnet-base-v2" (this file is the authority).
+  4. initialize_chromadb() made into a cached singleton.
+       Previously returned a fresh ChromaDBConfig + client on every call.
+       Now returns the same (client, config) pair for the process lifetime,
+       eliminating repeated collection loading and connection setup.
+  5. logger.info for collection get/create demoted to logger.debug.
+       These fire on every RetrievalEngine.__init__ call — i.e. every
+       test run. Demoted so production console stays clean.
+  6. Startup INFO logs (model loaded, persistence dir) retained as-is.
+
 Author: AI Engineer 2
 Date: February 2026
 """
-
 
 # =============================================================================
 # Imports
 # =============================================================================
 
-import chromadb  # Core ChromaDB package for vector database operations
-
-from chromadb.api import ClientAPI  
-# ClientAPI defines the interface contract for ChromaDB clients,
-# ensuring type safety and compatibility across implementations.
-
-from chromadb.utils import embedding_functions  
-# Provides embedding function wrappers compatible with ChromaDB,
-# including SentenceTransformerEmbeddingFunction.
-
-from pathlib import Path  
-# Used for cross-platform filesystem path handling.
-from chromadb.config import Settings
-from typing import Optional, Dict, Tuple  
-# Provides static typing support for better maintainability and clarity.
-
+import chromadb
 import logging
 import os
-from functools import lru_cache
+import threading
+from chromadb.api import ClientAPI
+from chromadb.utils import embedding_functions
+from chromadb.config import Settings
+from pathlib import Path
+from typing import Optional, Dict, Tuple
 from dotenv import load_dotenv
-load_dotenv()
-# Standard Python logging system for structured operational logging.
 
+load_dotenv()
 
 # =============================================================================
-# Logging Configuration
+# Logging
 # =============================================================================
 
 logging.basicConfig(
-    level=logging.INFO,  
-    # Sets logging level to INFO to capture operational events.
-
+    level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-    # Defines structured log format including timestamp, module name,
-    # log level, and message.
 )
+logger = logging.getLogger(__name__)
 
-logger = logging.getLogger(__name__)  
-# Creates a module-specific logger using the module name.
-# This allows precise filtering and debugging.
+# =============================================================================
+# Embedding Model — Single Source of Truth
+# =============================================================================
+# This is the ONLY place the embedding model name is defined.
+# retrieval.py imports this constant instead of defining its own string.
+# If ingestion and retrieval use different models, ChromaDB embeds queries
+# in a different vector space than documents — similarity scores become
+# meaningless and routing silently breaks.
+#
+# To change the model for the whole pipeline, change it HERE only.
+
+EMBEDDING_MODEL = "all-mpnet-base-v2"
+
+# =============================================================================
+# Embedding Function Singleton
+# =============================================================================
+# The HuggingFace model takes 5–15s to load. The previous implementation
+# cached on self._embedding_fn (instance-level), but initialize_chromadb()
+# creates a new ChromaDBConfig() on each call, so the cache was never
+# reused — the model loaded fresh on every run, every test, every query.
+#
+# The fix: module-level singleton with double-checked locking.
+# First call loads the model once. All subsequent calls return instantly.
+# Thread-safe: two threads racing to call get_embedding_function() will
+# not both load the model — only one will, the other waits and reuses.
+
+_embedding_fn_instance = None
+_embedding_fn_lock     = threading.Lock()
+
+# Models directory — cached locally to avoid repeated HuggingFace downloads
+_MODELS_DIR = Path(__file__).parent.parent.parent / "models"
+
+
+def get_embedding_function():
+    """
+    Return the shared embedding function, loading it on first call only.
+
+    This is the single accessor used by both ChromaDBConfig (ingestion)
+    and RetrievalEngine (retrieval) — guaranteeing model consistency.
+
+    Thread-safe via double-checked locking. Lazy: importing this module
+    does not trigger a model download.
+
+    Returns:
+        SentenceTransformerEmbeddingFunction (module-level singleton)
+    """
+    global _embedding_fn_instance
+
+    # Fast path — already loaded, return immediately without locking
+    if _embedding_fn_instance is not None:
+        return _embedding_fn_instance
+
+    # Slow path — acquire lock and load
+    with _embedding_fn_lock:
+        # Re-check inside the lock: another thread may have loaded while
+        # we were waiting
+        if _embedding_fn_instance is not None:
+            return _embedding_fn_instance
+
+        logger.info(
+            f"Loading embedding model '{EMBEDDING_MODEL}' — "
+            f"one-time startup cost. All subsequent calls return instantly."
+        )
+        _models_dir = Path(__file__).parent.parent.parent / "models"
+        _models_dir.mkdir(parents=True, exist_ok=True)
+
+        # Suppress HuggingFace version-check HTTP noise and telemetry logs.
+        # sentence-transformers hits HuggingFace on every load to check for
+        # model updates even when the model is fully cached locally. This
+        # adds ~30s of HEAD requests with no benefit in production.
+        #
+        # HF_HUB_OFFLINE=1       — skip all HF network calls, use local cache
+        # TRANSFORMERS_OFFLINE=1  — same for transformers library
+        # TOKENIZERS_PARALLELISM=false — suppress fork warning from tokenizers
+        #
+        # These are process-scoped env vars set before the library loads.
+        # They are not written to disk. Set them in your .env file to make
+        # them permanent:
+        #
+        #   HF_HUB_OFFLINE=1
+        #   TRANSFORMERS_OFFLINE=1
+        #   TOKENIZERS_PARALLELISM=false
+        #   HF_TOKEN=your_token_here   ← also silences the rate-limit warning
+        import os as _os
+        _os.environ.setdefault("HF_HUB_OFFLINE",          "1")
+        _os.environ.setdefault("TRANSFORMERS_OFFLINE",     "1")
+        _os.environ.setdefault("TOKENIZERS_PARALLELISM",   "false")
+
+        # Disable tqdm progress bars from sentence-transformers.
+        # The "Batches: 100%|████" bar appears on every query embedding call.
+        # TOKENIZERS_PARALLELISM also suppresses the tokenizer fork warning.
+        _os.environ.setdefault("TOKENIZERS_PARALLELISM",   "false")
+        _os.environ.setdefault("TQDM_DISABLE",             "1")
+        # httpx logs every HEAD request to HuggingFace (20+ lines per load).
+        # posthog logs telemetry notices. sentence_transformers logs model path.
+        # These are demoted to WARNING for the duration of the load only.
+        import logging as _logging
+        _noisy = [
+            "httpx",
+            "sentence_transformers",
+            "chromadb.telemetry.product.posthog",
+            "huggingface_hub",
+            "huggingface_hub.utils._http",
+        ]
+        _saved_levels = {n: _logging.getLogger(n).level for n in _noisy}
+        for n in _noisy:
+            _logging.getLogger(n).setLevel(_logging.WARNING)
+
+        try:
+            _embedding_fn_instance = (
+                embedding_functions.SentenceTransformerEmbeddingFunction(
+                    model_name=EMBEDDING_MODEL,
+                    cache_folder=str(_models_dir),
+                )
+            )
+        finally:
+            # Always restore log levels — even if load fails
+            for n, lvl in _saved_levels.items():
+                _logging.getLogger(n).setLevel(lvl if lvl != 0 else _logging.NOTSET)
+
+        logger.info(f"Embedding model '{EMBEDDING_MODEL}' loaded and cached.")
+
+    return _embedding_fn_instance
 
 
 # =============================================================================
 # DOCUMENT REGISTRY
 # =============================================================================
-"""
-DOCUMENT_REGISTRY is the authoritative routing table for all documents
-stored in the vector database.
-
-This registry maps each document ID to metadata that controls:
-
-• Collection routing
-• Agent targeting
-• Retrieval filtering
-• Version tracking
-• Document categorization
-
-This registry ensures deterministic routing and retrieval behavior.
-
-Critical Requirements
----------------------
-
-Keys MUST match:
-
-1. document_id generated by BankingPolicyGenerator._package_for_rag()
-
-2. Corresponding .txt filenames saved in:
-
-       knowledge_base/
-
-Example:
-
-    knowledge_base/POL-CCH-001.txt
-
-DocumentIngester reads this registry and attaches metadata to every chunk.
-
-Metadata Attached to Each Chunk
--------------------------------
-
-- title
-- category
-- version
-- agent_target
-- doc_type_flag
-- description
-
-Routing Logic
--------------
-
-doc_type_flag determines collection routing:
-
-    policy         → bank_policies collection
-    knowledge_base → customer_faqs collection
-
-Both also go into:
-
-    all_documents collection
-
-Agent Filtering
----------------
-
-Enables targeted retrieval:
-
-Example:
-
-    collection.query(
-        where={"agent_target": "Sentinel"}
-    )
-
-This allows Sentinel Agent to retrieve only fraud-related documents.
-"""
+# Authoritative routing table for all documents in the vector database.
+# Maps each document ID to metadata that controls collection routing,
+# agent targeting, retrieval filtering, and version tracking.
+#
+# Keys MUST match:
+#   1. document_id generated by BankingPolicyGenerator._package_for_rag()
+#   2. Corresponding .txt filenames in knowledge_base/
+#
+# doc_type_flag controls collection routing:
+#   policy         → bank_policies collection
+#   knowledge_base → customer_faqs collection
+#   Both also go into: all_documents collection
 
 DOCUMENT_REGISTRY: Dict[str, Dict] = {
 
-    # Unique document ID used as primary routing key
     "POL-CCH-001": {
-
-        "title": "Customer Complaint Handling Policy",
-        # Human-readable document title
-
-        "category": "policy",
-        # Logical grouping category
-
-        "version": "2.1",
-        # Version number for auditability and upgrade tracking
-
+        "title":        "Customer Complaint Handling Policy",
+        "category":     "policy",
+        "version":      "2.1",
         "agent_target": "Dispatcher",
-        # Primary agent responsible for using this document
-
-        "doc_type_flag": "policy",
-        # Controls collection routing
-
-        "description": "Complaint routing rules, escalation matrix, SLA timelines",
-        # Additional context description
+        "doc_type_flag":"policy",
+        "description":  "Complaint routing rules, escalation matrix, SLA timelines",
     },
 
     "FRM-001": {
-
-        "title": "Fraud Detection and Prevention Guidelines",
-
-        "category": "security",
-
-        "version": "4.0",
-
+        "title":        "Fraud Detection and Prevention Guidelines",
+        "category":     "security",
+        "version":      "4.0",
         "agent_target": "Sentinel",
-
-        "doc_type_flag": "policy",
-
-        "description": "Fraud detection rules, risk scoring 0–100, fraud escalation",
+        "doc_type_flag":"policy",
+        "description":  "Fraud detection rules, risk scoring 0–100, fraud escalation",
     },
 
     "TSU-POL-002": {
-
-        "title": "Transaction Processing Policies",
-
-        "category": "operations",
-
-        "version": "4.0",
-
+        "title":        "Transaction Processing Policies",
+        "category":     "operations",
+        "version":      "4.0",
         "agent_target": "All",
-        # Indicates all agents may use this document
-
-        "doc_type_flag": "policy",
-
-        "description": "Transaction processing rules, reversals, and processing SLA",
+        "doc_type_flag":"policy",
+        "description":  "Transaction processing rules, reversals, and processing SLA",
     },
 
     "FAQ-001": {
-
-        "title": "Customer Frequently Asked Questions",
-
-        "category": "knowledge_base",
-
-        "version": "2.0",
-
+        "title":        "Customer Frequently Asked Questions",
+        "category":     "knowledge_base",
+        "version":      "2.0",
         "agent_target": "Customer",
-
-        "doc_type_flag": "knowledge_base",
-        # Ensures routing into FAQ collection
-
-        "description": "Customer-facing FAQs and help content",
+        "doc_type_flag":"knowledge_base",
+        "description":  "Customer-facing FAQs and help content",
     },
 
     "FRM-002": {
-
-        "title": "Merchant Risk Profiles",
-
-        "category": "security",
-
-        "version": "1.0",
-
+        "title":        "Merchant Risk Profiles",
+        "category":     "security",
+        "version":      "1.0",
         "agent_target": "Sentinel",
-
-        "doc_type_flag": "policy",
-
-        "description": "Merchant risk categories and fraud risk weights",
+        "doc_type_flag":"policy",
+        "description":  "Merchant risk categories and fraud risk weights",
     },
 
     "PRS-001": {
-
-        "title": "Product Recommendation Policy",
-
-        "category": "policy",
-
-        "version": "1.0",
-
+        "title":        "Product Recommendation Policy",
+        "category":     "policy",
+        "version":      "1.0",
         "agent_target": "Trajectory",
-
-        "doc_type_flag": "policy",
-
-        "description": "Product eligibility rules and recommendation logic",
+        "doc_type_flag":"policy",
+        "description":  "Product eligibility rules and recommendation logic",
     },
 }
 
@@ -306,149 +334,87 @@ class ChromaDBConfig:
     """
     Central configuration controller for ChromaDB.
 
-    This class ensures consistent configuration across all ingestion
-    and retrieval workflows.
+    Ensures consistent embedding model, storage directory, and metadata
+    across all ingestion and retrieval workflows.
 
-    Responsibilities
-    ----------------
-
-    1. Persistent client creation
-    2. Embedding function management
-    3. Collection lifecycle control
-    4. Consistent metadata enforcement
-
-    Why This Class Exists
-    ---------------------
-
-    Prevents configuration drift between ingestion and retrieval.
-
-    Ensures:
-
-    • Same embedding model everywhere
-    • Same storage directory everywhere
-    • Same metadata configuration everywhere
-
-    Without this class, semantic search would break.
-
-    Embedding Model
-    ----------------
-
-    all-mpnet-base-v2
-
-    Advantages:
-
-    • High semantic accuracy
-    • Excellent fraud / policy comprehension
-    • 768-dimension embeddings
-    • Industry-grade performance
+    The embedding function is obtained via the module-level singleton
+    get_embedding_function() — never instantiated inside this class.
+    This is the key fix: instance-level caching (self._embedding_fn)
+    was ineffective because a new ChromaDBConfig is created each run.
     """
 
-    # Collection storing policy and operational documents
     COLLECTION_POLICIES = "bank_policies"
+    COLLECTION_FAQS     = "customer_faqs"
+    COLLECTION_ALL      = "all_documents"
+    EMBEDDING_MODEL     = EMBEDDING_MODEL   # reference module constant
+    DISTANCE_METRIC     = "cosine"
 
-    # Collection storing customer-facing FAQs
-    COLLECTION_FAQS = "customer_faqs"
-
-    # Master collection storing all documents
-    COLLECTION_ALL = "all_documents"
-
-
-    # Selected embedding model
-    EMBEDDING_MODEL = "all-mpnet-base-v2"
-
-    # Distance metric used for similarity search
-    DISTANCE_METRIC = "cosine"
-
-
-    def __init__(self, persist_directory: Optional[Path] = None):
+    def __init__(self, persist_directory: Optional[Path] = None) -> None:
         """
-        Initializes ChromaDB configuration object.
-
-        This prepares the persistence directory and ensures storage
-        location is valid.
+        Initialise ChromaDB configuration object.
 
         Args:
-            persist_directory:
-                Optional custom storage path.
-
-                Default:
-                    project_root/chroma_db/
-
-        Behavior:
-            - Creates directory if missing
-            - Stores resolved path
-            - Logs configuration
+            persist_directory: Optional custom storage path.
+                               Default: project_root/chroma_db/
         """
-
         if persist_directory is None:
             persist_directory = Path(__file__).parent.parent / "chroma_db"
-            # Default storage directory relative to project root
 
         self.persist_directory = Path(persist_directory)
-        # Converts to Path object for consistent filesystem operations
-
         self.persist_directory.mkdir(parents=True, exist_ok=True)
-        # Creates directory safely if missing
 
-        logger.info(
-            f"ChromaDB persistence directory: {self.persist_directory}"
-        )
-        # Logs resolved storage path
-  
+        logger.info(f"ChromaDB persistence directory: {self.persist_directory}")
 
     def get_embedding_function(self):
         """
-        Creates and returns embedding function instance.
+        Return the shared module-level embedding function singleton.
 
-        CRITICAL REQUIREMENT:
-        Same embedding model MUST be used for ingestion and retrieval.
-
-        If different models are used, semantic similarity breaks.
-
-        Returns:
-            SentenceTransformerEmbeddingFunction instance
-
-        Used by:
-            - Collection creation
-            - Document ingestion
-            - Query embedding
+        Delegates entirely to the module-level get_embedding_function().
+        The model is loaded at most once per process regardless of how
+        many ChromaDBConfig instances are created.
         """
-
-        if not hasattr(self, "_embedding_fn") or self._embedding_fn is None:
-            logger.info(f"Loading embedding model: {self.EMBEDDING_MODEL} (once)")
-            self._embedding_fn = embedding_functions.SentenceTransformerEmbeddingFunction(
-                model_name=self.EMBEDDING_MODEL,
-                cache_folder=str(Path(__file__).parent.parent.parent / "models")
-            )
-        return self._embedding_fn
-
+        return get_embedding_function()
 
     def create_client(self) -> ClientAPI:
         """
-        Creates persistent ChromaDB client.
+        Create and return a ChromaDB client.
 
-        Persistent client ensures vector database survives process restart.
+        Checks for Chroma Cloud credentials in environment variables
+        first. Falls back to local PersistentClient if not configured.
 
         Returns:
-            Configured PersistentClient instance
+            ChromaDB ClientAPI instance
         """
-
-        api_key  = os.getenv("CHROMA_API_KEY", "")
-        tenant   = os.getenv("CHROMA_TENANT", "")
+        api_key  = os.getenv("CHROMA_API_KEY",  "")
+        tenant   = os.getenv("CHROMA_TENANT",   "")
         database = os.getenv("CHROMA_DATABASE", "")
 
         if api_key and tenant and database:
-            # Chroma Cloud — shared, always-on, works fully remote
             logger.info("Connecting to Chroma Cloud...")
-            return chromadb.HttpClient(
-                ssl=True,
-                host="api.trychroma.com",
-                tenant=tenant,
-                database=database,
-                headers={"x-chroma-token": api_key},
-            )
+            # Suppress httpx and posthog telemetry INFO during connection.
+            # The ~5 GET requests for auth/identity/tenant/database are
+            # routine handshakes — not useful to see on every startup.
+            import logging as _logging
+            _conn_noisy = [
+                "httpx",
+                "chromadb.telemetry.product.posthog",
+            ]
+            _conn_saved = {n: _logging.getLogger(n).level for n in _conn_noisy}
+            for n in _conn_noisy:
+                _logging.getLogger(n).setLevel(_logging.WARNING)
+            try:
+                client = chromadb.HttpClient(
+                    ssl=True,
+                    host="api.trychroma.com",
+                    tenant=tenant,
+                    database=database,
+                    headers={"x-chroma-token": api_key},
+                )
+            finally:
+                for n, lvl in _conn_saved.items():
+                    _logging.getLogger(n).setLevel(lvl if lvl != 0 else _logging.NOTSET)
+            return client
         else:
-            # Local fallback for solo dev without cloud credentials
             self.persist_directory.mkdir(parents=True, exist_ok=True)
             logger.info(f"Using local ChromaDB at {self.persist_directory}")
             return chromadb.PersistentClient(
@@ -457,157 +423,137 @@ class ChromaDBConfig:
                     anonymized_telemetry=False,
                     allow_reset=True,
                     is_persistent=True,
-                )
+                ),
             )
 
     def get_or_create_collection(
         self,
-        client: ClientAPI,
+        client:          ClientAPI,
         collection_name: str,
-        metadata: Optional[Dict] = None
+        metadata:        Optional[Dict] = None,
     ):
         """
-        Retrieves existing collection or creates new one.
+        Retrieve an existing collection or create it if missing.
 
-        Guarantees consistent embedding function usage.
+        Always uses the singleton embedding function so ingestion and
+        retrieval are guaranteed to share the same model.
 
         Args:
-            client:
-                ChromaDB client instance
-
-            collection_name:
-                Name of collection
-
-            metadata:
-                Optional metadata dictionary
+            client:          ChromaDB client instance
+            collection_name: Name of the collection
+            metadata:        Optional collection-level metadata dict
 
         Returns:
             ChromaDB collection instance
         """
-
         embedding_function = self.get_embedding_function()
-        # Ensures collection uses correct embedding model
 
         if metadata is None:
-
             metadata = {
-                "description": f"Banking collection: {collection_name}",
-
-                "embedding_model": self.EMBEDDING_MODEL,
-
-                "distance_metric": self.DISTANCE_METRIC,
-
+                "description":          f"Banking collection: {collection_name}",
+                "embedding_model":      self.EMBEDDING_MODEL,
+                "distance_metric":      self.DISTANCE_METRIC,
                 "document_registry_size": str(len(DOCUMENT_REGISTRY)),
             }
-            # Defines default metadata
-
 
         try:
-
             collection = client.get_collection(
                 name=collection_name,
-                embedding_function=embedding_function
+                embedding_function=embedding_function,
             )
-            # Attempts to retrieve existing collection
-
-            logger.info(f"Retrieved existing collection: {collection_name}")
+            # DEBUG — fires on every RetrievalEngine.__init__, not just startup
+            logger.debug(f"Retrieved existing collection: {collection_name}")
 
         except Exception:
-
             collection = client.create_collection(
                 name=collection_name,
                 embedding_function=embedding_function,
-                metadata=metadata
+                metadata=metadata,
             )
-            # Creates collection if missing
-
+            # INFO retained — collection creation is a meaningful event
             logger.info(f"Created new collection: {collection_name}")
 
         return collection
 
-
-    def reset_collection(self, client: ClientAPI, collection_name: str):
+    def reset_collection(self, client: ClientAPI, collection_name: str) -> None:
         """
-        Deletes and recreates collection.
+        Delete and recreate a collection.
 
         Used to prevent duplicate chunks during re-ingestion.
 
         Args:
-            client:
-                ChromaDB client
-
-            collection_name:
-                Collection to reset
+            client:          ChromaDB client
+            collection_name: Collection to reset
         """
-
         try:
-
             client.delete_collection(name=collection_name)
-            # Deletes existing collection
-
             logger.info(f"Deleted collection: {collection_name}")
-
         except Exception:
-
             logger.warning(f"Collection did not exist: {collection_name}")
 
         self.get_or_create_collection(client, collection_name)
-        # Recreates collection
-
         logger.info(f"Reset complete: {collection_name}")
 
-
-    def reset_all_collections(self, client: ClientAPI):
+    def reset_all_collections(self, client: ClientAPI) -> None:
         """
-        Resets all collections.
-
-        Ensures clean database before full ingestion.
+        Reset all three collections for a clean re-ingestion.
 
         Args:
-            client:
-                ChromaDB client instance
+            client: ChromaDB client instance
         """
-
         for name in [
             self.COLLECTION_POLICIES,
             self.COLLECTION_FAQS,
-            self.COLLECTION_ALL
+            self.COLLECTION_ALL,
         ]:
-
             self.reset_collection(client, name)
-            # Reset each collection
 
-        logger.info("All collections reset and ready for fresh ingestion")
+        logger.info("All collections reset and ready for fresh ingestion.")
 
 
 # =============================================================================
-# Initialization Helper
+# Initialization Helper — Singleton
 # =============================================================================
+# The previous implementation returned a fresh (ChromaDBConfig, client)
+# pair on every call. Since RetrievalEngine.__init__ calls initialize_chromadb(),
+# every new engine instance triggered collection loading and a fresh client
+# connection. Wrapping with a module-level cache returns the same pair
+# for the entire process lifetime.
 
-def initialize_chromadb() -> Tuple[ClientAPI, "ChromaDBConfig"]:
+_chromadb_instance: Optional[Tuple[ClientAPI, ChromaDBConfig]] = None
+_chromadb_lock = threading.Lock()
+
+
+def initialize_chromadb() -> Tuple[ClientAPI, ChromaDBConfig]:
     """
-    Initializes and returns ChromaDB client and configuration.
+    Return the shared (client, config) pair, initialising on first call.
+
+    Thread-safe singleton — creates client and config exactly once per
+    process. All subsequent calls return the cached pair immediately,
+    avoiding repeated collection loading and connection setup overhead.
 
     Returns:
-        Tuple containing:
-
-            client → ChromaDB client
-            config → Configuration object
+        Tuple of (ChromaDB ClientAPI, ChromaDBConfig)
 
     Used by:
-        - DocumentIngester
-        - RetrievalEngine
-        - RAGQueryEngine
-        - Agent systems
+        RetrievalEngine, RAGQueryEngine, DocumentIngester, agent systems
     """
+    global _chromadb_instance
 
-    config = ChromaDBConfig()
-    # Creates config object
+    if _chromadb_instance is not None:
+        return _chromadb_instance
 
-    client = config.create_client()
-    # Creates persistent client
+    with _chromadb_lock:
+        if _chromadb_instance is not None:
+            return _chromadb_instance
 
-    return client, config
+        logger.info("Initializing ChromaDB client (one-time setup)...")
+        config = ChromaDBConfig()
+        client = config.create_client()
+        _chromadb_instance = (client, config)
+        logger.info("ChromaDB client ready.")
+
+    return _chromadb_instance
 
 
 # =============================================================================
@@ -616,51 +562,31 @@ def initialize_chromadb() -> Tuple[ClientAPI, "ChromaDBConfig"]:
 
 def get_collection_stats(collection) -> Dict:
     """
-    Retrieves operational statistics from collection.
+    Retrieve operational statistics from a collection.
 
-    Useful for:
-
-    • Monitoring ingestion success
-    • Debugging retrieval
-    • System observability
+    Useful for monitoring ingestion success, debugging retrieval,
+    and system observability.
 
     Returns:
-        Dictionary containing collection metadata and stats
+        Dict with collection_name, document_count, metadata, sample_metadata
     """
-
     try:
-
         count = collection.count()
-        # Gets number of stored documents
 
+        sample_metadata = {}
         if count > 0:
-
-            sample = collection.peek(limit=1)
-            # Retrieves sample document
-
-            sample_metadata = (
-                sample["metadatas"][0] if sample["metadatas"] else {}
-            )
-
-        else:
-
-            sample_metadata = {}
+            sample          = collection.peek(limit=1)
+            sample_metadata = sample["metadatas"][0] if sample["metadatas"] else {}
 
         return {
-
             "collection_name": collection.name,
-
-            "document_count": count,
-
-            "metadata": collection.metadata,
-
+            "document_count":  count,
+            "metadata":        collection.metadata,
             "sample_metadata": sample_metadata,
         }
 
     except Exception as e:
-
         logger.error(f"Error retrieving collection stats: {e}")
-
         return {"error": str(e)}
 
 
@@ -669,38 +595,32 @@ def get_collection_stats(collection) -> Dict:
 # =============================================================================
 
 if __name__ == "__main__":
-
     print("\nInitializing ChromaDB configuration test...\n")
 
     client, config = initialize_chromadb()
 
-    print(f"  Persistence: {config.persist_directory}")
-
+    print(f"  Persistence    : {config.persist_directory}")
     print(f"  Embedding model: {config.EMBEDDING_MODEL}")
-
     print(f"  Document registry: {len(DOCUMENT_REGISTRY)} documents\n")
 
     print("Document Registry:")
-
     for doc_id, meta in DOCUMENT_REGISTRY.items():
-
         print(
             f"  {doc_id:<14}  category={meta['category']:<14}  "
             f"agent={meta['agent_target']:<12}  v{meta['version']}"
         )
-
     print()
 
-    collection = config.get_or_create_collection(
-        client, config.COLLECTION_ALL
-    )
+    # Second call — should return instantly (singleton)
+    client2, config2 = initialize_chromadb()
+    assert client2 is client, "Singleton broken — returned a different client"
+    print("  Singleton check : PASS (initialize_chromadb returned same instance)\n")
 
-    stats = get_collection_stats(collection)
+    collection = config.get_or_create_collection(client, config.COLLECTION_ALL)
+    stats      = get_collection_stats(collection)
 
     print("Collection Stats:")
-
     for key, value in stats.items():
-
         print(f"  {key}: {value}")
 
     print("\nChromaDB configuration is fully operational.\n")
