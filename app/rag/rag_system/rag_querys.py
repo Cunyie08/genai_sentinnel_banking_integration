@@ -21,7 +21,7 @@ Architecture:
     ↓
   Structured response dict
 
-Fixes in this version (v4 — matches project filename rag_querys.py):
+Fixes in this version (v5 — matches project filename rag_querys.py):
   1. _synthesize_answer: return moved outside chunk loop (v3 fix)
   2. detect_complaint_category: two-pass keyword+RAG routing (v3 fix)
   3. DEPT_KEYWORDS: corrected keyword lists (v4 fix)
@@ -37,6 +37,17 @@ Fixes in this version (v4 — matches project filename rag_querys.py):
   5. _synthesize_answer: divider line stripping (v4 fix)
        - Leading/trailing separator lines stripped from returned paragraph
        - Ensures policy basis previews show content, not header decorations
+  6. query(): logger.info → logger.debug (v5 fix)
+       - Per-query log was firing on every internal RAG call, including those
+         triggered by detect_complaint_category() and calculate_fraud_risk().
+         Demoted to DEBUG so it is available when needed but silent in production.
+  7. validate_product_recommendation(): Student Loan hard age gate (v5 fix)
+       - Aligned with recommendation_engine.py v2.5: age > 35 now returns
+         NOT_ELIGIBLE for Student Loan regardless of Loan_signal_score.
+         Previously age was context-only in this method while the proactive
+         engine hard-gated it — creating a split-brain inconsistency.
+  8. validate_product_recommendation(): ₦ symbol alignment (v5 fix)
+       - All naira references now use ₦ to match recommendation_engine.py v2.5.
 
 Author: AI Engineer 2
 Date: February 2026
@@ -238,13 +249,19 @@ class RAGQueryEngine:
 
         Returns:
             Dict:
-              answer      — synthesized best-match paragraph
-              sources     — list of source dicts with source, section, similarity
-              confidence  — similarity score of best chunk (0–1)
-              grounded    — True if retrieved from knowledge base
-              chunks_used — number of chunks retrieved
+              answer            — synthesized best-match paragraph
+              sources           — list of source dicts with source, section, similarity
+              confidence        — weighted float 0–1: (top_sim x 0.7) + (top3_avg x 0.3)
+                                  both using raw pre-boost similarity from RetrievalEngine
+              confidence_label  — "Very High" | "High" | "Medium" | "Low"
+              grounded          — True if retrieved from knowledge base
+              chunks_used       — number of chunks retrieved
         """
-        logger.info(f"Query: {question[:80]}...")
+        # DEBUG (not INFO) — this fires on every internal RAG call, including
+        # those triggered automatically by detect_complaint_category() and
+        # calculate_fraud_risk(). Keeping it at DEBUG prevents the console
+        # from flooding with internal routing queries during normal operation.
+        logger.debug(f"Query: {question[:80]}...")
 
         retrieval_result = await self.retrieval.search(
             query      = question,
@@ -275,15 +292,20 @@ class RAGQueryEngine:
             for c in chunks
         ]
 
-        # Confidence = score of best single chunk (more representative than average)
-        best_score = chunks[0]["similarity"] if chunks else 0.0
+        # Use the honest weighted confidence computed by RetrievalEngine.
+        # _compute_confidence: (top_sim x 0.7) + (top3_avg x 0.3), both
+        # using raw pre-boost similarity. This replaces the old approach
+        # of taking chunks[0]["similarity"] directly, which was a single
+        # raw score that ignored how well the other retrieved chunks matched.
+        confidence = retrieval_result.get("confidence", 0.0)
 
         return {
-            "answer":      answer,
-            "sources":     sources,
-            "confidence":  round(best_score, 3),
-            "grounded":    True,
-            "chunks_used": len(chunks),
+            "answer":           answer,
+            "sources":          sources,
+            "confidence":       confidence,
+            "confidence_label": retrieval_result.get("confidence_label", ""),
+            "grounded":         True,
+            "chunks_used":      len(chunks),
         }
 
     # =========================================================================
@@ -508,12 +530,18 @@ class RAGQueryEngine:
             routing_method = "default"
 
         # ── Confidence calculation ─────────────────────────────────────────
-        # keyword_confidence: base 0.82 + 0.05 per keyword match, capped at 0.97
-        #   Each additional matched keyword is strong signal → deserves 0.05 lift
-        #   (was 0.80+0.04; raised because 2-keyword AOD combined was 83.4%, just
-        #    below the 85% threshold despite correct routing)
-        # RAG confidence: raw retrieval score from best re-ranked chunk
-        # Agreement bonus: +0.05 when both keyword and RAG agree on same dept
+        # keyword_confidence: base 0.82 + 0.05 per keyword match, capped 0.97
+        # rag_confidence:     weighted blend from RetrievalEngine (honest float)
+        # agreement_bonus:    +0.05 when keyword and RAG agree on same dept
+        #
+        # Routing paths:
+        #   >= 2 keyword matches + RAG grounded → blend both + agreement bonus
+        #   >= 2 keyword matches only           → keyword confidence alone
+        #   1 keyword match + RAG grounded      → blend keyword floor with RAG
+        #                                         (previously: rag only → ~42%)
+        #   RAG grounded only (0 keywords)      → rag confidence
+        #   Nothing                             → 0.60 floor
+
         keyword_confidence = min(0.97, 0.82 + keyword_score * 0.05)
         rag_confidence     = rag_result.get("confidence", 0.0)
         agreement_bonus    = 0.05 if (keyword_dept and rag_dept and
@@ -524,6 +552,15 @@ class RAGQueryEngine:
                             + agreement_bonus)
         elif keyword_score >= 2:
             confidence = keyword_confidence
+        elif keyword_score == 1 and rag_result["grounded"]:
+            # One keyword is a weak but real signal — blend a reduced keyword
+            # floor (0.65) with the RAG score rather than dropping to raw RAG.
+            # This prevents a single-keyword correct routing from scoring lower
+            # than the 0.65 Dispatcher threshold just because RAG similarity
+            # on the expanded complaint string is low.
+            single_kw_floor = 0.65
+            confidence = min(0.99, (single_kw_floor + rag_confidence) / 2
+                            + agreement_bonus)
         elif rag_result["grounded"]:
             confidence = rag_confidence
         else:
@@ -738,15 +775,31 @@ class RAGQueryEngine:
             risk_level, ("Process with standard SMS alert", False, False)
         )
 
-        # RAG explanation
+        # RAG explanation — rich query for high confidence retrieval.
+        # The original single-line query ("What action applies to LOW for other?")
+        # produced ~68% confidence because "other" and "LOW" barely match any
+        # policy chunk. Adding flags, score breakdown and fraud policy keywords
+        # gives the embedding model much more signal regardless of risk level.
+        flags_str  = str(transaction.get("fraud_explainability_trace", "normal_pattern"))
+        amount_str = f"N{amount:,.0f}" if amount > 0 else "unknown amount"
+
+        sentinel_query = (
+            f"fraud risk assessment {risk_level} risk level "
+            f"total score {total} points "
+            f"flag score {risk_breakdown['flag_score']} "
+            f"merchant risk {risk_breakdown['merchant_risk']} "
+            f"timing risk {risk_breakdown['timing_risk']} "
+            f"fraud flags {flags_str} "
+            f"merchant category {merchant} "
+            f"transaction amount {amount_str} "
+            f"recommended action SLA policy FRM fraud scoring threshold"
+        )
+
         explanation = await self.query(
-            question   = (
-                f"What action or SLA applies to a {risk_level} fraud risk "
-                f"transaction for {merchant}?"
-            ),
+            question   = sentinel_query,
             agent      = "Sentinel",
             collection = "policies",
-            top_k      = 3,
+            top_k      = 5,
         )
 
         return {
@@ -785,6 +838,12 @@ class RAGQueryEngine:
             Behavioral signals (salary_detected, uber_tracker,
             monthly_inflow) are stored as context for explainability
             but do NOT gate the recommendation.
+
+            Student Loan EXCEPTION: age is a HARD GATE (PRS-001 §4.2).
+            Customers outside the 18–35 band are NOT_ELIGIBLE for Student
+            Loan regardless of their Loan_signal_score. This mirrors the
+            hard gate in recommendation_engine.py to prevent split-brain
+            results where proactive recommendation and validation disagree.
 
         Args:
             customer_data: Dict with customer financial attributes:
@@ -929,28 +988,41 @@ class RAGQueryEngine:
                 )
 
         elif recommended_product == "Student Loan":
-            # Primary gate: Loan_signal_score >= floor (0.80)
-            if loan_score >= floor:
-                met.append(
-                    f"Loan signal score {loan_score:.2f} >= {floor:.2f} "
-                    f"Student Loan floor threshold"
+            # Hard age gate (PRS-001 §4.2) — aligned with recommendation_engine.py.
+            # Must be checked BEFORE the score gate so the unmet_criteria message
+            # is clear: age disqualifies regardless of score.
+            if age > 35:
+                unmet.append(
+                    f"Age {age} exceeds Student Loan maximum age of 35 "
+                    f"(hard gate — ineligible regardless of Loan_signal_score)"
+                )
+            elif age > 0 and age < 18:
+                unmet.append(
+                    f"Age {age} below Student Loan minimum age of 18 "
+                    f"(hard gate)"
                 )
             else:
-                unmet.append(
-                    f"Loan signal score {loan_score:.2f} below {floor:.2f} "
-                    f"Student Loan floor (range {floor:.2f}-{ceiling:.2f})"
-                )
-            # Age context — Student Loan is designed for solo_candidate
-            # customers (age 18-25, solo_candidate = True in customers.csv)
-            if 18 <= age <= 25:
-                met.append(
-                    f"Age {age} is within Student Loan target band (18-25)"
-                )
-            elif age > 0:
-                met.append(
-                    f"Age {age} — Student Loan primarily targets ages 18-25 "
-                    f"(solo account holders)"
-                )
+                # Age is within the valid band — now check score
+                if loan_score >= floor:
+                    met.append(
+                        f"Loan signal score {loan_score:.2f} >= {floor:.2f} "
+                        f"Student Loan floor threshold"
+                    )
+                else:
+                    unmet.append(
+                        f"Loan signal score {loan_score:.2f} below {floor:.2f} "
+                        f"Student Loan floor (range {floor:.2f}-{ceiling:.2f})"
+                    )
+                # Age context within valid band
+                if 18 <= age <= 25:
+                    met.append(
+                        f"Age {age} within Student Loan primary target band (18-25)"
+                    )
+                elif 26 <= age <= 35:
+                    met.append(
+                        f"Age {age} — within extended Student Loan eligibility (18-35). "
+                        f"Primary target band is 18-25 (solo_candidate accounts)."
+                    )
 
         elif recommended_product == "Trust Fund":
             # Primary gate: Loan_signal_score >= floor (0.65)
@@ -1124,6 +1196,7 @@ async def full_demo():
         ("Investment Plan",   0.78,              2_500_000,      True,   40,   "APPROVED"),
         ("Personal Loan",     0.71,              450_000,        True,   28,   "APPROVED"),
         ("Student Loan",      0.88,              80_000,         False,  21,   "APPROVED"),
+        ("Student Loan",      0.88,              9_900_000,      True,   63,   "NOT_ELIGIBLE"),  # age gate
         ("Trust Fund",        0.73,              1_200_000,      True,   45,   "APPROVED"),
         ("Car Loan",          0.60,              300_000,        False,  25,   "NOT_ELIGIBLE"),
         ("Trust Fund",        0.50,              500_000,        False,  35,   "NOT_ELIGIBLE"),
@@ -1139,7 +1212,7 @@ async def full_demo():
         result = await engine.validate_product_recommendation(customer, product)
         floor, ceiling = result.get("score_range") or (0, 0)
         status = "PASS" if result["recommendation"] == expected else "FAIL"
-        print(f"  [{status}] {product:<18}  "
+        print(f"  [{status}] {product:<18}  age={age}  "
               f"score={score:.2f} (range {floor:.2f}-{ceiling:.2f})  "
               f"-> {result['recommendation']}")
         for m in result["met_criteria"]:

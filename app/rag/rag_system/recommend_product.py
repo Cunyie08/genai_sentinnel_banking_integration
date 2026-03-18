@@ -16,24 +16,6 @@ Architecture:
   The module also exposes a convenience function recommend_product() for
   backward compatibility with any existing callers.
 
-Key changes in v2.2:
-  - Priority order corrected to match PRS-001 Section 3:
-      Student Loan > Car Loan > Investment Plan > Personal Loan > Trust Fund
-  - Trust Fund context inflow threshold corrected to N1,000,000
-  - DSR (Debt Service Ratio) retained as a CREDIT-QUALITY context signal.
-    DSR failure does NOT block recommendation — it surfaces a warning for
-    the credit officer (PRS-001 v2 behavioral-signals-as-context model).
-  - Result dict includes: is_eligible, met_criteria, unmet_criteria,
-    score_range — matching validate_product_recommendation() shape.
-  - uber_tracker removed as a hard gate for Car Loan.
-  - v2.3 (class refactor): logic moved into RecommendationEngine class.
-    Module-level helpers and constants unchanged for compatibility.
-  - v2.4 (async): async def recommend() added as the primary awaitable
-    method. Runs CPU-bound scoring in a ThreadPoolExecutor so it does
-    not block the asyncio event loop used by RAGQueryEngine and
-    test_agents.py. Sync path retained as recommend_sync() for
-    standalone / non-async callers.
-
 CBN-aligned interest rate benchmarks (February 2026):
   Personal Loan   : 30% APR (2.5% monthly)
   Car Loan        : 24% APR (2.0% monthly)
@@ -47,7 +29,18 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Dict, Any, List, Optional
 import math
 
-# Product Policy Definitions (Aligned to PRS-001 v2.2)
+# ---------------------------------------------------------------------------
+# Product Policy Definitions — corrected priority order (PRS-001 Section 5)
+# ---------------------------------------------------------------------------
+# Priority 1 = highest priority (recommended first when multiple qualify)
+#
+# PRS-001 Section 5 hierarchy:
+#   PRIORITY 1: Investment Plan  (high inflow > N2M)
+#   PRIORITY 2: Trust Fund       (high balance, long-term)
+#   PRIORITY 3: Car Loan         (uber_tracker >= 6 OR strong inflow)
+#   PRIORITY 4: Personal Loan    (salary + moderate inflow)
+#   PRIORITY 5: Student Loan     (age 18-25, solo_candidate)
+
 # signal_threshold  : Loan_signal_score floor (from LOAN_SIGNAL_SCORE_RANGES)
 # score_ceiling     : Loan_signal_score ceiling
 # interest_rate     : Annual rate (CBN-aligned, February 2026)
@@ -57,50 +50,52 @@ import math
 # dsr_cap           : CBN Debt Service Ratio cap (33.3% of monthly inflow)
 
 PRODUCT_POLICIES: Dict[str, Dict] = {
-    "Student Loan": {
-        "signal_threshold":   0.80,
-        "score_ceiling":      0.98,
-        "interest_rate":      0.18,       # 18% APR (1.5% monthly)
-        "max_tenure_months":  48,
-        "min_inflow":         150_000,    # Context floor for DSR check
-        "priority":           1,          # Highest priority (PRS-001 Section 3)
-        "dsr_cap":            0.333,
-    },
-    "Car Loan": {
-        "signal_threshold":   0.75,
-        "score_ceiling":      0.95,
-        "interest_rate":      0.24,       # 24% APR (2.0% monthly)
-        "max_tenure_months":  60,
-        "min_inflow":         500_000,
-        "priority":           2,
-        "dsr_cap":            0.333,
-    },
     "Investment Plan": {
-        "signal_threshold":   0.70,
-        "score_ceiling":      0.90,
-        "interest_rate":      0.0,        # Investment product — no interest
-        "max_tenure_months":  0,          # Open-ended
-        "min_inflow":         2_000_000,
-        "priority":           3,
-        "dsr_cap":            None,       # No DSR — no repayment obligation
-    },
-    "Personal Loan": {
-        "signal_threshold":   0.70,
-        "score_ceiling":      0.92,
-        "interest_rate":      0.30,       # 30% APR (2.5% monthly)
-        "max_tenure_months":  36,
-        "min_inflow":         100_000,
-        "priority":           4,
-        "dsr_cap":            0.333,
+        "signal_threshold": 0.70,
+        "score_ceiling": 0.90,
+        "interest_rate": 0.0,
+        "max_tenure_months": 0,
+        "min_inflow": 2_000_000,
+        "priority": 1,
+        "dsr_cap": None,
     },
     "Trust Fund": {
-        "signal_threshold":   0.65,
-        "score_ceiling":      0.85,
-        "interest_rate":      0.0,
-        "max_tenure_months":  0,
-        "min_inflow":         1_000_000,  # Context indicator — not a hard gate
-        "priority":           5,
-        "dsr_cap":            None,
+        "signal_threshold": 0.65,
+        "score_ceiling": 0.85,
+        "interest_rate": 0.0,
+        "max_tenure_months": 0,
+        "min_inflow": 1_000_000,
+        "priority": 2,
+        "dsr_cap": None,
+    },
+    "Car Loan": {
+        "signal_threshold": 0.75,
+        "score_ceiling": 0.95,
+        "interest_rate": 0.24,
+        "max_tenure_months": 60,
+        "min_inflow": 500_000,
+        "priority": 3,
+        "dsr_cap": 0.333,
+    },
+    "Personal Loan": {
+        "signal_threshold": 0.70,
+        "score_ceiling": 0.92,
+        "interest_rate": 0.30,
+        "max_tenure_months": 36,
+        "min_inflow": 100_000,
+        "priority": 4,
+        "dsr_cap": 0.333,
+    },
+    "Student Loan": {
+        "signal_threshold": 0.80,
+        "score_ceiling": 0.98,
+        "interest_rate": 0.18,
+        "max_tenure_months": 48,
+        "min_inflow": 150_000,
+        "priority": 5,
+        "dsr_cap": 0.333,
+        "max_age": 35,
+        "min_age": 18,
     },
 }
 
@@ -156,6 +151,11 @@ class RecommendationEngine:
     account_type, current_balance) are used as CONTEXT for explainability
     and DSR calculation only. They do NOT gate the recommendation —
     consistent with the PRS-001 v2 behavioral-signals-as-context model.
+
+    Student Loan EXCEPTION: age is a HARD GATE (not context-only).
+    Customers outside the 18–35 age band are excluded from Student Loan
+    regardless of their Loan_signal_score. This enforces PRS-001 §4.2
+    eligibility rules for the student product segment.
 
     Usage (standalone — sync):
         engine = RecommendationEngine()
@@ -265,6 +265,15 @@ class RecommendationEngine:
             if loan_score < floor:
                 continue
 
+            # Student Loan hard age gate (PRS-001 §4.2) — age is NOT
+            # context-only for this product; customers outside 18–35 are
+            # categorically ineligible regardless of their signal score.
+            if product_name == "Student Loan":
+                if age > policy.get("max_age", 35):
+                    continue
+                if age > 0 and age < policy.get("min_age", 18):
+                    continue
+
             all_qualifying_names.append(product_name)
             met:      List[str] = []
             unmet:    List[str] = []
@@ -326,12 +335,13 @@ class RecommendationEngine:
         """Append behavioral context strings to met / unmet lists."""
 
         if product_name == "Student Loan":
-            if 18 <= age <= 30:
-                met.append(f"Age {age} within Student Loan target band (18-30)")
-            elif age > 0:
+            # Age has already passed the hard gate above — just add context
+            if 18 <= age <= 25:
+                met.append(f"Age {age} within Student Loan primary target band (18-25)")
+            elif 26 <= age <= 35:
                 met.append(
-                    f"Age {age} — Student Loan primarily targets ages 18-30 "
-                    f"(solo_candidate accounts)"
+                    f"Age {age} — within extended Student Loan eligibility (18-35). "
+                    f"Primary target band is 18-25 (solo_candidate accounts)."
                 )
             if salary_detected:
                 met.append("Salary inflow detected (additional repayment strength)")
@@ -361,25 +371,25 @@ class RecommendationEngine:
                 )
             if monthly_inflow >= 500_000:
                 met.append(
-                    f"Monthly inflow N{monthly_inflow:,.0f} >= N500,000 "
+                    f"Monthly inflow ₦{monthly_inflow:,.0f} >= ₦500,000 "
                     f"inflow context signal"
                 )
             else:
                 unmet.append(
-                    f"Monthly inflow N{monthly_inflow:,.0f} below N500,000 "
+                    f"Monthly inflow ₦{monthly_inflow:,.0f} below ₦500,000 "
                     f"Car Loan context benchmark (context only — not a hard gate)"
                 )
 
         elif product_name == "Investment Plan":
             if monthly_inflow >= 2_000_000:
                 met.append(
-                    f"Monthly inflow N{monthly_inflow:,.0f} >= N2,000,000 "
+                    f"Monthly inflow ₦{monthly_inflow:,.0f} >= ₦2,000,000 "
                     f"— high-value investment capacity confirmed"
                 )
             else:
                 met.append(
-                    f"Monthly inflow N{monthly_inflow:,.0f} on record "
-                    f"(N2,000,000 threshold is a context benchmark, not a gate)"
+                    f"Monthly inflow ₦{monthly_inflow:,.0f} on record "
+                    f"(₦2,000,000 threshold is a context benchmark, not a gate)"
                 )
             if account_type == "current":
                 met.append("Current account detected — full Investment Plan access")
@@ -399,29 +409,29 @@ class RecommendationEngine:
                 )
             if monthly_inflow >= 300_000:
                 met.append(
-                    f"Monthly inflow N{monthly_inflow:,.0f} >= N300,000 "
+                    f"Monthly inflow ₦{monthly_inflow:,.0f} >= ₦300,000 "
                     f"inflow context signal"
                 )
             else:
                 unmet.append(
-                    f"Monthly inflow N{monthly_inflow:,.0f} below N300,000 "
+                    f"Monthly inflow ₦{monthly_inflow:,.0f} below ₦300,000 "
                     f"Personal Loan context benchmark (context only)"
                 )
 
         elif product_name == "Trust Fund":
             if monthly_inflow >= 1_000_000:
                 met.append(
-                    f"Monthly inflow N{monthly_inflow:,.0f} >= N1,000,000 "
+                    f"Monthly inflow ₦{monthly_inflow:,.0f} >= ₦1,000,000 "
                     f"— high-net-worth profile indicator"
                 )
             else:
                 met.append(
-                    f"Monthly inflow N{monthly_inflow:,.0f} on record "
-                    f"(N1,000,000 is the context benchmark for Trust Fund)"
+                    f"Monthly inflow ₦{monthly_inflow:,.0f} on record "
+                    f"(₦1,000,000 is the context benchmark for Trust Fund)"
                 )
             if balance >= 5_000_000:
                 met.append(
-                    f"Balance N{balance:,.0f} >= N5,000,000 — strong "
+                    f"Balance ₦{balance:,.0f} >= ₦5,000,000 — strong "
                     f"wealth preservation candidate"
                 )
             if account_type == "current":
@@ -467,13 +477,13 @@ class RecommendationEngine:
                 if dsr <= self.DSR_CAP:
                     met.append(
                         f"DSR {dsr_pct} <= 33.3% CBN cap "
-                        f"(EMI N{emi:,.0f} / inflow N{monthly_inflow:,.0f}) — compliant"
+                        f"(EMI ₦{emi:,.0f} / inflow ₦{monthly_inflow:,.0f}) — compliant"
                     )
                 else:
                     dsr_warn = True
                     warnings.append(
                         f"DSR {dsr_pct} exceeds 33.3% CBN cap "
-                        f"(EMI N{emi:,.0f} / inflow N{monthly_inflow:,.0f}) — "
+                        f"(EMI ₦{emi:,.0f} / inflow ₦{monthly_inflow:,.0f}) — "
                         f"refer to credit officer for manual review"
                     )
 
@@ -640,24 +650,34 @@ async def _demo() -> None:
             "account_type":        "savings",
             "current_balance":     15_000,
         },
+        # -----------------------------------------------------------------------
+        # Age-gate validation case — 63-year-old with high score and high inflow.
+        # Student Loan must be EXCLUDED (age 63 > max_age 35) despite score 0.88
+        # clearing the 0.80 floor. Engine should resolve to Investment Plan
+        # (score 0.88 >= 0.70 floor, inflow ₦9,900,000 >> ₦2M benchmark).
+        # -----------------------------------------------------------------------
+        {
+            "label":               "Senior customer — Student Loan age-gate test",
+            "Loan_signal_score":   0.88,
+            "monthly_inflow":      9_900_000,
+            "salary_detected":     True,
+            "uber_tracker":        2,
+            "age":                 63,
+            "account_type":        "current",
+            "current_balance":     8_000_000,
+        },
     ]
 
-    # Run all 5 customers concurrently — demonstrates async benefit
-    tasks = []
-    labels = []
-    customers = []
-    for c in demo_customers:
-        label = c.pop("label")
-        labels.append(label)
-        customers.append(c)
-        tasks.append(engine.recommend(c))
-
+    # Run all customers concurrently — demonstrates async benefit
+    tasks   = [engine.recommend({k: v for k, v in c.items() if k != "label"})
+               for c in demo_customers]
+    labels  = [c["label"] for c in demo_customers]
     results = await asyncio.gather(*tasks)
 
-    for label, c, result in zip(labels, customers, results):
+    for label, c, result in zip(labels, demo_customers, results):
         print(f"\n  Customer  : {label}")
         print(f"  Score     : {c['Loan_signal_score']:.2f}  |  "
-              f"Inflow: N{c['monthly_inflow']:,.0f}")
+              f"Inflow: ₦{c['monthly_inflow']:,.0f}")
 
         if result["primary_product"]:
             sr = result["score_range"]
@@ -665,7 +685,7 @@ async def _demo() -> None:
                   f"(range {sr[0]:.2f}-{sr[1]:.2f})")
             print(f"  Confidence: {result['confidence']}")
             if result["monthly_emi"] > 0:
-                print(f"  EMI       : N{result['monthly_emi']:,.2f} / month  "
+                print(f"  EMI       : ₦{result['monthly_emi']:,.2f} / month  "
                       f"({result['tenure_months']} months)")
                 print(f"  DSR       : {result['dsr_ratio']}"
                       + (" WARNING: EXCEEDS CAP" if result["dsr_warning"]
@@ -683,7 +703,7 @@ async def _demo() -> None:
 
 if __name__ == "__main__":
     print("\n" + "=" * 65)
-    print("  SENTINEL BANK — RECOMMENDATION ENGINE v2.4")
+    print("  SENTINEL BANK — RECOMMENDATION ENGINE v2.5")
     print("  PRS-001 Aligned | CBN DSR Validation | Async / Class-Based")
     print("=" * 65)
     asyncio.run(_demo())
