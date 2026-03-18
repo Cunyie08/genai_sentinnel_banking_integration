@@ -1,21 +1,21 @@
 """
-Sentinnel Bank — Dispatcher Agent
+Sentinnel Bank - Dispatcher Agent
 
 Responsibilities:
     - Accept a complaint_id from the Orchestrator
     - Fetch the complaint record from the database via SentinelRepository
     - Run RAG-grounded routing (department + priority + SLA)
     - Enrich routing decision with an LLM-generated audit explanation
-    - Fall back from OpenAI → Gemini on rate-limit errors
-    - Return a structured result dict (never raises — re-raises to Orchestrator)
+    - Fall back from OpenAI -> Gemini on rate-limit errors
+    - Return a structured result dict (never raises - re-raises to Orchestrator)
 
 Integration contract (what Orchestrator provides):
-    repo       : SentinelRepository  — async DB gateway (shared instance)
-    rag_engine : RAGQueryEngine      — vector search (shared instance)
-    openai_llm : LLMClient[RoutingResponse] — primary LLM
-    gemini_llm : LLMClient[RoutingResponse] — fallback LLM
+    repo       : SentinelRepository  - async DB gateway (shared instance)
+    rag_engine : RAGQueryEngine      - vector search (shared instance)
+    openai_llm : LLMClient[RoutingResponse] - primary LLM
+    gemini_llm : LLMClient[RoutingResponse] - fallback LLM
 
-The agent NEVER re-creates these — it uses exactly what is injected.
+The agent NEVER re-creates these - it uses exactly what is injected.
 
 Standalone usage (dev/debug only):
     python -m app.agents.dispatcher_agent
@@ -46,10 +46,10 @@ class DispatcherAgent(BaseAgent):
     RAG-grounded policy engine + LLM explanation layer.
 
     Args:
-        repo:       Async BankRepository — injected by Orchestrator.
-        rag_engine: RAGQueryEngine           — injected by Orchestrator.
-        openai_llm: LLMClient[RoutingResponse] — primary, injected by Orchestrator.
-        gemini_llm: LLMClient[RoutingResponse] — fallback, injected by Orchestrator.
+        repo:       Async BankRepository - injected by Orchestrator.
+        rag_engine: RAGQueryEngine           - injected by Orchestrator.
+        openai_llm: LLMClient[RoutingResponse] - primary, injected by Orchestrator.
+        gemini_llm: LLMClient[RoutingResponse] - fallback, injected by Orchestrator.
     """
 
     def __init__(
@@ -59,7 +59,7 @@ class DispatcherAgent(BaseAgent):
         openai_llm: LLMClient,
         gemini_llm: LLMClient,
     ) -> None:
-        # Accept injected dependencies — never re-create them here
+        # Accept injected dependencies - never re-create them here
         self.repo       = repo
         self.rag_engine = rag_engine
         self.openai_llm = openai_llm
@@ -181,7 +181,7 @@ class DispatcherAgent(BaseAgent):
                 },
             )
 
-            # Capture RAG decision — this is the ground truth, LLM must not override it
+            # Capture RAG decision - this is the ground truth, LLM must not override it
             rag_decision = {
                 "department_code": routing["department_code"],
                 "department_name": routing["department_name"],
@@ -193,7 +193,7 @@ class DispatcherAgent(BaseAgent):
                 "reasoning":       routing["reasoning"],
             }
 
-            # LLM audit explanation (OpenAI → Gemini fallback) 
+            # LLM audit explanation (OpenAI -> Gemini fallback) 
             llm_input = self._build_explanation_prompt(complaint_text, rag_decision)
             llm_result = await self._call_llm_with_fallback(llm_input)
 
@@ -264,7 +264,7 @@ class DispatcherAgent(BaseAgent):
             except RateLimitError:
                 SystemLogger.log_event(
                     event_type="llm_fallback",
-                    message="OpenAI rate limit hit — falling back to Gemini",
+                    message="OpenAI rate limit hit - falling back to Gemini",
                 )
 
         response = await self.gemini_llm.generate(
@@ -308,7 +308,7 @@ class DispatcherAgent(BaseAgent):
         """
         result = llm_result.model_dump()
 
-        # RAG decision is authoritative — overwrite any LLM values
+        # RAG decision is authoritative - overwrite any LLM values
         result["department_code"] = rag_decision["department_code"]
         result["department_name"] = rag_decision["department_name"]
         result["priority_level"]  = rag_decision["priority_level"]

@@ -9,7 +9,7 @@ Responsibilities:
     - Escalate risk tier if ML signals strong anomaly
     - Apply card-channel mandatory challenge override (ATM / POS)
     - Fetch last 5 transactions for historical context (via repository)
-    - Enrich with LLM audit explanation (OpenAI → Gemini fallback)
+    - Enrich with LLM audit explanation (OpenAI -> Gemini fallback)
     - Return a structured result dict
 
 Integration contract (what Orchestrator provides):
@@ -18,7 +18,7 @@ Integration contract (what Orchestrator provides):
     openai_llm : LLMClient[FraudResponse] - primary LLM
     gemini_llm : LLMClient[FraudResponse] - fallback LLM
 
-The agent NEVER re-creates these — it uses exactly what is injected.
+The agent NEVER re-creates these - it uses exactly what is injected.
 
 Standalone usage (dev/debug only):
     python -m app.agents.sentinel_agent
@@ -62,14 +62,14 @@ class SentinelAgent(BaseAgent):
         4. Risk tier escalation if ML > 0.85  (LOW to MEDIUM only)
         5. Card-channel mandatory challenge override (ATM / POS)
         6. Historical context  (last 5 txns via repository, skipped for live)
-        7. LLM audit explanation  (OpenAI → Gemini fallback)
+        7. LLM audit explanation  (OpenAI -> Gemini fallback)
         8. Assemble + return structured result
 
     Args:
-        repo:       Async BankRepository — injected by Orchestrator.
-        rag_engine: RAGQueryEngine           — injected by Orchestrator.
-        openai_llm: LLMClient[FraudResponse] — primary, injected by Orchestrator.
-        gemini_llm: LLMClient[FraudResponse] — fallback, injected by Orchestrator.
+        repo:       Async BankRepository - injected by Orchestrator.
+        rag_engine: RAGQueryEngine           - injected by Orchestrator.
+        openai_llm: LLMClient[FraudResponse] - primary, injected by Orchestrator.
+        gemini_llm: LLMClient[FraudResponse] - fallback, injected by Orchestrator.
     """
 
     def __init__(
@@ -79,7 +79,7 @@ class SentinelAgent(BaseAgent):
         openai_llm: LLMClient,
         gemini_llm: LLMClient,
     ) -> None:
-        # Accept injected dependencies — never re-create them here
+        # Accept injected dependencies - never re-create them here
         self.repo       = repo
         self.rag_engine = rag_engine
         self.openai_llm = openai_llm
@@ -99,7 +99,7 @@ class SentinelAgent(BaseAgent):
         Payload modes:
             DB mode:
                 {"transaction_id": "some-uuid"}
-                → fetches transaction from database
+                -> fetches transaction from database
 
             Live mode (demo / real-time):
                 {
@@ -132,7 +132,7 @@ class SentinelAgent(BaseAgent):
         try:
             # Validate + fetch transaction from DB (async)
             if is_live:
-                # Use payload directly — demo/real-time path
+                # Use payload directly - demo/real-time path
                 transaction = payload
                 transaction_id = transaction_id or "live"
                 all_transactions = []
@@ -148,7 +148,7 @@ class SentinelAgent(BaseAgent):
                 )
 
             else:
-                # Fetch from database — normal agent pipeline path
+                # Fetch from database - normal agent pipeline path
                 if not transaction_id:
                     raise ValueError(
                         "Payload must contain 'transaction_id' "
@@ -226,15 +226,15 @@ class SentinelAgent(BaseAgent):
                 metadata={"ml_probability": rag_decision["ml_probability"]},
             )
 
-            # Risk escalation: LOW → MEDIUM if ML strongly flags
+            # Risk escalation: LOW -> MEDIUM if ML strongly flags
             if ml_probability > 0.85 and rag_decision["risk_level"] == "LOW":
                 rag_decision["risk_level"]         = "MEDIUM"
                 rag_decision["recommended_action"] = (
-                    "Escalated to MEDIUM — ML anomaly signal exceeds 0.85 threshold"
+                    "Escalated to MEDIUM - ML anomaly signal exceeds 0.85 threshold"
                 )
                 SystemLogger.log_event(
                     event_type="risk_escalated",
-                    message="Risk tier escalated LOW → MEDIUM via ML signal",
+                    message="Risk tier escalated LOW -> MEDIUM via ML signal",
                     metadata={"ml_probability": ml_probability},
                 )
 
@@ -333,7 +333,7 @@ class SentinelAgent(BaseAgent):
             except RateLimitError:
                 SystemLogger.log_event(
                     event_type="llm_fallback",
-                    message="OpenAI rate limit — falling back to Gemini",
+                    message="OpenAI rate limit - falling back to Gemini",
                 )
 
         result = await self.gemini_llm.generate(
@@ -482,7 +482,7 @@ async def _main() -> None:
     _print_result(result)
 
     # Live mode (demo)
-    print("\n[Dev] Live mode — simulated demo transaction")
+    print("\n[Dev] Live mode - simulated demo transaction")
     live_payload = {
         "amount":               75000.00,
         "channel":              "pos",
@@ -591,9 +591,9 @@ if __name__ == "__main__":
 #         Steps:
 #         1. Fetch transaction
 #         2. Run deterministic fraud scoring
-#         3. Run ML model → get fraud_probability (0–1)
+#         3. Run ML model -> get fraud_probability (0–1)
 #         4. Attach fraud_probability to output
-#         5. If ML probability is very high → increase risk by 1 tier
+#         5. If ML probability is very high -> increase risk by 1 tier
 #         6. Apply card override
 #         7. Add LLM explanation overlay
 #         8. Log decision
@@ -661,7 +661,7 @@ if __name__ == "__main__":
 
 #             base_result["ml_probability"] = round(ml_probability, 3)
 
-#             # Only escalate LOW → MEDIUM if ML strongly indicates anomaly
+#             # Only escalate LOW -> MEDIUM if ML strongly indicates anomaly
 #             if ml_probability > 0.85 and base_result["risk_level"] == "LOW":
 #                 base_result["risk_level"] = "MEDIUM"
 #                 base_result["recommended_action"] = \

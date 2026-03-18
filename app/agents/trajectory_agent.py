@@ -1,13 +1,13 @@
 # TRAJECTORY AGENT
 
 """
-Sentinnel Bank — Trajectory Agent
+Sentinnel Bank - Trajectory Agent
 
 Responsibilities:
     - Accept a customer_id from the Orchestrator
     - Fetch the full behavioral profile from the database via BankRepository
       (Loan_signal_score, monthly_inflow, salary_detected, uber_tracker,
-       account_type, current_balance, age — all pre-aggregated by repo)
+       account_type, current_balance, age - all pre-aggregated by repo)
     - Run the RecommendationEngine (proactive product suggestion)
     - Validate the recommendation via RAG policy engine
     - Enrich with LLM audit explanation (OpenAI → Gemini fallback)
@@ -19,7 +19,7 @@ Integration contract (what Orchestrator provides):
     openai_llm : LLMClient[TrajectoryResponse] - primary LLM
     gemini_llm : LLMClient[TrajectoryResponse] - fallback LLM
 
-The agent NEVER re-creates these — it uses exactly what is injected.
+The agent NEVER re-creates these - it uses exactly what is injected.
 The LLM NEVER overrides eligibility or product decisions.
 
 Standalone usage (dev/debug only):
@@ -73,13 +73,13 @@ class TrajectoryAgent(BaseAgent):
     ) -> None:
         super().__init__()
 
-        # Accept injected dependencies — never re-create them here
+        # Accept injected dependencies - never re-create them here
         self.repo       = repo
         self.rag_engine = rag_engine
         self.openai_llm = openai_llm
         self.gemini_llm = gemini_llm
 
-        # RecommendationEngine is stateless — safe to build here
+        # RecommendationEngine is stateless - safe to build here
         self.recommender = RecommendationEngine()
 
 
@@ -144,7 +144,7 @@ class TrajectoryAgent(BaseAgent):
 
             # Build policy input from pre-aggregated profile 
             #
-            # All signal fields come directly from the repository — no manual
+            # All signal fields come directly from the repository - no manual
             # DataFrame computation. The repository's get_customer_profile()
             # handles Loan_signal_score, monthly_inflow, salary_detected,
             # uber_tracker, account_type, and current_balance aggregation.
@@ -163,7 +163,7 @@ class TrajectoryAgent(BaseAgent):
                 },
             )
 
-            # If no product qualifies, return early — no LLM call needed
+            # If no product qualifies, return early - no LLM call needed
             if not recommendation.get("primary_product"):
                 SystemLogger.log_event(
                     event_type="no_product_qualified",
@@ -251,7 +251,7 @@ class TrajectoryAgent(BaseAgent):
         RAGQueryEngine.validate_product_recommendation() expect from the
         pre-aggregated customer profile returned by the repository.
 
-        All signals are already computed by repo.get_customer_profile() —
+        All signals are already computed by repo.get_customer_profile() -
         no DataFrame access or manual aggregation here.
         """
         return {
@@ -316,7 +316,7 @@ class TrajectoryAgent(BaseAgent):
             except RateLimitError:
                 SystemLogger.log_event(
                     event_type="llm_fallback",
-                    message="OpenAI rate limit hit — falling back to Gemini",
+                    message="OpenAI rate limit hit - falling back to Gemini",
                 )
 
         result = await self.gemini_llm.generate(
@@ -340,7 +340,7 @@ class TrajectoryAgent(BaseAgent):
         into the final structured result dict.
 
         RecommendationEngine and RAG decisions are always authoritative.
-        The LLM explanation is layered on top — it cannot override
+        The LLM explanation is layered on top - it cannot override
         is_eligible, primary_product, EMI, DSR, or confidence.
         """
         structured = llm_result.model_dump()
@@ -369,7 +369,7 @@ class TrajectoryAgent(BaseAgent):
             "met_criteria":            recommendation.get("met_criteria", []),
             "unmet_criteria":          recommendation.get("unmet_criteria", []),
 
-            # Eligibility (authoritative — from recommendation engine + RAG)
+            # Eligibility (authoritative - from recommendation engine + RAG)
             "is_eligible":             validation.get("is_eligible", False),
 
             # RAG policy validation (full dict preserved for audit)
@@ -383,7 +383,7 @@ class TrajectoryAgent(BaseAgent):
             "account_type":            policy_input["account_type"],
             "current_balance":         policy_input["current_balance"],
 
-            # LLM explanation (non-authoritative — narrative only)
+            # LLM explanation (non-authoritative - narrative only)
             "reasoning": (
                 f"Policy Validation:\n"
                 f"{validation.get('policy_basis', '')}\n\n"
@@ -480,7 +480,7 @@ if __name__ == "__main__":
 
 # class TrajectoryAgent(BaseAgent):
 #     """
-#     Trajectory Agent — Product Recommendation & Eligibility Engine
+#     Trajectory Agent - Product Recommendation & Eligibility Engine
 
 
 #     1. Deterministic recommendation (RecommendationEngine)
