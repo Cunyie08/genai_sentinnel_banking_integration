@@ -270,7 +270,7 @@ class Orchestrator:
 
         elif agent_name == "TrajectoryAgent":
             result  = await self.trajectory.run(request)
-            result  = self._sanitize(result)          # ← add this
+            result  = self._sanitize(result)         
             metrics = Metrics.evaluate_product_recommendation(result)
 
         else:
