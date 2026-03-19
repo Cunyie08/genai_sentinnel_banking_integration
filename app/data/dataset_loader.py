@@ -39,7 +39,6 @@ CSV_FILES = {
     "complaints":   "complaints.csv",
 }
 
-LOGIN_CSV = "login_credentials.csv"
 
 
 # DatasetLoader
@@ -67,9 +66,9 @@ class DatasetLoader:
 
         Args:
             force:  If True, drops and recreates all tables first.
-                    DESTRUCTIVE — use only in dev.
+                    DESTRUCTIVE - use only in dev.
         """
-        print("[Seeder] Sentinel Bank — Async Database Seeder")
+        print("[Seeder] Sentinel Bank - Async Database Seeder")
 
 
         if force:
@@ -86,7 +85,7 @@ class DatasetLoader:
         await self._seed_accounts()
         await self._seed_transactions()
         await self._seed_complaints()
-        await self._apply_login_credentials()
+
 
         elapsed = time.time() - total_start
         print(f"\n[Seeder] All tables seeded in {elapsed:.1f}s")
@@ -153,16 +152,16 @@ class DatasetLoader:
             count = result.scalar()
 
         if count and count > 0:
-            print(f"[Seeder]   {table_name:<16} already has {count:>8,} rows — skipped")
+            print(f"[Seeder]   {table_name:<16} already has {count:>8,} rows - skipped")
             return
 
         # Load &  transform CSV
         csv_path = os.path.join(self.data_dir, csv_name)
         if not os.path.isfile(csv_path):
-            print(f"[Seeder]   ⚠  {csv_name} not found — skipping {table_name}")
+            print(f"[Seeder]    {csv_name} not found - skipping {table_name}")
             return
 
-        df    = pd.read_csv(csv_path, low_memory=False)
+        df    = pd.read_csv(csv_path, low_memory=False, encoding="utf-8")
         df    = transform(df)
         total = len(df)
         start = time.time()
@@ -187,7 +186,7 @@ class DatasetLoader:
             inserted += len(chunk)
 
         elapsed = time.time() - start
-        print(f"[Seeder]   {table_name:<16} ✔  {inserted:>8,} rows  ({elapsed:.1f}s)")
+        print(f"[Seeder]   {table_name:<16}  {inserted:>8,} rows  ({elapsed:.1f}s)")
 
     # Transformations
  
@@ -230,33 +229,6 @@ class DatasetLoader:
         df["resolution_time_hours"] = pd.to_numeric(df["resolution_time_hours"], errors="coerce").fillna(0).astype(int)
         return df
 
-
-    # Login credential patch
-
-    async def _apply_login_credentials(self) -> None:
-        """
-        If login_credentials.csv exists, patch username + password
-        into the customers table row-by-row via async UPDATE statements.
-        Skips if the CSV is not present.
-        """
-        login_path = os.path.join(self.data_dir, LOGIN_CSV)
-        if not os.path.isfile(login_path):
-            print("[Seeder] login_credentials.csv not found, login patch skipped")
-            return
-
-        df      = pd.read_csv(login_path)[["customer_id", "username", "password"]]
-        records = df.to_dict(orient="records")
-
-        # Use bulk executemany style for performance and to avoid connection pool exhaustion
-        async with self.engine.begin() as conn:
-            stmt = text(
-                "UPDATE customers "
-                "SET username = :username, password = :password "
-                "WHERE customer_id = :customer_id"
-            )
-            await conn.execute(stmt, records)
-
-        print(f"[Seeder] login patch: {len(records):>8,} customers updated")
 
 
 # CLI entry point
