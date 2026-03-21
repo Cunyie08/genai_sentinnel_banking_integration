@@ -25,7 +25,7 @@ from app.core.orchestrator import Orchestrator
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from Backend.database import engine, Base, SessionLocal, get_db
-from Backend.models import Complaint, Account, Transaction, Customer, UserSettings
+from Backend.models import Complaint, Account, Transaction, Customer, UserSettings, ComplaintRoutingDecision
 from Backend.middleware import get_current_user
 from app.utils.schemas import RoutingResponse, FraudResponse, RiskBreakdown, TrajectoryResponse
 from app.agents.dispatcher_agent import DispatcherAgent
@@ -369,9 +369,7 @@ async def process_complaint_routing(complaint_id: str, complaint_text: str):
     async with SessionLocal() as db:
         try:
             # Initialize required components
-            # dataset_loader = DatasetLoader()
-            orchestrator = Orchestrator()
-            await orchestrator.initialize()
+            # dataset_loader = DatasetLoader()  
             # await dataset_loader.load()
             # repo = BankRepository(dataset_loader)
             # rag_engine = await create_engine()
@@ -411,6 +409,16 @@ async def process_complaint_routing(complaint_id: str, complaint_text: str):
             result = await db.execute(stmt)
             complaint = result.scalars().first()
 
+            try:
+                # Dynamically filter values to only include defined column names
+                valid_columns = {c.name for c in ComplaintRoutingDecision.__table__.columns}
+                filtered_result = {k: v for k, v in result1.items() if k in valid_columns}
+
+                decision_record = ComplaintRoutingDecision(**filtered_result)
+                db.add(decision_record)
+            except Exception as saving_issue:
+                print(f"Failed to save ComplaintRoutingDecision: {saving_issue}")
+
             if complaint:
                 complaint.department_code = result1.get("department_code")
                 complaint.department_name = result1.get("department_name")
@@ -423,19 +431,39 @@ async def process_complaint_routing(complaint_id: str, complaint_text: str):
                 )
 
                 user_stmt = select(Customer).filter(
-                    User.customer_id == complaint.customer_id
+                    Customer.customer_id == complaint.customer_id
                 )
                 user_result = await db.execute(user_stmt)
                 user = user_result.scalars().first()
 
-                if user:
-                    print(f"Sending auto-reply to {user.email}...")
-                    await send_complaint_confirmation_email(
-                        to_email=user.email,
-                        complaint_id=complaint_id,
-                        department=complaint.department_name,
-                        priority=complaint.priority_level,
-                    )
+                # if user:
+                #     print(f"Sending auto-reply to {user.email}...")
+                #     await send_complaint_confirmation_email(
+                #         to_email=user.email,
+                #         complaint_id=complaint_id,
+                #         department=complaint.department_name,
+                #         priority=complaint.priority_level,
+                #     )
+
+                department_emails = {
+                    "TSU": "jofesdavid@gmail.com",
+                    "COC": "dekpo231998@gmail.com",
+                    "FRM": "ekpodavid120@gmail.com",
+                    "DCS": "oshoridwanullah@gmail.com",
+                    "AOD": "dekpo255@stu.ui.edu.ng",
+                    "CLS": "businesskaoshi@gmail.com"
+                }
+                
+                dept_code = complaint.department_code or ""
+                target_email = department_emails.get(dept_code, "support@sentinelbank.com")
+
+                await send_department_routing_email(
+                    to_email=target_email,
+                    complaint_id=complaint_id,
+                    complaint_text=complaint_text,
+                    department=complaint.department_name or "General Support",
+                    priority=complaint.priority_level or "Low"
+                )
             return result1
 
         except Exception as e:
@@ -698,60 +726,18 @@ async def make_complaint(
 
         db.add(new_complaint)
         await db.flush()
-        
-        complaint_request = {
-            "type": "complaint",
-            "department": "complaint",
-            "complaint_id": new_complaint_id,
-            "complaint_text": query.complaint_text,
-            "agent": "DispatcherAgent" 
-        }
-        
-        result1 = await orchestrator.handle_request(complaint_request)
-
-        # Update the complaint with the AI's routing decision
-        new_complaint.department_code = result1.get("department_code")
-        new_complaint.department_name = result1.get("department_name")
-        new_complaint.priority_level = result1.get("priority_level")
-        new_complaint.sentiment = result1.get("sentiment")
-
         await db.commit()
 
-        # Map department to the proper representative email
-        department_emails = {
-            "TSU": "jofesdavid@gmail.com",
-            "COC": "dekpo231998@gmail.com",
-            "FRM": "ekpodavid120@gmail.com",
-            "DCS": "oshoridwanullah@gmail.com",
-            "AOD": "dekpo255@stu.ui.edu.ng",
-            "CLS": "businesskaoshi@gmail.com"
-        }
-        
-        dept_code = new_complaint.department_code or ""
-        target_email = department_emails.get(dept_code, "support@sentinelbank.com")
-
-        # Dispatch the email asynchronously to the appropriate department
+        # Enqueue the background task for AI processing and emails
         background_tasks.add_task(
-            send_department_routing_email,
-            to_email=target_email,
+            process_complaint_routing,
             complaint_id=new_complaint_id,
-            complaint_text=query.complaint_text,
-            department=new_complaint.department_name or "General Support",
-            priority=new_complaint.priority_level or "Low"
+            complaint_text=query.complaint_text
         )
 
-        # Prepare the final response explicitly matching RoutingResponse schema + message
         return {
-            "message": "Complaint processed and routed successfully.",
-            "complaint_id": new_complaint_id,
-            "department_code": result1.get("department_code"),
-            "department_name": result1.get("department_name"),
-            "priority_level": result1.get("priority_level"),
-            "sla_hours": result1.get("sla_hours"),
-            "routing_method": result1.get("routing_method"),
-            "keyword_matches": result1.get("keyword_matches"),
-            "confidence": result1.get("confidence"),
-            "reasoning": result1.get("reasoning")
+            "message": "Customer complaint submitted sucessfully",
+            "complaint_id": new_complaint_id
         }
     except Exception as e:
         await db.rollback()
@@ -1626,9 +1612,10 @@ async def internal_transfer(
 @app.get("/faqs", tags=["Support"])
 async def get_faqs(prompt: Optional[str] = None):
     """
-    Reads and parses the static FAQ-001.txt knowledge base file.
-    Returns structured JSON with sections, questions, and answers for the frontend UI.
+    Search FAQs using keyword matching.
+    Returns the best matching FAQ if score >= threshold, otherwise fallback message.
     """
+    # Parse FAQs from file
     base_dir = Path(__file__).resolve().parent.parent
     faq_path = base_dir / "app" / "rag" / "knowledge_base" / "faqs" / "FAQ-001.txt"
 
@@ -1660,19 +1647,19 @@ async def get_faqs(prompt: Optional[str] = None):
                     "question": current_q,
                     "answer": "\n".join(current_a).strip()
                 })
-            
+
             # Extract new question
             current_q = stripped.split(":", 1)[-1].strip()
             current_a = []
             in_answer = False
             continue
 
-        # Check for Answer starting 
+        # Check for Answer starting
         if stripped.startswith("A:"):
             in_answer = True
             current_a.append(stripped[2:].strip())
             continue
-            
+
         # Append continuing answer text
         if in_answer and stripped and not stripped.startswith("──") and not stripped.startswith("=="):
             current_a.append(stripped)
@@ -1685,37 +1672,49 @@ async def get_faqs(prompt: Optional[str] = None):
             "answer": "\n".join(current_a).strip()
         })
 
-    if prompt:
-        prompt_lower = prompt.lower()
-        best_match = None
-        best_score = 0
-        prompt_words = set([w for w in prompt_lower.split() if len(w) > 3])
+    if not prompt:
+        # Return all FAQs if no prompt
+        return {"faqs": faqs}
 
-        for faq in faqs:
-            q_lower = faq["question"].lower()
-            a_lower = faq["answer"].lower()
-            
-            score = 0
-            for word in prompt_words:
-                if word in q_lower:
-                    score += 3
-                if word in a_lower:
-                    score += 1
+    # Simple keyword-based search
+    prompt_lower = prompt.lower()
+    best_match = None
+    best_score = 0
+    prompt_words = set([w for w in prompt_lower.split() if len(w) > 3])
 
-            if score > best_score:
-                best_score = score
-                best_match = faq
+    for faq in faqs:
+        q_lower = faq["question"].lower()
+        a_lower = faq["answer"].lower()
+        
+        score = 0
+        for word in prompt_words:
+            if word in q_lower:
+                score += 3
+            if word in a_lower:
+                score += 1
 
-        threshold = 3 
-        if best_match and best_score >= threshold:
-            return {"answer": best_match["answer"], "question_matched": best_match["question"], "match_found": True}
-        else:
-            return {
-                "answer": "I couldn't find a specific answer to your question in our FAQs. Please contact our 24/7 customer care team for further assistance.",
-                "match_found": False
-            }
+        if score > best_score:
+            best_score = score
+            best_match = faq
 
-    return {"faqs": faqs}
-
+    threshold = 3 
+    if best_match and best_score >= threshold:
+        return {
+            "success": True,
+            "match": {
+                "question": best_match["question"],
+                "answer": best_match["answer"],
+                "similarity_score": best_score / 10.0,  # Normalize to 0-1 range
+                "confidence": min(1.0, best_score / 10.0),
+                "confidence_label": "High" if best_score >= 5 else "Medium"
+            },
+            "alternatives": []
+        }
+    else:
+        return {
+            "success": False,
+            "message": "Please refer to Customer Service",
+            "searched_for": prompt
+        }
 if __name__ == "__main__":
     uvicorn.run(app, host="127.0.0.1", port=8080)
