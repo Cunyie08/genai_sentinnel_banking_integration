@@ -30,6 +30,7 @@ from Backend.models import (
     Complaint,
     AuditLog,
     FraudAlert,
+    ComplaintRoutingDecision,
 )
 from Backend.schemas import AdminUserStatusUpdate, TicketAssign, TicketResolve
 
@@ -268,6 +269,29 @@ async def list_tickets(
     result = await db.execute(query)
     tickets = result.scalars().all()
     return {"total": len(tickets), "tickets": tickets}
+
+
+@router.get("/routing-decisions")
+async def list_routing_decisions(
+    department_name: str | None = Query(None, description="Optional department name to filter by"),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=200),
+    db: AsyncSession = Depends(get_db),
+    admin=Depends(require_admin),
+):
+    """List all dispatcher routing decisions, optionally filtered by department name."""
+    query = select(ComplaintRoutingDecision)
+    
+    # Filter only if department_name is present and is not an empty string
+    if department_name:
+        query = query.filter(ComplaintRoutingDecision.department_name.ilike(f"%{department_name}%"))
+        
+    query = query.order_by(ComplaintRoutingDecision.created_at.desc()).offset(skip).limit(limit)
+
+    result = await db.execute(query)
+    decisions = result.scalars().all()
+    
+    return {"skip": skip, "limit": limit, "total_returned": len(decisions), "decisions": decisions}
 
 
 @router.patch("/tickets/{ticket_id}/assign")
