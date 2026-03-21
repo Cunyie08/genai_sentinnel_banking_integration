@@ -1,18 +1,27 @@
 from sqlalchemy import (
-    String,
-    Integer,
-    Numeric,
-    Boolean,
-    Date,
-    DateTime,
-    Text,
-    ForeignKey,
-    CheckConstraint,
+    String, Integer, Numeric, Boolean, Date, DateTime,
+    Text, ForeignKey, CheckConstraint, JSON
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from datetime import date, datetime
+from decimal import Decimal
 from typing import List, Optional
-from Backend.database import Base  # Adjust this import path if needed
+from Backend.database import Base
+
+
+# ==========================================================
+# SHARED SERIALIZATION HELPER
+# ==========================================================
+
+def _safe_val(v):
+    """Convert DB types that are not JSON-serializable to plain Python types."""
+    if isinstance(v, Decimal):
+        return float(v)
+    if isinstance(v, datetime):
+        return v.isoformat()
+    if isinstance(v, date):
+        return v.isoformat()
+    return v
 
 
 class Customer(Base):
@@ -72,6 +81,31 @@ class Customer(Base):
     fraud_alerts: Mapped[List["FraudAlert"]] = relationship(
         back_populates="customer", cascade="all, delete"
     )
+
+    def to_dict(self) -> dict:
+        return {
+            "customer_id":       self.customer_id,
+            "first_name":        self.first_name,
+            "last_name":         self.last_name,
+            "full_name":         self.full_name,
+            "gender":            self.gender,
+            "age":               self.age,
+            "date_of_birth":     _safe_val(self.date_of_birth),
+            "bvn":               self.bvn,
+            "nin":               self.nin,
+            "phone_number":      self.phone_number,
+            "telco_provider":    self.telco_provider,
+            "email":             self.email,
+            "state_of_origin":   self.state_of_origin,
+            "residential_state": self.residential_state,
+            "banking_branch":    self.banking_branch,
+            "onboarding_date":   _safe_val(self.onboarding_date),
+            "username":          self.username,
+            "solo_candidate":    self.solo_candidate,
+            # password intentionally excluded from to_dict
+        }
+
+
 class Account(Base):
     __tablename__ = "accounts"
 
@@ -82,12 +116,8 @@ class Account(Base):
     account_number: Mapped[str] = mapped_column(String(20), unique=True, nullable=False)
     account_type: Mapped[Optional[str]] = mapped_column(String(50))
     currency: Mapped[Optional[str]] = mapped_column(String(10))
-    current_balance: Mapped[Optional[float]] = mapped_column(
-        Numeric(18, 2), default=0.00
-    )
-    status: Mapped[str] = mapped_column(
-        String(20), default="active", server_default="active"
-    )
+    current_balance: Mapped[Optional[float]] = mapped_column(Numeric(18, 2), default=0.00)
+    status: Mapped[str] = mapped_column(String(20), default="active", server_default="active")
     opened_date: Mapped[Optional[date]] = mapped_column(Date)
 
     # Relationships
@@ -101,6 +131,18 @@ class Account(Base):
     service_transactions: Mapped[List["ServiceTransaction"]] = relationship(
         back_populates="account", cascade="all, delete"
     )
+
+    def to_dict(self) -> dict:
+        return {
+            "account_id":      self.account_id,
+            "customer_id":     self.customer_id,
+            "account_number":  self.account_number,
+            "account_type":    self.account_type,
+            "currency":        self.currency,
+            "current_balance": _safe_val(self.current_balance),
+            "status":          self.status,
+            "opened_date":     _safe_val(self.opened_date),
+        }
 
 
 class Transaction(Base):
@@ -142,6 +184,32 @@ class Transaction(Base):
     customer: Mapped["Customer"] = relationship(back_populates="transactions")
     complaints: Mapped[List["Complaint"]] = relationship(back_populates="transaction")
 
+    def to_dict(self) -> dict:
+        return {
+            "transaction_id":               self.transaction_id,
+            "transaction_reference_number": self.transaction_reference_number,
+            "account_id":                   self.account_id,
+            "customer_id":                  self.customer_id,
+            "channel":                      self.channel,
+            "device_id":                    self.device_id,
+            "counterparty_bank":            self.counterparty_bank,
+            "narration":                    self.narration,
+            "transaction_type":             self.transaction_type,
+            "amount":                       _safe_val(self.amount),
+            "currency":                     self.currency,
+            "transaction_balance":          _safe_val(self.transaction_balance),
+            "transaction_status":           self.transaction_status,
+            "failure_reason":               self.failure_reason,
+            "is_fraud_score":               self.is_fraud_score,
+            "fraud_explainability_trace":   self.fraud_explainability_trace,
+            "merchant_category":            self.merchant_category,
+            "merchant_name":                self.merchant_name,
+            "salary_detected":              self.salary_detected,
+            "Loan_signal_score":            _safe_val(self.Loan_signal_score),
+            "recommended_product":          self.recommended_product,
+            "transaction_timestamp":        _safe_val(self.transaction_timestamp),
+        }
+    
 
 class Complaint(Base):
     __tablename__ = "complaints"
@@ -177,6 +245,29 @@ class Complaint(Base):
     transaction: Mapped[Optional["Transaction"]] = relationship(
         back_populates="complaints"
     )
+
+    def to_dict(self) -> dict:
+        return {
+            "complaint_id":          self.complaint_id,
+            "customer_id":           self.customer_id,
+            "linked_transaction_id": self.linked_transaction_id,
+            "linked_reference":      self.linked_reference,
+            "department_code":       self.department_code,
+            "department_name":       self.department_name,
+            "priority_level":        self.priority_level,
+            "sentiment":             self.sentiment,
+            "complaint_channel":     self.complaint_channel,
+            "assigned_agent_id":     self.assigned_agent_id,
+            "complaint_timestamp":   _safe_val(self.complaint_timestamp),
+            "resolution_timestamp":  _safe_val(self.resolution_timestamp),
+            "resolution_time_hours": self.resolution_time_hours,
+            "sla_hours_limit":       self.sla_hours_limit,
+            "sla_breach_flag":       self.sla_breach_flag,
+            "complaint_status":      self.complaint_status,
+            "fraud_related":         self.fraud_related,
+            "complaint_text":        self.complaint_text,
+            "account_id":            self.account_id,
+        }
 
 
 class OTPToken(Base):
@@ -262,9 +353,7 @@ class Notification(Base):
 class UserSettings(Base):
     __tablename__ = "user_settings"
 
-    setting_id: Mapped[int] = mapped_column(
-        Integer, primary_key=True, autoincrement=True
-    )
+    setting_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     customer_id: Mapped[str] = mapped_column(
         String(50), ForeignKey("customers.customer_id", ondelete="CASCADE"), unique=True
     )
@@ -300,9 +389,7 @@ class ChatSession(Base):
 class ChatMessage(Base):
     __tablename__ = "chat_messages"
 
-    message_id: Mapped[int] = mapped_column(
-        Integer, primary_key=True, autoincrement=True
-    )
+    message_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     session_id: Mapped[str] = mapped_column(
         String(50), ForeignKey("chat_sessions.session_id", ondelete="CASCADE")
     )
@@ -323,13 +410,9 @@ class ServiceTransaction(Base):
     account_id: Mapped[str] = mapped_column(
         String(50), ForeignKey("accounts.account_id", ondelete="CASCADE")
     )
-    service_type: Mapped[str] = mapped_column(
-        String(50), nullable=False
-    )  # airtime | data | bills
+    service_type: Mapped[str] = mapped_column(String(50), nullable=False)
     provider: Mapped[Optional[str]] = mapped_column(String(100))
-    category: Mapped[Optional[str]] = mapped_column(
-        String(50)
-    )  # e.g. electricity, water
+    category: Mapped[Optional[str]] = mapped_column(String(50))
     amount: Mapped[float] = mapped_column(Numeric(18, 2), nullable=False)
     phone_number: Mapped[Optional[str]] = mapped_column(String(20))
     data_plan: Mapped[Optional[str]] = mapped_column(String(50))
@@ -370,6 +453,33 @@ class AuditLog(Base):
     action: Mapped[str] = mapped_column(String(100), nullable=False)
     target_type: Mapped[Optional[str]] = mapped_column(String(50))
     target_id: Mapped[Optional[str]] = mapped_column(String(100))
-    details: Mapped[Optional[str]] = mapped_column(Text)  # JSON string
+    details: Mapped[Optional[str]] = mapped_column(Text)
     ip_address: Mapped[Optional[str]] = mapped_column(String(45))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+
+
+class ComplaintRoutingDecision(Base):
+    __tablename__ = "complaint_routing_decisions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    complaint_id: Mapped[Optional[str]] = mapped_column(String(50))
+    department_code: Mapped[Optional[str]] = mapped_column(String(20))
+    department_name: Mapped[Optional[str]] = mapped_column(String(150))
+    priority_level: Mapped[Optional[str]] = mapped_column(String(20))
+    sla_hours: Mapped[Optional[int]] = mapped_column(Integer)
+    confidence_score: Mapped[Optional[float]] = mapped_column(Numeric(10, 4))
+    routing_method: Mapped[Optional[str]] = mapped_column(String(50))
+    keyword_matches: Mapped[Optional[str]] = mapped_column(JSON)
+    reasoning: Mapped[Optional[str]] = mapped_column(Text)
+    sentiment: Mapped[Optional[str]] = mapped_column(String(50))
+    complaint_text: Mapped[Optional[str]] = mapped_column(Text)
+    customer_id: Mapped[Optional[str]] = mapped_column(String(50))
+    complaint_channel: Mapped[Optional[str]] = mapped_column(String(50))
+    linked_transaction: Mapped[Optional[str]] = mapped_column(String(50))
+    agent: Mapped[Optional[str]] = mapped_column(String(50))
+    request_id: Mapped[Optional[str]] = mapped_column(String(50))
+    processing_time_seconds: Mapped[Optional[float]] = mapped_column(Numeric(10, 4))
+    has_department: Mapped[Optional[float]] = mapped_column(Numeric(10, 4))
+    non_empty_reasoning: Mapped[Optional[float]] = mapped_column(Numeric(10, 4))
+    department_present: Mapped[Optional[float]] = mapped_column(Numeric(10, 4))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)

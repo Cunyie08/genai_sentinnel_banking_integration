@@ -15,6 +15,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update, func
 
+import os
+from fastapi.security import OAuth2PasswordRequestForm, HTTPAuthorizationCredentials
+from fastapi import Security
+from Backend.auth import create_access_token, verify_access_token
+from Backend.middleware import oauth2_scheme
+
 from Backend.database import get_db
 from Backend.middleware import get_current_user
 from Backend.models import (
@@ -30,11 +36,47 @@ from Backend.schemas import AdminUserStatusUpdate, TicketAssign, TicketResolve
 router = APIRouter(prefix="/admin", tags=["Admin"])
 
 
+ADMIN_USERS_FILE = os.path.join(os.path.dirname(__file__), "admin_users.json")
+
+class MockAdminUser:
+    def __init__(self, email):
+        self.email = email
+        self.customer_id = f"ADMIN_{email}"
+        self.role = "admin"
+
+@router.post("/login")
+async def admin_login(form_data: OAuth2PasswordRequestForm = Depends()):
+    if not os.path.exists(ADMIN_USERS_FILE):
+        raise HTTPException(status_code=500, detail="Admin credentials not configured")
+        
+    with open(ADMIN_USERS_FILE, "r") as f:
+        admins = json.load(f)
+        
+    for admin in admins:
+        if admin["email"] == form_data.username and admin["password"] == form_data.password:
+            access_token = create_access_token(data={"sub": admin["email"], "role": "admin"})
+            return {"access_token": access_token, "token_type": "bearer"}
+            
+    raise HTTPException(status_code=401, detail="Incorrect email or password")
+
 # ─── Guard: reject non-admin users ──────────────────────────
-def require_admin(user=Depends(get_current_user)):
+def require_admin(token: HTTPAuthorizationCredentials = Security(oauth2_scheme)):
     """Dependency that checks admin role. Inject with Depends(require_admin)."""
-    # Simply bypass the admin check since we have removed roles
-    return user
+    payload = verify_access_token(token.credentials)
+    if payload is None:
+        raise HTTPException(status_code=401, detail="Invalid token")
+        
+    email = payload.get("sub")
+    if not email:
+        raise HTTPException(status_code=401, detail="Token missing subject")
+        
+    if os.path.exists(ADMIN_USERS_FILE):
+        with open(ADMIN_USERS_FILE, "r") as f:
+            admins = json.load(f)
+            if any(a["email"] == email for a in admins):
+                return MockAdminUser(email)
+                
+    raise HTTPException(status_code=403, detail="Not authorized as admin")
 
 
 # ─── Audit helper ────────────────────────────────────────────

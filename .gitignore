@@ -107,6 +107,7 @@ a_venv/
 *.log
 logs/
 app/logs/
+app/logs/*.log
 
 # Database
 *.db
@@ -200,3 +201,6 @@ models/
 app/rag/chroma_db/
 __pycache__/
 *.pyc
+
+ Frontend/package-lock.json
+Backend/admin_users.json
