@@ -20,22 +20,6 @@ app\__pycache__
 app\rag\knowledge_base\__pycache__
 app\rag\rag_system\__pycache__
 
-# RAG / ChromaDB
-app\rag\chroma_db
-app/rag/chroma_db
-chroma_db/
-
-# Large datasets
-complaints.csv
-customers.csv
-transactions.csv
-app/data/complaints.csv
-app/data/customers.csv
-app/data/transactions.csv
-sentinnel_banking_dataset/accounts.csv
-sentinnel_banking_dataset/transactions.csv
-sentinnel_banking_dataset/customers.csv
-sentinnel_banking_dataset/complaints.csv
 
 # Sensitive / internal docs
 DAVID_HANDOVER.md
@@ -54,9 +38,6 @@ test.sql
 create_schema.py
 
 
-app\rag\chroma_db
-accounts.csv
-system_architecture_banking_.pdf
 __pycache__/
 *.pyc
 *.log
@@ -107,7 +88,6 @@ a_venv/
 *.log
 logs/
 app/logs/
-app/logs/*.log
 
 # Database
 *.db
@@ -183,11 +163,6 @@ SWAGGER_TEST_GUIDE.md
 WORK_DISTRIBUTION.md
 
 # CSV Data
-complaints.csv
-customers.csv
-transactions.csv
-login_credentials.csv
-customers_with_login.csv
 
 Frontend\package-lock.json
 
@@ -198,11 +173,5 @@ __pycache__/
 
 models/
 .env
-app/rag/chroma_db/
 __pycache__/
 *.pyc
-
- Frontend/package-lock.json
-
-front
-Backend/admin_users.json
