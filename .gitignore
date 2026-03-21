@@ -203,4 +203,6 @@ __pycache__/
 *.pyc
 
  Frontend/package-lock.json
+
+front
 Backend/admin_users.json
