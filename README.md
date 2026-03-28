@@ -8,7 +8,7 @@
 
 ## Executive Summary
 
-Sentinnel Banking is a modular, multi-agent artificial intelligence system built to enhance operational efficiency, risk management, and customer experience within a digital banking environment. It automates three core banking functions — complaint routing, fraud detection, and product recommendation — using a governance-first architecture where deterministic engines make every financial decision, and language models are used strictly to generate clear, audit-ready explanations.
+Sentinnel Banking is a modular, multi-agent artificial intelligence system built to enhance operational efficiency, risk management, and customer experience within a digital banking environment. It automates three core banking functions - complaint routing, fraud detection, and product recommendation - using a governance-first architecture where deterministic engines make every financial decision, and language models are used strictly to generate clear, audit-ready explanations.
 
 | Agent | Function |
 |---|---|
@@ -18,8 +18,8 @@ Sentinnel Banking is a modular, multi-agent artificial intelligence system built
 
 **Key design characteristics:**
 
-- Policy-aligned decision frameworks — deterministic logic, not AI guesswork
-- Hybrid fraud detection — machine learning enhances, but never overrides, policy safeguards
+- Policy-aligned decision frameworks - deterministic logic, not AI guesswork
+- Hybrid fraud detection - machine learning enhances, but never overrides, policy safeguards
 - Channel-aware risk assessment (ATM, POS, Web, Mobile)
 - Structured JSON logging for full audit traceability
 - Modular multi-agent orchestration via LangGraph
@@ -73,7 +73,7 @@ Transaction
   → Action                            (Approve / OTP / Biometric / Block)
 ```
 
-**ML Integration:** The fraud model learns behavioural transaction patterns and outputs `ml_probability` (0–1). An ML probability above 0.85 can escalate a LOW policy score to MEDIUM. The final decision always remains policy-controlled — ML enhances sensitivity without overriding governance.
+**ML Integration:** The fraud model learns behavioural transaction patterns and outputs `ml_probability` (0–1). An ML probability above 0.85 can escalate a LOW policy score to MEDIUM. The final decision always remains policy-controlled - ML enhances sensitivity without overriding governance.
 
 **Channel Risk Layer:** ATM and POS transactions always trigger a push-to-app biometric challenge regardless of ML probability. Channel context can escalate actions even when the ML score is moderate.
 
@@ -86,7 +86,7 @@ Transaction
 
 ### Trajectory Agent
 
-Recommends eligible financial products based on a customer's Loan Signal Score and behavioural transaction history. Does not use machine learning — eligibility is determined by deterministic score thresholds validated against PRS-001 v2.1.
+Recommends eligible financial products based on a customer's Loan Signal Score and behavioural transaction history. Does not use machine learning - eligibility is determined by deterministic score thresholds validated against PRS-001 v2.1.
 
 | Product | Score Floor | Score Ceiling | Primary Segment |
 |---|---|---|---|
@@ -100,7 +100,7 @@ Recommends eligible financial products based on a customer's Loan Signal Score a
 
 ## RAG Policy Engine
 
-All three agents are grounded against a shared ChromaDB knowledge base using SentenceTransformers embeddings (`all-mpnet-base-v2`). RAG validates agent decisions against policy — it does not override deterministic logic.
+All three agents are grounded against a shared ChromaDB knowledge base using SentenceTransformers embeddings (`all-mpnet-base-v2`). RAG validates agent decisions against policy - it does not override deterministic logic.
 
 | Policy Document | ID | Used By |
 |---|---|---|
@@ -202,7 +202,7 @@ Sentinnel_bank_project/
 - Node.js 20+
 - PostgreSQL (Aiven or compatible)
 
-### 1 — Clone and install backend
+### 1 - Clone and install backend
 
 ```bash
 git clone https://github.com/Cunyie08/genai_sentinel_banking_integration.git
@@ -215,7 +215,7 @@ source .venv/bin/activate      # Mac / Linux
 pip install -r requirements.txt
 ```
 
-### 2 — Configure environment
+### 2 - Configure environment
 
 ```bash
 cp .env.example .env
@@ -225,12 +225,12 @@ cp .env.example .env
 |---|---|
 | `DATABASE_URL` | Full asyncpg connection string (Aiven PostgreSQL) |
 | `SECRET_KEY` | JWT signing key |
-| `OPENAI_API_KEY` | GPT-4o — primary LLM for all agents |
-| `GEMINI_API_KEY` | Gemini 2.5 Flash — automatic fallback |
+| `OPENAI_API_KEY` | GPT-4o - primary LLM for all agents |
+| `GEMINI_API_KEY` | Gemini 2.5 Flash - automatic fallback |
 | `RESEND_API_KEY` | Transactional email |
 | `RESEND_WEBHOOK_SECRET` | Svix webhook verification |
 
-### 3 — Run the backend
+### 3 - Run the backend
 
 ```bash
 python -m Backend.app
@@ -240,7 +240,7 @@ python -m Backend.app
 - Health check: `GET http://127.0.0.1:8080/health`
 - Interactive API docs: `http://127.0.0.1:8080/docs`
 
-### 4 — Run the frontend
+### 4 - Run the frontend
 
 ```bash
 cd Frontend
@@ -248,13 +248,13 @@ npm install
 npm run dev
 ```
 
-Optional — set backend URL in `Frontend/.env`:
+Optional - set backend URL in `Frontend/.env`:
 
 ```bash
 VITE_API_URL=http://127.0.0.1:8080
 ```
 
-### 5 — Run the AI agent demo
+### 5 - Run the AI agent demo
 
 ```bash
 python -m main
@@ -313,10 +313,10 @@ All protected routes require a valid JWT in the `Authorization: Bearer` header.
 
 Development datasets are fully synthetic and generated to simulate real banking behaviour:
 
-- **Customers** — profiles with KYC tiers and Loan Signal Scores
-- **Accounts** — balances, status, account types
-- **Transactions** — behavioural patterns, merchant categories, channels, failure codes
-- **Complaints** — multi-category complaint scenarios for Dispatcher Agent training
+- **Customers** - profiles with KYC tiers and Loan Signal Scores
+- **Accounts** - balances, status, account types
+- **Transactions** - behavioural patterns, merchant categories, channels, failure codes
+- **Complaints** - multi-category complaint scenarios for Dispatcher Agent training
 
 No real customer data is used at any point in the system.
 
@@ -358,4 +358,4 @@ See [`WORK_DISTRIBUTION.md`](WORK_DISTRIBUTION.md) for full task breakdown and [
 
 ---
 
-*All data used in development is synthetic. Sentinnel Banking demonstrates that enterprise-grade agentic AI can be deployed responsibly within financial systems — balancing automation, explainability, and governance.*
+*All data used in development is synthetic. Sentinnel Banking demonstrates that enterprise-grade agentic AI can be deployed responsibly within financial systems - balancing automation, explainability, and governance.*
