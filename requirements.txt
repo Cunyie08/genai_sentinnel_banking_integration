@@ -35,6 +35,6 @@ scikit-learn
 google-genai
 python-dotenv
 pandas
-# chromadb-client
 boto3
+
 
