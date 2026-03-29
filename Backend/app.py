@@ -44,7 +44,7 @@ from Backend.audit import router as audit_router
 from Backend.cards import router as cards_router
 from Backend.notifications import router as notifications_router
 from Backend.settings_routes import router as settings_router
-from Backend.email import send_complaint_confirmation_email, send_department_routing_email
+from Backend.email_service import send_complaint_confirmation_email, send_department_routing_email
 from app.settings import RESEND_WEBHOOK_SECRET, OPENAI_API_KEY, GEMINI_API_KEY
 from Backend.schemas import (
     TransactionRequest,
@@ -59,7 +59,7 @@ from Backend.schemas import (
     ReportFailedRequest,
     InternalTransferRequest, 
 )
-from Backend.email import send_auth_email
+from Backend.email_service import send_auth_email
 from Backend.auth import verify_password
 
 
