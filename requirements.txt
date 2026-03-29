@@ -36,5 +36,6 @@ google-genai
 python-dotenv
 pandas
 boto3
+s3fs
 
 

@@ -1,0 +1,46 @@
+name: Deploy Sentinel API to EC2
+
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+  deploy:
+    name: Deploy to EC2
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout latest code
+        uses: actions/checkout@v4
+
+      - name: Copy files to EC2 server
+        uses: appleboy/scp-action@v0.1.4
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USERNAME }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          source: "."
+          target: "/var/www/sentinnel-banking-api"
+
+      - name: Execute setup and restart commands on EC2
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USERNAME }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            cd /var/www/sentinnel-banking-api
+            
+            # 1. Create the .env file with your AWS Secrets
+            echo "AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY_ID }}" > .env
+            echo "AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }}" >> .env
+            echo "S3_BUCKET_NAME=${{ secrets.S3_BUCKET_NAME }}" >> .env
+            
+            # 2. Set up Python Virtual Environment and install dependencies
+            python3 -m venv venv
+            source venv/bin/activate
+            pip install -r requirements.txt
+            
+            # 3. Restart the FastAPI application (assuming a systemd service)
+            sudo systemctl restart sentinnel-banking-api
