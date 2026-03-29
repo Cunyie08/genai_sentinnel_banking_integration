@@ -48,7 +48,7 @@ from Backend.auth import (
     ACCESS_TOKEN_EXPIRE_MINUTES,
     verify_password,
 )
-from Backend.email import send_otp_email, send_password_reset_email
+from Backend.email_service import send_otp_email, send_password_reset_email
 import uvicorn
 from fastapi.responses import HTMLResponse
 from app.settings import APP_URL
