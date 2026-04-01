@@ -6,7 +6,7 @@ import { triggerWelcome } from '../features/uiSlice';
 import {
   Eye, EyeOff, Fingerprint, Lock, ChevronRight,
   AlertCircle, ShieldCheck, Globe, Share2,
-  Zap, TrendingUp, Users, CheckCircle, XCircle
+  Zap, TrendingUp, Users, CheckCircle, XCircle, Bot
 } from 'lucide-react';
 
 
@@ -38,10 +38,9 @@ const BrandPanel = ({ isLogin }) => {
   const navigate = useNavigate();
 
   const features = [
-    { icon: Zap,        text: 'Instant transfers in under 3 seconds' },
-    { icon: ShieldCheck,text: '256-bit bank-grade encryption'        },
-    { icon: TrendingUp, text: 'Up to 15% interest on savings'       },
-    { icon: Users,      text: '2 million+ Nigerians trust Sentinel'  },
+    { icon: ShieldCheck, text: 'AI fraud detection + biometric approval — Every transaction is AI-scored instantly. Suspicious payments require fingerprint or Face ID.' },
+    { icon: Bot,         text: 'Smart complaint routing — Your issue reaches the right team in seconds, not days.' },
+    { icon: TrendingUp,  text: 'Personalised recommendations — Financial products matched to your actual behaviour, not guesswork.' },
   ];
 
   return (
@@ -58,8 +57,8 @@ const BrandPanel = ({ isLogin }) => {
             <span className="text-white font-black text-lg xl:text-xl">S</span>
           </div>
           <div>
-            <span className="text-white font-extrabold text-xl xl:text-2xl tracking-tight leading-none block">SENTINEL</span>
-            <span className="text-white/50 text-[10px] font-bold uppercase tracking-widest">Fintech</span>
+            <span className="text-white font-extrabold text-xl xl:text-2xl tracking-tight leading-none block">SENTINNEL</span>
+            <span className="text-white/50 text-[10px] font-bold uppercase tracking-widest">Banking</span>
           </div>
         </div>
 
@@ -70,14 +69,14 @@ const BrandPanel = ({ isLogin }) => {
           </p>
           <h1 className="text-4xl xl:text-5xl 2xl:text-6xl font-black text-white leading-[1.1] mb-5">
             {isLogin
-              ? <><span>Your money,</span><br /><span>always in</span><br /><span className="text-rose-300">your control.</span></>
+              ? <><span>Banking that</span><br /><span>thinks ahead.</span><br /><span className="text-rose-300">Powered by AI.</span><br /><span className="text-4xl xl:text-5xl text-white">Built for Nigeria.</span></>
               : <><span>Banking</span><br /><span>built for</span><br /><span className="text-rose-300">Nigeria.</span></>
             }
           </h1>
-          <p className="text-white/60 text-sm xl:text-base leading-relaxed max-w-xs mb-8 xl:mb-10">
+          <p className="text-white/60 text-sm xl:text-base leading-relaxed max-w-sm mb-8 xl:mb-10">
             {isLogin
-              ? 'Sign in to manage transfers, bills, savings and more — all in one secure place.'
-              : 'Join 2 million+ Nigerians who trust Sentinel for fast, secure everyday banking.'}
+              ? 'Sentinnel Banking uses real-time AI to protect every transaction, route your complaints instantly, and recommend financial products built around your life; not a generic template.'
+              : 'Join 2 million+ Nigerians who trust Sentinnel for fast, secure everyday banking.'}
           </p>
 
           {/* Features */}
@@ -96,9 +95,9 @@ const BrandPanel = ({ isLogin }) => {
         {/* Floating Stats */}
         <div className="flex gap-3 xl:gap-4 shrink-0 mb-6">
           {[
-            { val: '₦2.4B', label: 'Daily volume', cls: 'fc1' },
-            { val: '4.9 ★', label: 'App rating',   cls: 'fc2' },
-            { val: '2M+',   label: 'Users',         cls: 'fc3' },
+            { val: '₦2.4B', label: 'Daily volume protected by AI', cls: 'fc1' },
+            { val: '99.7%', label: 'Fraud detection accuracy',     cls: 'fc2' },
+            { val: '6',     label: 'Departments, zero wrong routing', cls: 'fc3' },
           ].map(s => (
             <div key={s.label} className={`${s.cls} bg-white/10 backdrop-blur-md border border-white/15 rounded-2xl px-4 py-3 xl:px-5 xl:py-4 flex-1`}>
               <p className="text-white font-black text-lg xl:text-xl leading-none mb-0.5">{s.val}</p>
@@ -110,8 +109,8 @@ const BrandPanel = ({ isLogin }) => {
         {/* Trust badge */}
         <div className="flex items-center gap-2 shrink-0">
           <ShieldCheck size={13} className="text-white/35" />
-          <span className="text-white/35 text-[10px] font-bold uppercase tracking-widest">
-            Licensed by the Central Bank of Nigeria
+          <span className="text-white/35 text-[10px] font-bold uppercase tracking-widest leading-loose">
+            Sentinnel Banking - Licensed by the Central Bank of Nigeria. AI-powered. Human-trusted.
           </span>
         </div>
 
@@ -124,7 +123,7 @@ const BrandPanel = ({ isLogin }) => {
 const Footer = () => (
   <footer className="shrink-0 px-6 xl:px-10 py-4 border-t border-gray-100 bg-white">
     <div className="flex flex-col sm:flex-row justify-between items-center gap-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest">
-      <span>© 2026 Team Sentinel · Licensed by CBN</span>
+      <span>© 2026 Team Sentinnel · Licensed by CBN</span>
       <div className="flex gap-4 items-center">
         <a href="#" className="hover:text-gray-600 transition-colors">Privacy</a>
         <a href="#" className="hover:text-gray-600 transition-colors">Terms</a>
@@ -237,8 +236,8 @@ const AuthScreens = () => {
             <span className="text-white font-black text-sm">S</span>
           </div>
           <div>
-            <span className="text-[#A01030] font-extrabold text-base tracking-tight leading-none block">SENTINEL</span>
-            <span className="text-gray-400 text-[9px] font-bold uppercase tracking-widest">Fintech</span>
+            <span className="text-[#A01030] font-extrabold text-base tracking-tight leading-none block">SENTINNEL</span>
+            <span className="text-gray-400 text-[9px] font-bold uppercase tracking-widest">Banking</span>
           </div>
         </div>
 
@@ -340,10 +339,10 @@ const AuthScreens = () => {
                 <div className="au au1 mb-7 xl:mb-8">
                   <p className="text-[10px] xl:text-xs font-bold text-gray-400 uppercase tracking-widest mb-1.5">New Account</p>
                   <h2 className="text-2xl sm:text-3xl xl:text-4xl font-black text-gray-900 leading-tight mb-2">
-                    Create your<br />Sentinel account
+                    Create your<br />Sentinnel account
                   </h2>
                   <p className="text-gray-500 text-sm xl:text-base leading-relaxed">
-                    Join millions of Nigerians managing their money smarter with Sentinel.
+                    Join millions of Nigerians managing their money smarter with Sentinnel.
                   </p>
                 </div>
 

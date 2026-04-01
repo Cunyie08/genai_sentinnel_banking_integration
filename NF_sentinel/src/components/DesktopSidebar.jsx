@@ -22,8 +22,8 @@ const DesktopSidebar = ({ activeRoute }) => {
   return (
     <aside className="hidden md:flex flex-col w-60 lg:w-64 xl:w-72 h-full bg-white border-r border-gray-100 shrink-0">
       <div className="px-6 py-6 border-b border-gray-100">
-        <h1 className="text-lg font-extrabold text-gray-900">FinApp</h1>
-        <p className="text-xs text-gray-400">Premium</p>
+        <h1 className="text-lg font-extrabold text-gray-900">Sentinnel</h1>
+        <p className="text-xs text-gray-400">Bank</p>
       </div>
 
       <nav className="flex-1 px-3 py-5 space-y-1 overflow-y-auto">

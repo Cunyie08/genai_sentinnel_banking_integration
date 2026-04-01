@@ -249,39 +249,10 @@ const ChatScreen = () => {
             <span className="text-xs font-bold text-gray-400">AI Assistant</span>
           </div>
           <div className="bg-white rounded-[20px] rounded-tl-none shadow-sm border border-gray-100 max-w-[90%] overflow-hidden">
-            <div className="bg-green-50 px-4 py-3 flex items-center gap-2 border-b border-green-100">
+            <div className="bg-green-50 px-4 py-3 flex items-center gap-2">
               <CheckCircle size={16} className="text-green-500" />
               <span className="text-sm font-black text-green-700">Complaint Routed Successfully</span>
             </div>
-            <div className="p-4 space-y-2.5">
-              <div className="flex justify-between text-xs border-b border-gray-50 pb-2.5">
-                <span className="text-gray-400 font-bold uppercase tracking-wide">Complaint ID</span>
-                <span className="font-bold text-gray-900 font-mono">{r.complaint_id}</span>
-              </div>
-              <div className="flex justify-between text-xs border-b border-gray-50 pb-2.5">
-                <span className="text-gray-400 font-bold uppercase tracking-wide">Department</span>
-                <span className="font-bold text-gray-900">{r.department_name}</span>
-              </div>
-              <div className="flex justify-between text-xs border-b border-gray-50 pb-2.5">
-                <span className="text-gray-400 font-bold uppercase tracking-wide">Priority</span>
-                <span className={`font-bold ${r.priority_level === 'High' ? 'text-red-600' : r.priority_level === 'Medium' ? 'text-orange-500' : 'text-green-600'}`}>
-                  {r.priority_level}
-                </span>
-              </div>
-              <div className="flex justify-between text-xs border-b border-gray-50 pb-2.5">
-                <span className="text-gray-400 font-bold uppercase tracking-wide">SLA</span>
-                <span className="font-bold text-gray-900">{r.sla_hours}hrs</span>
-              </div>
-              <div className="flex justify-between text-xs">
-                <span className="text-gray-400 font-bold uppercase tracking-wide">Confidence</span>
-                <span className="font-bold text-gray-900">{r.confidence ? `${Math.round(r.confidence * 100)}%` : '—'}</span>
-              </div>
-            </div>
-            {r.reasoning && (
-              <div className="mx-4 mb-4 bg-blue-50 border border-blue-100 rounded-xl p-3 text-xs text-blue-700 leading-relaxed">
-                <span className="font-bold">AI Reasoning: </span>{r.reasoning}
-              </div>
-            )}
           </div>
           <span className="text-[10px] text-gray-400 mt-1">{msg.time}</span>
         </div>

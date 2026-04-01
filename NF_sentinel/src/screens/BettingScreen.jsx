@@ -124,7 +124,7 @@ const BettingScreen = () => {
           </div>
 
           <p className="text-[10px] text-gray-400 text-center leading-relaxed px-2 flex justify-center items-center gap-1">
-            <AlertCircle size={14} /> Please gamble responsibly. This service is for adults 18+ only. Sentinel does not promote gambling.
+            <AlertCircle size={14} /> Please gamble responsibly. This service is for adults 18+ only. Sentinnel does not promote gambling.
           </p>
 
           <button type="submit" disabled={isLoading || !platform || !userId || !amount}

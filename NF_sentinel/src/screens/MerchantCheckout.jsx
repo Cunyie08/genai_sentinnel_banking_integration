@@ -148,8 +148,8 @@ const MerchantCheckout = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#0A0A0A] flex items-center justify-center p-4 font-sans">
-      <div className="w-full max-w-md">
+    <div className="min-h-[100dvh] w-full bg-[#0A0A0A] flex flex-col items-center p-4 sm:p-6 md:p-8 font-sans overflow-x-hidden overflow-y-auto">
+      <div className="w-full max-w-md mt-4 mb-20 shrink-0">
 
         {/* Merchant branding */}
         <div className="text-center mb-8">
@@ -158,7 +158,7 @@ const MerchantCheckout = () => {
             <span className="text-white/60 text-xs font-bold uppercase tracking-widest">Secure Checkout</span>
           </div>
           <h1 className="text-3xl font-black text-white tracking-tight">MERCHANT CHECKOUT</h1>
-          <p className="text-white/40 text-sm mt-1">Powered by Sentinel Payment Gateway</p>
+          <p className="text-white/40 text-sm mt-1">Powered by Sentinnel Payment Gateway</p>
         </div>
 
         {/* ═══ CHECKOUT FORM ═══ */}
@@ -262,7 +262,7 @@ const MerchantCheckout = () => {
           <div className="bg-[#151515] border border-white/10 rounded-[24px] p-10 text-center">
             <Loader2 size={48} className="text-green-500 animate-spin mx-auto mb-4" />
             <h3 className="text-white font-black text-lg mb-2">Processing Payment...</h3>
-            <p className="text-white/40 text-sm">Sentinel AI is analyzing this transaction</p>
+            <p className="text-white/40 text-sm">Sentinnel AI is analyzing this transaction</p>
           </div>
         )}
 
@@ -299,7 +299,7 @@ const MerchantCheckout = () => {
 
               {fraud && (
                 <div className="bg-red-900/20 border border-red-800/30 rounded-xl p-4 mt-3">
-                  <p className="text-[10px] font-black text-red-400 uppercase tracking-wider mb-2">Sentinel AI Analysis</p>
+                  <p className="text-[10px] font-black text-red-400 uppercase tracking-wider mb-2">Sentinnel AI Analysis</p>
                   <div className="flex items-center gap-2 mb-2">
                     <span className="text-xs text-white/50">Risk Score:</span>
                     <div className="flex-1 h-1.5 bg-white/10 rounded-full overflow-hidden">
@@ -314,7 +314,7 @@ const MerchantCheckout = () => {
               )}
 
               <div className="bg-white/5 border border-white/10 rounded-xl p-4 text-center mt-4">
-                <p className="text-white/40 text-xs font-medium">Open the <strong className="text-white">Sentinel Banking App</strong> to approve or reject this transaction.</p>
+                <p className="text-white/40 text-xs font-medium">Open the <strong className="text-white">Sentinnel Banking App</strong> to approve or reject this transaction.</p>
               </div>
             </div>
           </div>
@@ -330,7 +330,7 @@ const MerchantCheckout = () => {
                 </div>
                 <h3 className="text-green-400 font-black text-xl mb-2">Payment Approved</h3>
                 <p className="text-white/40 text-sm mb-1">Transaction ID: <span className="font-mono text-white/60">{txnId}</span></p>
-                <p className="text-white/40 text-sm">Authorized via Sentinel Biometric Verification</p>
+                <p className="text-white/40 text-sm">Authorized via Sentinnel Biometric Verification</p>
               </>
             ) : (
               <>
@@ -354,7 +354,7 @@ const MerchantCheckout = () => {
 
         {/* Footer */}
         <p className="text-center text-white/20 text-[10px] mt-6 uppercase tracking-widest font-bold">
-          Sentinel Payment Gateway • Simulated Merchant Environment
+          Sentinnel Payment Gateway • Simulated Merchant Environment
         </p>
       </div>
     </div>

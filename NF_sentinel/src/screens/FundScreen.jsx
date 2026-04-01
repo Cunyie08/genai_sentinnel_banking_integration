@@ -89,11 +89,11 @@ const FundScreen = () => {
         {}
         <div className="bg-gradient-to-br from-[#800020] via-[#A01030] to-[#5a0a1e] rounded-2xl p-5 text-white mb-5 relative overflow-hidden shadow-lg shadow-red-900/20">
           <div className="absolute top-0 right-0 w-40 h-40 bg-white/5 rounded-full blur-2xl -mr-10 -mt-10 pointer-events-none" />
-          <p className="text-white/60 text-[10px] font-bold uppercase tracking-widest mb-3">Your Sentinel Account</p>
+          <p className="text-white/60 text-[10px] font-bold uppercase tracking-widest mb-3">Your Sentinnel Account</p>
           <div className="flex items-center justify-between">
             <div>
               <p className="text-2xl font-black tracking-widest mb-1">{ACCOUNT_NUMBER}</p>
-              <p className="text-white/70 text-xs font-medium">Sentinel MFB · {user?.name || 'Reuben'}</p>
+              <p className="text-white/70 text-xs font-medium">Sentinnel MFB · {user?.name || 'Reuben'}</p>
             </div>
             <button onClick={handleCopy}
               className="flex items-center gap-1.5 bg-white/15 hover:bg-white/25 backdrop-blur-sm px-3 py-2 rounded-xl border border-white/20 transition-all active:scale-95">

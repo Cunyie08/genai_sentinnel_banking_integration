@@ -38,7 +38,7 @@ const App = () => {
 
   if (isMerchant) {
     return (
-      <div className="h-[100dvh] w-full overflow-hidden font-sans">
+      <div className="h-[100dvh] w-full bg-[#0A0A0A] font-sans overflow-y-auto">
         <Routes>
           <Route path="/merchant" element={<MerchantCheckout />} />
         </Routes>

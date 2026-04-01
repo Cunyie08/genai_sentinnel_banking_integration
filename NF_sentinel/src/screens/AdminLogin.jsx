@@ -39,7 +39,7 @@ const AdminLogin = () => {
           <Shield size={32} className="text-[#A01030]" />
         </div>
 
-        <h1 className="text-2xl font-bold text-white">Sentinel Admin</h1>
+        <h1 className="text-2xl font-bold text-white">Sentinnel Admin</h1>
         <p className="text-gray-500 text-sm mb-8">Secure Gateway v2.0</p>
 
         {error && (
@@ -56,7 +56,7 @@ const AdminLogin = () => {
               value={id} onChange={e => { setId(e.target.value); setError(''); }}
               type="email"
               className="w-full p-4 bg-[#333] border border-gray-700 rounded-xl outline-none focus:border-[#A01030] text-white transition-colors font-mono placeholder:text-gray-600"
-              placeholder="admin@sentinelbank.com"
+              placeholder="admin@sentinnelbank.com"
             />
           </div>
           <div>

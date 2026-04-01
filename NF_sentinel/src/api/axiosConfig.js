@@ -233,7 +233,7 @@ export const api = {
   login: async (body) => {
     if (MOCK_MODE) return mock.login(body);
 
-    // Always wipe any stale token before a fresh login attempt.
+    // Always wipe any stale token before a fresh login atteocpt.
     // This prevents the interceptor from attaching an expired Bearer token
     // to the /auth/token request, which causes FastAPI to return 401.
     localStorage.removeItem('sentinel_token');

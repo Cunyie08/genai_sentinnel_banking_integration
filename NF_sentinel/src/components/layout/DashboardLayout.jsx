@@ -34,7 +34,7 @@ const DashboardLayout = ({ children }) => {
       <aside className="w-64 bg-white border-r border-gray-200 flex flex-col shrink-0 z-20">
         <div className="h-20 flex items-center px-6 border-b border-gray-100">
            <div className="w-8 h-8 bg-[#A01030] rounded-lg flex items-center justify-center text-white font-black mr-3">N</div>
-           <span className="text-xl font-bold text-gray-900 tracking-tight">Sentinel<span className="text-[#A01030]">Bank</span></span>
+           <span className="text-xl font-bold text-gray-900 tracking-tight">Sentinnel<span className="text-[#A01030]">Bank</span></span>
         </div>
 
         <div className="flex-1 py-6 space-y-1">
