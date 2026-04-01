@@ -153,7 +153,7 @@ const ProfileScreen = () => {
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-sm font-bold text-gray-800">Merchant Simulator</p>
-              <p className="text-[11px] text-gray-400">Simulate a card payment to test Sentinel AI</p>
+              <p className="text-[11px] text-gray-400">Simulate a card payment to test Sentinnel AI</p>
             </div>
             <ExternalLink size={16} className="text-blue-400 shrink-0" />
           </button>
@@ -174,7 +174,7 @@ const ProfileScreen = () => {
         </div>
 
         <p className="text-center text-[10px] text-gray-300 font-bold uppercase tracking-widest pb-4">
-          Sentinel Licensed by CBN
+          Sentinnel Licensed by CBN
         </p>
       </div>
     </div>

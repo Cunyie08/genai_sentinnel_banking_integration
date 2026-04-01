@@ -10,6 +10,23 @@ import {
   ShieldAlert, Fingerprint, XCircle, CheckCircle, Loader2, Lock
 } from "lucide-react";
 
+// ─── WebAuthn Base64 Helpers ──────────────────────────────────────────
+const bufferToBase64url = (buffer) => {
+  const bytes = new Uint8Array(buffer);
+  let str = '';
+  for (let i = 0; i < bytes.length; i++) str += String.fromCharCode(bytes[i]);
+  return btoa(str).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+};
+
+const base64urlToBuffer = (base64url) => {
+  const padding = '='.repeat((4 - base64url.length % 4) % 4);
+  const base64 = (base64url + padding).replace(/\-/g, '+').replace(/_/g, '/');
+  const rawData = atob(base64);
+  const buffer = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; ++i) buffer[i] = rawData.charCodeAt(i);
+  return buffer;
+};
+
 // ─── Fallback cards when trajectory API returns empty ───────────────────
 const FALLBACK_CARDS = [
   { id: 'fb1', label: 'Education First', labelColor: '#FFD700', title: 'Student Loan', subtitle: 'Up to ₦500k', gradient: ['#2F4F4F', '#1A2E2E'], cta: 'APPLY NOW', ctaRoute: 'loans', reasoning: 'Zero interest for the first 3 months. Apply instantly to secure your tuition fees.' },
@@ -155,16 +172,42 @@ const HomeScreen = () => {
       try {
         const available = await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
         if (available) {
-          // Trigger native biometric prompt
-          await navigator.credentials.get({
-            publicKey: {
-              challenge: new Uint8Array(32),
-              timeout: 60000,
-              userVerification: 'required',
-              rpId: window.location.hostname,
-              allowCredentials: [], // forces platform authenticator
-            }
-          });
+          const credentialIdBase64 = localStorage.getItem('sentinel_biometric_id');
+          const challenge = new Uint8Array(32);
+          window.crypto.getRandomValues(challenge);
+
+          if (credentialIdBase64) {
+            // Trigger native biometric prompt using the specifically created local credential
+            await navigator.credentials.get({
+              publicKey: {
+                challenge,
+                timeout: 60000,
+                userVerification: 'required',
+                rpId: window.location.hostname,
+                allowCredentials: [{
+                  type: 'public-key',
+                  id: base64urlToBuffer(credentialIdBase64),
+                  transports: ['internal']
+                }],
+              }
+            });
+          } else {
+            // Create a credential to bind to the device's biometrics locally
+            const userId = new Uint8Array(16);
+            window.crypto.getRandomValues(userId);
+            const cred = await navigator.credentials.create({
+              publicKey: {
+                challenge,
+                rp: { name: "Sentinel Banking", id: window.location.hostname },
+                user: { id: userId, name: "user_sentinel", displayName: user?.name || "Sentinel User" },
+                pubKeyCredParams: [{ type: "public-key", alg: -7 }, { type: "public-key", alg: -257 }],
+                authenticatorSelection: { authenticatorAttachment: "platform", userVerification: "required" },
+                timeout: 60000,
+                attestation: "none"
+              }
+            });
+            localStorage.setItem('sentinel_biometric_id', bufferToBase64url(cred.rawId));
+          }
           await approveTransaction();
           return;
         }
@@ -224,18 +267,18 @@ const HomeScreen = () => {
 
       {/* ═══ SENTINEL ALERT MODAL ══════════════════════════════════════════ */}
       {sentinelAlert && confirmStep !== 'success' && confirmStep !== 'rejected' && (
-        <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/70 backdrop-blur-sm" style={{ animation: 'fadeUp 0.3s ease' }}>
-          <div className="relative w-[min(92vw,380px)] bg-white rounded-[28px] shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm" style={{ animation: 'fadeUp 0.3s ease' }}>
+          <div className="relative w-[min(92vw,380px)] max-h-[90dvh] flex flex-col bg-white rounded-[28px] shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
             {/* Red top banner */}
-            <div className="bg-gradient-to-r from-[#A01030] to-[#6B0A20] px-6 py-5 text-white">
+            <div className="bg-gradient-to-r from-[#A01030] to-[#6B0A20] px-6 py-5 text-white shrink-0">
               <div className="flex items-center gap-3 mb-1">
                 <ShieldAlert size={24} />
-                <h3 className="text-lg font-black">SENTINEL ALERT</h3>
+                <h3 className="text-lg font-black">SENTINNEL ALERT</h3>
               </div>
               <p className="text-white/80 text-xs font-medium">Suspicious Transaction Detected</p>
             </div>
 
-            <div className="p-6 space-y-4">
+            <div className="p-6 space-y-4 overflow-y-auto">
               {/* Transaction details */}
               <div className="space-y-3">
                 <div className="flex justify-between text-sm">
@@ -254,7 +297,7 @@ const HomeScreen = () => {
 
               {/* AI Reasoning */}
               <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
-                <p className="text-[10px] font-black text-amber-600 uppercase tracking-wider mb-2">Sentinel AI says:</p>
+                <p className="text-[10px] font-black text-amber-600 uppercase tracking-wider mb-2">Sentinnel AI says:</p>
                 <p className="text-xs text-amber-900 leading-relaxed font-medium">
                   {sentinelAlert.fraud_analysis?.policy_explanation ||
                    sentinelAlert.fraud_analysis?.reasoning ||
@@ -286,7 +329,13 @@ const HomeScreen = () => {
                     />
                   </div>
                   {confirmError && <p className="text-xs text-red-500 font-bold">{confirmError}</p>}
-                  <button onClick={handlePasswordConfirm} className="w-full bg-[#A01030] text-white py-3.5 rounded-xl font-bold text-sm active:scale-95 transition-all">Confirm with Password</button>
+                  <button onClick={handlePasswordConfirm} className="w-full bg-[#A01030] text-white py-3.5 rounded-xl font-bold text-sm active:scale-95 transition-all mt-2">Confirm with Password</button>
+                  <button
+                    onClick={handleRejectTransaction}
+                    className="w-full flex items-center justify-center gap-2 bg-white text-gray-600 py-3.5 rounded-xl font-bold text-sm border border-gray-200 active:scale-95 transition-all"
+                  >
+                    <XCircle size={18} /> Cancel
+                  </button>
                 </div>
               )}
 
@@ -328,6 +377,12 @@ const HomeScreen = () => {
                   >
                     <XCircle size={18} /> Reject
                   </button>
+                  <button
+                    onClick={() => setConfirmStep('password')}
+                    className="w-full text-center text-xs text-gray-400 font-bold mt-2 hover:underline"
+                  >
+                    Use Password instead
+                  </button>
                 </div>
               )}
             </div>
@@ -343,7 +398,7 @@ const HomeScreen = () => {
               <CheckCircle size={40} />
             </div>
             <h3 className="text-2xl font-black">Transaction Approved</h3>
-            <p className="text-white/70 text-sm">Securely authorized via Sentinel</p>
+            <p className="text-white/70 text-sm">Securely authorized via Sentinnel</p>
           </div>
         </div>
       )}
