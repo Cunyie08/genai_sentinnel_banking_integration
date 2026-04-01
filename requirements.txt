@@ -24,6 +24,7 @@ langchain-core
 # --- Data, RAG & Utilities ---
 chromadb>=0.6.0
 sentence-transformers
+--extra-index-url https://download.pytorch.org/whl/cpu
 torch
 pandas
 faker
@@ -32,9 +33,7 @@ resend
 svix
 email-validator
 scikit-learn
-google-genai
-python-dotenv
-pandas
-# chromadb-client
 boto3
+s3fs
+
 

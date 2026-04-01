@@ -233,7 +233,7 @@ cp .env.example .env
 ### 3 - Run the backend
 
 ```bash
-python -m Backend.app
+python -m Backend.main
 ```
 
 - Host: `127.0.0.1` · Port: `8080`

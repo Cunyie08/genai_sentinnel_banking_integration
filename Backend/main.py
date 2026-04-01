@@ -1,3 +1,4 @@
+#Libraries
 import uvicorn
 from contextlib import asynccontextmanager
 from fastapi import Depends, FastAPI, APIRouter, HTTPException, status, Body, Request
@@ -44,7 +45,7 @@ from Backend.audit import router as audit_router
 from Backend.cards import router as cards_router
 from Backend.notifications import router as notifications_router
 from Backend.settings_routes import router as settings_router
-from Backend.email import send_complaint_confirmation_email, send_department_routing_email
+from Backend.email_service import send_complaint_confirmation_email, send_department_routing_email
 from app.settings import RESEND_WEBHOOK_SECRET, OPENAI_API_KEY, GEMINI_API_KEY
 from Backend.schemas import (
     TransactionRequest,
@@ -59,7 +60,7 @@ from Backend.schemas import (
     ReportFailedRequest,
     InternalTransferRequest, 
 )
-from Backend.email import send_auth_email
+from Backend.email_service import send_auth_email
 from Backend.auth import verify_password
 
 
@@ -92,7 +93,14 @@ app.include_router(auth_router)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "https://sentinnelbanking.com",
+        "https://www.sentinnelbanking.com"
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -1717,4 +1725,4 @@ async def get_faqs(prompt: Optional[str] = None):
             "searched_for": prompt
         }
 if __name__ == "__main__":
-    uvicorn.run(app, host="127.0.0.1", port=8080)
+    uvicorn.run(app, host='0.0.0.0', port=8080)
