@@ -66,7 +66,10 @@ const ChatScreen = () => {
     addMsg({ id: Date.now(), sender: 'user', type: 'text', text: q, time: now() });
     setFaqLoading(true);
     try {
+      console.log('[FAQ] Sending query to backend:', q);
       const res = await api.getFaqs(q);
+      console.log('[FAQ] Raw response from backend:', res?.data);
+
       // Backend returns { success: true, match: { answer, question, ... } } on hit
       // and { success: false, message: "..." } on miss
       const d = res?.data || {};
@@ -74,6 +77,8 @@ const ChatScreen = () => {
       const answer = matchFound
         ? (d.match?.answer || 'See our FAQ for more details.')
         : (d.message || "I couldn't find a specific answer to your question in our FAQs.");
+
+      console.log('[FAQ] Match found:', matchFound, '| Answer preview:', answer?.substring(0, 80));
 
       if (!matchFound) {
         // No FAQ match — show answer + escalation option
@@ -86,7 +91,8 @@ const ChatScreen = () => {
       } else {
         addMsg({ id: Date.now(), sender: 'ai', type: 'text', text: answer, time: now() });
       }
-    } catch {
+    } catch (err) {
+      console.error('[FAQ] Error fetching FAQ:', err?.message || err);
       addMsg({
         id: Date.now(), sender: 'ai', type: 'text',
         text: 'Could not retrieve FAQ at this time. Please try again.',
@@ -414,10 +420,10 @@ const ChatScreen = () => {
         <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Quick Actions</p>
         <div className="flex gap-2 overflow-x-auto hide-scrollbar pb-2">
           {[
-            'Check balance',
-            'Account statement',
-            'Transaction history',
-            'Block my card',
+            'ATM debit no cash',
+            'Wrong transfer reversal',
+            'Daily transfer limit',
+            
           ].map((q, i) => (
             <button key={i}
               onClick={() => handleFaqSend(q)}

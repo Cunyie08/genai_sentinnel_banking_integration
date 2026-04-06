@@ -184,7 +184,11 @@ const AuthScreens = () => {
       dispatch(triggerWelcome());
       navigate('/home');
     } catch (err) {
-      setAuthError(err.message || 'Login failed');
+      // .unwrap() returns the rejectWithValue payload directly (a string),
+      // not an Error object — so check both cases
+      const msg = typeof err === 'string' ? err : (err?.message || err?.detail || 'Login failed');
+      console.error('[Login] Failed:', msg);
+      setAuthError(msg);
     }
   };
 
@@ -210,7 +214,9 @@ const AuthScreens = () => {
       dispatch(triggerWelcome());
       navigate('/home');
     } catch (err) {
-      setAuthError(err.message || 'Signup failed');
+      const msg = typeof err === 'string' ? err : (err?.message || err?.detail || 'Signup failed');
+      console.error('[Signup] Failed:', msg);
+      setAuthError(msg);
     }
   };
 
