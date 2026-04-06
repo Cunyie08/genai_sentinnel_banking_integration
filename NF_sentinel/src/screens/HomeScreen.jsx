@@ -89,11 +89,77 @@ const HomeScreen = () => {
     const loadFeed = async () => {
       try {
         const res = await api.getSmartFeed();
-        if (res?.data?.cards?.length > 0) {
-          setFeedCards(res.data.cards);
+        const data = res?.data || {};
+        console.log('[SmartFeed] Raw response:', JSON.stringify(data, null, 2));
+        let cards = data.cards || [];
+
+        // Style map covering all possible product types from trajectory agent
+        const styleMap = {
+          'Student Loan':    { grad: ['#2F4F4F', '#1A2E2E'], label: 'Education First', labelColor: '#FFD700' },
+          'Car Loan':        { grad: ['#1e3a8a', '#1e1b4b'], label: 'Lifestyle',        labelColor: '#93C5FD' },
+          'Fixed Deposit':   { grad: ['#065f46', '#064e3b'], label: 'Grow Wealth',      labelColor: '#6EE7B7' },
+          'Credit Card':     { grad: ['#7c3aed', '#4c1d95'], label: 'Flexible',         labelColor: '#C4B5FD' },
+          'Investment Plan': { grad: ['#0f172a', '#1e293b'], label: 'Smart Investing',   labelColor: '#38BDF8' },
+          'Savings Plan':    { grad: ['#065f46', '#064e3b'], label: 'Save Smart',        labelColor: '#6EE7B7' },
+          'Personal Loan':   { grad: ['#7c2d12', '#431407'], label: 'Quick Cash',        labelColor: '#FDBA74' },
+          'Mortgage':        { grad: ['#1e3a5f', '#0c1929'], label: 'Home Ownership',    labelColor: '#7DD3FC' },
+          'Insurance':       { grad: ['#4a1d96', '#2e1065'], label: 'Stay Protected',    labelColor: '#DDD6FE' },
+        };
+
+        // Helper: generate a meaningful subtitle for a product
+        const getSubtitle = (product, emi) => {
+          const amount = (emi || 0) * 10;
+          if (amount > 0) return `Up to ₦${amount.toLocaleString()}`;
+          // Fallback subtitles when no EMI data is available
+          const fallbacks = {
+            'Student Loan':    'Zero interest for 3 months',
+            'Car Loan':        'Flexible repayment plans',
+            'Fixed Deposit':   'Up to 15% annual returns',
+            'Credit Card':     'Pre-approved for you',
+            'Investment Plan': 'Tailored to your goals',
+            'Savings Plan':    'Start saving today',
+            'Personal Loan':   'Quick approval process',
+            'Mortgage':        'Affordable monthly payments',
+            'Insurance':       'Comprehensive coverage',
+          };
+          return fallbacks[product] || 'Personalized for you';
+        };
+
+        // If backend returned empty cards but has recommendation data with primary_product,
+        // build a card from it on the frontend
+        if ((!Array.isArray(cards) || cards.length === 0) && data.recommendations?.primary_product) {
+          const rec = data.recommendations;
+          const product = rec.primary_product;
+          const style = styleMap[product] || { grad: ['#111827', '#1f2937'], label: 'Special Offer', labelColor: '#FCD34D' };
+
+          cards = [{
+            id: `rec-${Date.now()}`,
+            label: style.label,
+            labelColor: style.labelColor,
+            title: product,
+            subtitle: getSubtitle(product, rec.monthly_emi),
+            cta: 'APPLY NOW',
+            ctaRoute: 'loans',
+            gradient: style.grad,
+            reasoning: rec.reasoning || 'Based on your financial profile, we think this is a great fit for you.',
+          }];
+          console.log('[SmartFeed] Built card from recommendations.primary_product:', product);
         }
+
+        // Post-process cards from backend that may have "Up to ₦0" subtitle
+        if (Array.isArray(cards) && cards.length > 0) {
+          cards = cards.map(card => {
+            if (card.subtitle && card.subtitle.includes('₦0')) {
+              const style = styleMap[card.title];
+              return { ...card, subtitle: getSubtitle(card.title, 0), ...(style ? { labelColor: style.labelColor } : {}) };
+            }
+            return card;
+          });
+          setFeedCards(cards);
+        }
+        // If cards is still empty, fallback cards will be shown automatically
       } catch (err) {
-        console.warn('Smart feed unavailable:', err?.message || err);
+        console.warn('Smart feed unavailable, using fallback cards:', err?.message || err);
       } finally {
         setLoadingFeed(false);
       }

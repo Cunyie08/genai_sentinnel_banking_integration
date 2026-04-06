@@ -24,6 +24,7 @@ import MerchantCheckout from './screens/MerchantCheckout';
 
 import DesktopSidebar from './components/DesktopSidebar';
 import FloatingNav from './components/FloatingNav';
+import ProtectedRoute from './components/ProtectedRoute';
 
 const App = () => {
   const dispatch = useDispatch();
@@ -60,6 +61,7 @@ const App = () => {
     );
   }
 
+// protected routes
   return (
     <div className={`h-[100dvh] w-full flex overflow-hidden font-sans ${isAdmin ? 'bg-gray-100' : 'bg-gray-50'}`}>
 
@@ -70,18 +72,18 @@ const App = () => {
       <main className="flex-1 h-full flex flex-col overflow-hidden min-w-0 bg-white relative">
         <div className="flex-1 overflow-y-auto hide-scrollbar">
           <Routes>
-            <Route path="/home" element={<HomeScreen />} />
-            <Route path="/chat" element={<ChatScreen />} />
-            <Route path="/send" element={<SendScreen />} />
-            <Route path="/fund" element={<FundScreen />} />
-            <Route path="/history" element={<HistoryScreen />} />
-            <Route path="/airtime" element={<AirtimeScreen />} />
-            <Route path="/data" element={<DataScreen />} />
-            <Route path="/bills" element={<BillsScreen />} />
-            <Route path="/betting" element={<BettingScreen />} />
-            <Route path="/profile" element={<ProfileScreen />} />
-            <Route path="/admin/dashboard" element={<AdminDashboard />} />
-            <Route path="*" element={<Navigate to="/home" replace />} />
+            <Route path="/home"            element={<ProtectedRoute><HomeScreen /></ProtectedRoute>} />
+            <Route path="/chat"            element={<ProtectedRoute><ChatScreen /></ProtectedRoute>} />
+            <Route path="/send"            element={<ProtectedRoute><SendScreen /></ProtectedRoute>} />
+            <Route path="/fund"            element={<ProtectedRoute><FundScreen /></ProtectedRoute>} />
+            <Route path="/history"         element={<ProtectedRoute><HistoryScreen /></ProtectedRoute>} />
+            <Route path="/airtime"         element={<ProtectedRoute><AirtimeScreen /></ProtectedRoute>} />
+            <Route path="/data"            element={<ProtectedRoute><DataScreen /></ProtectedRoute>} />
+            <Route path="/bills"           element={<ProtectedRoute><BillsScreen /></ProtectedRoute>} />
+            <Route path="/betting"         element={<ProtectedRoute><BettingScreen /></ProtectedRoute>} />
+            <Route path="/profile"         element={<ProtectedRoute><ProfileScreen /></ProtectedRoute>} />
+            <Route path="/admin/dashboard" element={<ProtectedRoute><AdminDashboard /></ProtectedRoute>} />
+            <Route path="*"               element={<Navigate to="/home" replace />} />
           </Routes>
         </div>
 
