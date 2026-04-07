@@ -1,7 +1,7 @@
 import { useNavigate } from 'react-router-dom';
 import React, { useState, useEffect, useCallback } from "react";
 import { useDispatch, useSelector } from "react-redux";
-import { dismissWelcome, triggerPayment } from "../features/uiSlice"; 
+import { dismissWelcome, triggerPayment } from "../features/uiSlice";
 import { fetchDashboard } from "../features/accountSlice";
 import { api } from "../api/axiosConfig";
 import {
@@ -66,9 +66,9 @@ const HomeScreen = () => {
 
   const dispatch = useDispatch();
   const user = useSelector((state) => state.auth.user);
-  const account = useSelector((state) => state.account?.details); 
+  const account = useSelector((state) => state.account?.details);
   const showPopup = useSelector((state) => state.ui.showWelcome);
-  
+
   const [showBal, setShowBal] = useState(true);
   const [feedCards, setFeedCards] = useState([]);
   const [loadingFeed, setLoadingFeed] = useState(true);
@@ -95,15 +95,16 @@ const HomeScreen = () => {
 
         // Style map covering all possible product types from trajectory agent
         const styleMap = {
-          'Student Loan':    { grad: ['#2F4F4F', '#1A2E2E'], label: 'Education First', labelColor: '#FFD700' },
-          'Car Loan':        { grad: ['#1e3a8a', '#1e1b4b'], label: 'Lifestyle',        labelColor: '#93C5FD' },
-          'Fixed Deposit':   { grad: ['#065f46', '#064e3b'], label: 'Grow Wealth',      labelColor: '#6EE7B7' },
-          'Credit Card':     { grad: ['#7c3aed', '#4c1d95'], label: 'Flexible',         labelColor: '#C4B5FD' },
-          'Investment Plan': { grad: ['#0f172a', '#1e293b'], label: 'Smart Investing',   labelColor: '#38BDF8' },
-          'Savings Plan':    { grad: ['#065f46', '#064e3b'], label: 'Save Smart',        labelColor: '#6EE7B7' },
-          'Personal Loan':   { grad: ['#7c2d12', '#431407'], label: 'Quick Cash',        labelColor: '#FDBA74' },
-          'Mortgage':        { grad: ['#1e3a5f', '#0c1929'], label: 'Home Ownership',    labelColor: '#7DD3FC' },
-          'Insurance':       { grad: ['#4a1d96', '#2e1065'], label: 'Stay Protected',    labelColor: '#DDD6FE' },
+          'Student Loan': { grad: ['#2F4F4F', '#1a2e2e'], label: 'Education First', labelColor: '#ffd700' },
+          'Car Loan': { grad: ['#1e3a8a', '#1e1b4b'], label: 'Lifestyle', labelColor: '#93c5fd' },
+          'Fixed Deposit': { grad: ['#065f46', '#064e3b'], label: 'Grow Wealth', labelColor: '#6ee7b7' },
+          'Credit Card': { grad: ['#7c3aed', '#4c1d95'], label: 'Flexible', labelColor: '#c4b5fd' },
+          'Investment Plan': { grad: ['#0f172a', '#1e293b'], label: 'Smart Investing', labelColor: '#38bdf8' }, // ← ADD
+          'Trust Fund': { grad: ['#1a1a2e', '#16213e'], label: 'Wealth Preservation', labelColor: '#a78bfa' }, // ← ADD
+          'Personal Loan': { grad: ['#7c2d12', '#431407'], label: 'Quick Cash', labelColor: '#fdba74' }, // ← ADD
+          'Savings Plan': { grad: ['#065f46', '#064e3b'], label: 'Save Smart', labelColor: '#6ee7b7' },
+          'Mortgage': { grad: ['#1e3a5f', '#0c1929'], label: 'Home Ownership', labelColor: '#7dd3fc' },
+          'Insurance': { grad: ['#4a1d96', '#2e1065'], label: 'Stay Protected', labelColor: '#ddd6fe' },
         };
 
         // Helper: generate a meaningful subtitle for a product
@@ -112,15 +113,15 @@ const HomeScreen = () => {
           if (amount > 0) return `Up to ₦${amount.toLocaleString()}`;
           // Fallback subtitles when no EMI data is available
           const fallbacks = {
-            'Student Loan':    'Zero interest for 3 months',
-            'Car Loan':        'Flexible repayment plans',
-            'Fixed Deposit':   'Up to 15% annual returns',
-            'Credit Card':     'Pre-approved for you',
+            'Student Loan': 'Zero interest for 3 months',
+            'Car Loan': 'Flexible repayment plans',
+            'Fixed Deposit': 'Up to 15% annual returns',
+            'Credit Card': 'Pre-approved for you',
             'Investment Plan': 'Tailored to your goals',
-            'Savings Plan':    'Start saving today',
-            'Personal Loan':   'Quick approval process',
-            'Mortgage':        'Affordable monthly payments',
-            'Insurance':       'Comprehensive coverage',
+            'Savings Plan': 'Start saving today',
+            'Personal Loan': 'Quick approval process',
+            'Mortgage': 'Affordable monthly payments',
+            'Insurance': 'Comprehensive coverage',
           };
           return fallbacks[product] || 'Personalized for you';
         };
@@ -128,45 +129,50 @@ const HomeScreen = () => {
         // If backend returned empty cards but has recommendation data with primary_product,
         // build a card from it on the frontend
         if ((!Array.isArray(cards) || cards.length === 0) && data.recommendations?.primary_product) {
-          const rec = data.recommendations;
-          const product = rec.primary_product;
-          const style = styleMap[product] || { grad: ['#111827', '#1f2937'], label: 'Special Offer', labelColor: '#FCD34D' };
+          let cards = data.cards || [];
 
-          cards = [{
-            id: `rec-${Date.now()}`,
-            label: style.label,
-            labelColor: style.labelColor,
-            title: product,
-            subtitle: getSubtitle(product, rec.monthly_emi),
-            cta: 'APPLY NOW',
-            ctaRoute: 'loans',
-            gradient: style.grad,
-            reasoning: rec.reasoning || 'Based on your financial profile, we think this is a great fit for you.',
-          }];
-          console.log('[SmartFeed] Built card from recommendations.primary_product:', product);
+          // if backend says no_recommendation but product exists, build card anyway
+          if (data.status === "no_recommendation" && data.recommendations?.primary_product) {
+            const rec = data.recommendations;
+            const product = rec.primary_product;
+            const style = styleMap[product] || { grad: ['#111827', '#1f2937'], label: 'Special Offer', labelColor: '#fcd34d' };
+            cards = [{
+              id: `rec-${Date.now()}`,
+              label: style.label,
+              labelColor: style.labelColor,
+              title: product,
+              subtitle: getSubtitle(product, rec.monthly_emi),
+              cta: 'APPLY NOW',
+              ctaRoute: 'loans',
+              gradient: style.grad,
+              reasoning: rec.reasoning || 'Based on your financial profile, we think this is a great fit for you.',
+            }];
+          }
+
+            console.log('[SmartFeed] Built card from recommendations.primary_product:', product);
+          }
+
+          // Post-process cards from backend that may have "Up to ₦0" subtitle
+          if (Array.isArray(cards) && cards.length > 0) {
+            cards = cards.map(card => {
+              if (card.subtitle && card.subtitle.includes('₦0')) {
+                const style = styleMap[card.title];
+                return { ...card, subtitle: getSubtitle(card.title, 0), ...(style ? { labelColor: style.labelColor } : {}) };
+              }
+              return card;
+            });
+            setFeedCards(cards);
+          }
+          // If cards is still empty, fallback cards will be shown automatically
+        } catch (err) {
+          console.warn('Smart feed unavailable, using fallback cards:', err?.message || err);
+        } finally {
+          setLoadingFeed(false);
         }
+      };
 
-        // Post-process cards from backend that may have "Up to ₦0" subtitle
-        if (Array.isArray(cards) && cards.length > 0) {
-          cards = cards.map(card => {
-            if (card.subtitle && card.subtitle.includes('₦0')) {
-              const style = styleMap[card.title];
-              return { ...card, subtitle: getSubtitle(card.title, 0), ...(style ? { labelColor: style.labelColor } : {}) };
-            }
-            return card;
-          });
-          setFeedCards(cards);
-        }
-        // If cards is still empty, fallback cards will be shown automatically
-      } catch (err) {
-        console.warn('Smart feed unavailable, using fallback cards:', err?.message || err);
-      } finally {
-        setLoadingFeed(false);
-      }
-    };
-
-    loadFeed();
-  }, [dispatch, user?.id]);
+      loadFeed();
+    }, [dispatch, user?.id]);
 
   // ── Poll for pending Sentinel transactions (from merchant checkout) ──
   useEffect(() => {
@@ -201,10 +207,10 @@ const HomeScreen = () => {
   }, [showPopup, popupCard, dispatch]);
 
   const quickItems = [
-    { icon: Smartphone, label: "Airtime",     route: "airtime" },
-    { icon: Wifi,       label: "Data",        route: "data" },
-    { icon: Gamepad2,   label: "Betting",     route: "betting" },
-    { icon: Zap,        label: "Electricity", route: "bills" },
+    { icon: Smartphone, label: "Airtime", route: "airtime" },
+    { icon: Wifi, label: "Data", route: "data" },
+    { icon: Gamepad2, label: "Betting", route: "betting" },
+    { icon: Zap, label: "Electricity", route: "bills" },
   ];
 
   // ── Biometric / password confirmation handler ─────────────────────
@@ -366,8 +372,8 @@ const HomeScreen = () => {
                 <p className="text-[10px] font-black text-amber-600 uppercase tracking-wider mb-2">Sentinnel AI says:</p>
                 <p className="text-xs text-amber-900 leading-relaxed font-medium">
                   {sentinelAlert.fraud_analysis?.policy_explanation ||
-                   sentinelAlert.fraud_analysis?.reasoning ||
-                   `"This transaction is unusual because it is the first time you are paying ${sentinelAlert.merchant || 'this merchant'} and it occurred at an unusual hour."`}
+                    sentinelAlert.fraud_analysis?.reasoning ||
+                    `"This transaction is unusual because it is the first time you are paying ${sentinelAlert.merchant || 'this merchant'} and it occurred at an unusual hour."`}
                 </p>
                 {sentinelAlert.fraud_analysis?.total_risk_score != null && (
                   <div className="mt-2 flex items-center gap-2">
@@ -490,11 +496,11 @@ const HomeScreen = () => {
         >
           <div
             className="relative text-white shadow-2xl border border-white/10"
-            style={{ 
+            style={{
               background: `linear-gradient(to bottom right, ${popupCard.gradient?.[0] || '#2F4F4F'}, ${popupCard.gradient?.[1] || '#1A2E2E'})`,
-              width: "min(92vw, 360px)", 
-              borderRadius: "28px", 
-              padding: "clamp(20px, 4vw, 28px)" 
+              width: "min(92vw, 360px)",
+              borderRadius: "28px",
+              padding: "clamp(20px, 4vw, 28px)"
             }}
             onClick={(e) => e.stopPropagation()}
           >
@@ -515,16 +521,16 @@ const HomeScreen = () => {
                 {popupCard.reasoning || "Based on your recent activity, we recommend this offer."}
               </p>
               <div className="space-y-3">
-                <button 
-                  onClick={() => { dispatch(dismissWelcome()); navigate(popupCard.ctaRoute || '#'); }} 
+                <button
+                  onClick={() => { dispatch(dismissWelcome()); navigate(popupCard.ctaRoute || '#'); }}
                   className="w-full bg-white text-xs font-extrabold py-3.5 rounded-full shadow-lg active:scale-95 hover:shadow-xl transition-all"
                   style={{ color: popupCard.gradient?.[0] || '#2F4F4F' }}
                 >
                   {popupCard.cta}
                 </button>
-                <button 
-                  type="button" 
-                  onClick={() => dispatch(dismissWelcome())} 
+                <button
+                  type="button"
+                  onClick={() => dispatch(dismissWelcome())}
                   className="w-full text-white/50 text-[10px] font-bold uppercase tracking-widest hover:text-white active:text-white transition-colors py-1 cursor-pointer"
                 >
                   Cancel
@@ -594,27 +600,27 @@ const HomeScreen = () => {
 
         {/* Send Action */}
         <div className="fu fu3 grid grid-cols-3 gap-3 sm:gap-4 xl:gap-6 w-full">
-            <button
-              onClick={() => navigate('/send')}
-              className="w-full h-full min-h-[85px] md:min-h-[100px] bg-[#A01030] rounded-2xl md:rounded-3xl flex flex-col items-center justify-center gap-2 text-white shadow-xl shadow-red-900/20 active:scale-95 hover:scale-[1.03] transition-transform p-3"
-            >
-              <Send className="w-6 h-6 md:w-8 md:h-8" />
-              <span className="text-[11px] sm:text-xs md:text-sm font-bold truncate">Send</span>
-            </button>
-            <button
-              onClick={() => navigate('/bills')}
-              className="w-full h-full min-h-[85px] md:min-h-[100px] bg-white rounded-2xl md:rounded-3xl flex flex-col items-center justify-center gap-2 text-[#A01030] shadow-sm border border-gray-100 active:scale-95 hover:scale-[1.03] transition-transform p-3"
-            >
-              <FileText className="w-6 h-6 md:w-8 md:h-8" />
-              <span className="text-[11px] sm:text-xs md:text-sm font-bold truncate text-gray-700">Pay Bills</span>
-            </button>
-            <button
-              onClick={() => navigate('#')}
-              className="w-full h-full min-h-[85px] md:min-h-[100px] bg-white rounded-2xl md:rounded-3xl flex flex-col items-center justify-center gap-2 text-[#A01030] shadow-sm border border-gray-100 active:scale-95 hover:scale-[1.03] transition-transform p-3"
-            >
-              <QrCode className="w-6 h-6 md:w-8 md:h-8" />
-              <span className="text-[11px] sm:text-xs md:text-sm font-bold truncate text-gray-700">Cards</span>
-            </button>
+          <button
+            onClick={() => navigate('/send')}
+            className="w-full h-full min-h-[85px] md:min-h-[100px] bg-[#A01030] rounded-2xl md:rounded-3xl flex flex-col items-center justify-center gap-2 text-white shadow-xl shadow-red-900/20 active:scale-95 hover:scale-[1.03] transition-transform p-3"
+          >
+            <Send className="w-6 h-6 md:w-8 md:h-8" />
+            <span className="text-[11px] sm:text-xs md:text-sm font-bold truncate">Send</span>
+          </button>
+          <button
+            onClick={() => navigate('/bills')}
+            className="w-full h-full min-h-[85px] md:min-h-[100px] bg-white rounded-2xl md:rounded-3xl flex flex-col items-center justify-center gap-2 text-[#A01030] shadow-sm border border-gray-100 active:scale-95 hover:scale-[1.03] transition-transform p-3"
+          >
+            <FileText className="w-6 h-6 md:w-8 md:h-8" />
+            <span className="text-[11px] sm:text-xs md:text-sm font-bold truncate text-gray-700">Pay Bills</span>
+          </button>
+          <button
+            onClick={() => navigate('#')}
+            className="w-full h-full min-h-[85px] md:min-h-[100px] bg-white rounded-2xl md:rounded-3xl flex flex-col items-center justify-center gap-2 text-[#A01030] shadow-sm border border-gray-100 active:scale-95 hover:scale-[1.03] transition-transform p-3"
+          >
+            <QrCode className="w-6 h-6 md:w-8 md:h-8" />
+            <span className="text-[11px] sm:text-xs md:text-sm font-bold truncate text-gray-700">Cards</span>
+          </button>
         </div>
 
         {/* Quick Access */}
@@ -644,12 +650,12 @@ const HomeScreen = () => {
           <div className="relative w-full overflow-hidden">
             {loadingFeed ? (
               <div className="flex gap-4">
-                 {[1,2].map(i => <div key={i} className="w-[240px] h-[145px] bg-gray-100 rounded-[24px] animate-pulse"></div>)}
+                {[1, 2].map(i => <div key={i} className="w-[240px] h-[145px] bg-gray-100 rounded-[24px] animate-pulse"></div>)}
               </div>
             ) : (
               <div className="marquee-track">
                 {[...displayCards, ...displayCards].map((card, i) => (
-                  <div 
+                  <div
                     key={`${card.id}-${i}`}
                     className="w-[240px] sm:w-[280px] xl:w-[300px] h-[145px] xl:h-[160px] rounded-[24px] sm:rounded-[28px] p-5 sm:p-6 text-white flex flex-col justify-between shrink-0 shadow-lg relative overflow-hidden"
                     style={{ background: card.gradient ? `linear-gradient(to right, ${card.gradient[0]}, ${card.gradient[1]})` : '#333' }}
@@ -661,7 +667,7 @@ const HomeScreen = () => {
                       </span>
                       <h3 className="text-lg sm:text-xl font-bold leading-tight">{card.title}<br />{card.subtitle}</h3>
                     </div>
-                    <button 
+                    <button
                       onClick={() => card.ctaRoute && navigate(card.ctaRoute)}
                       className="bg-white text-[10px] font-bold px-5 py-2.5 rounded-full w-fit hover:shadow-md active:scale-95 transition-all"
                       style={{ color: card.gradient?.[0] || '#000' }}
