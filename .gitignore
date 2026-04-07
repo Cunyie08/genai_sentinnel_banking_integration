@@ -205,4 +205,5 @@ __pycache__/
  Frontend/package-lock.json
 
 front
+new_front
 Backend/admin_users.json
