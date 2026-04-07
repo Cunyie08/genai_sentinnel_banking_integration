@@ -10,28 +10,6 @@ from app.data.db_connections import get_engine, init_db
 from Backend.models import Customer, Account, Transaction, Complaint
 
 
-# CSV resolution
-
-def _resolve_data_dir() -> str:
-    """
-    Find the directory containing the four generated CSVs.
-    Checks GENAI_SENTINEL_BANKING_INTEGRATION env var -> app/data/csvs/ -> project root.
-    """
-    Candidates = [
-        os.getenv("GENAI_SENTINEL_BANKING_INTEGRATION", ""),
-        os.path.join(os.path.dirname(__file__), "csvs"),
-        os.path.join(os.path.dirname(__file__), "..", "..", ""),
-    ]
-    for path in Candidates:
-        if path and os.path.isfile(os.path.join(path, "customers.csv")):
-            return os.path.abspath(path)
-
-    raise FileNotFoundError(
-        "Could not find customers.csv. "
-        "Set GENAI_SENTINEL_BANKING_INTEGRATION env var or place CSVs in app/data/csvs/"
-    )
-
-
 CSV_FILES = {
     "customers":    "customers.csv",
     "accounts":     "accounts.csv",
@@ -54,8 +32,16 @@ class DatasetLoader:
 
     def __init__(self, engine: AsyncEngine):
         self.engine   = engine or get_engine()
-        self.data_dir = _resolve_data_dir()
-        print(f"[Seeder] Data dir: {self.data_dir}")
+        
+        self.s3_access_key = os.getenv("S3_ACCESS_KEY")
+        self.s3_secret_key = os.getenv("S3_SECRET_ACCESS_KEY")
+        self.region = os.getenv("REGION")
+        self.bucket_name = os.getenv("S3_BUCKET_NAME")
+
+        if not all([self.s3_access_key, self.s3_secret_key, self.region, self.bucket_name]):
+            print("[Seeder] WARNING: Missing AWS credentials. Database seeding from S3 will fail if `.seed()` is executed.")
+
+        print(f"[Seeder] Targeting S3 Bucket: s3://{self.bucket_name}/")
 
 
     # Public entry point
@@ -155,13 +141,27 @@ class DatasetLoader:
             print(f"[Seeder]   {table_name:<16} already has {count:>8,} rows - skipped")
             return
 
-        # Load &  transform CSV
-        csv_path = os.path.join(self.data_dir, csv_name)
-        if not os.path.isfile(csv_path):
-            print(f"[Seeder]    {csv_name} not found - skipping {table_name}")
+        # Load & transform CSV from S3
+        if not self.bucket_name:
+            print(f"[Seeder]    S3_BUCKET_NAME not set - skipping {table_name}")
+            return
+            
+        s3_uri = f"s3://{self.bucket_name}/{csv_name}"
+        try:
+            df = pd.read_csv(
+                s3_uri, 
+                low_memory=False, 
+                encoding="utf-8",
+                storage_options={
+                    "key": self.s3_access_key,
+                    "secret": self.s3_secret_key,
+                    "client_kwargs": {"region_name": self.region}
+                }
+            )
+        except Exception as e:
+            print(f"[Seeder] Error loading {csv_name} from S3: {e}")
             return
 
-        df    = pd.read_csv(csv_path, low_memory=False, encoding="utf-8")
         df    = transform(df)
         total = len(df)
         start = time.time()
