@@ -1031,6 +1031,7 @@ async def confirm_transaction(
         await db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
 
+
 @app.post("/card_transaction", tags=["Agents"])
 async def card_transaction(
     request: TransactionRequest,
@@ -1121,14 +1122,12 @@ async def card_transaction(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-
 @app.get("/trajectory/popup_recommendations", tags=["Agents"])
 async def get_trajectory_popup(
     user: Customer = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     try:
-        # Force fetch the user from DB to ensure customer_id is mapped just in case the JWT middleware detached it
         stmt = select(Customer).filter(Customer.email == user.email)
         res = await db.execute(stmt)
         active_user = res.scalars().first()
@@ -1140,57 +1139,136 @@ async def get_trajectory_popup(
                 detail="Authenticated user is not linked to a customer profile.",
             )
 
+        recommendation_result = await orchestrator.handle_request({
+            "type":        "recommendation",
+            "agent":       "TrajectoryAgent",
+            "customer_id": customer_id,
+        })
 
-        payload = {
-            "type": "recommendation",
-            "agent": "TrajectoryAgent",
-            "customer_id": customer_id
-        }
-        
-        recommendation_result = await orchestrator.handle_request(payload)
-
-        # Format into "Cards" for the frontend marquee/popup
         cards = []
         primary = recommendation_result.get("primary_product")
 
-        if primary and recommendation_result.get("is_eligible"):
-            # Determine visual style based on product type
-            style = {
-                "Student Loan": {
-                    "grad": ["#2F4F4F", "#1A2E2E"],
-                    "label": "Education First",
-                },
-                "Car Loan": {"grad": ["#1e3a8a", "#1e1b4b"], "label": "Lifestyle"},
-                "Fixed Deposit": {
-                    "grad": ["#065f46", "#064e3b"],
-                    "label": "Grow Wealth",
-                },
-                "Credit Card": {"grad": ["#7c3aed", "#4c1d95"], "label": "Flexible"},
-            }.get(primary, {"grad": ["#111827", "#000000"], "label": "Special Offer"})
-
-            main_card = {
-                "id": uuid.uuid4().hex[:8],
-                "label": style["label"],
-                "title": primary,
-                "subtitle": f"Up to ₦{recommendation_result.get('monthly_emi', 0) * 10:,.0f}",
-                "cta": "APPLY NOW",
-                "ctaRoute": "loans",
-                "gradient": style["grad"],
-                "reasoning": recommendation_result.get("reasoning", ""),
+        # Check primary_product only, NOT is_eligible
+        # is_eligible can be False when RAG validation fails even though
+        # the recommendation engine correctly found a qualifying product.
+        if primary:
+            style_map = {
+                "Student Loan":    {"grad": ["#2F4F4F", "#1A2E2E"], "label": "Education First"},
+                "Car Loan":        {"grad": ["#1e3a8a", "#1e1b4b"], "label": "Lifestyle"},
+                "Investment Plan": {"grad": ["#0f172a", "#1e293b"], "label": "Smart Investing"},
+                "Trust Fund":      {"grad": ["#1a1a2e", "#16213e"], "label": "Wealth Preservation"},
+                "Personal Loan":   {"grad": ["#7c2d12", "#431407"], "label": "Quick Cash"},
+                "Fixed Deposit":   {"grad": ["#065f46", "#064e3b"], "label": "Grow Wealth"},
+                "Credit Card":     {"grad": ["#7c3aed", "#4c1d95"], "label": "Flexible"},
             }
-            cards.append(main_card)
+            style = style_map.get(
+                primary,
+                {"grad": ["#111827", "#000000"], "label": "Special Offer"}
+            )
 
-        # If no recommendation exists, return an empty list of cards
+            # Subtitle: Avoids showing "Up to ₦0" for investment products
+            emi = recommendation_result.get("monthly_emi") or 0
+            subtitle_map = {
+                "Investment Plan": "Tailored to your goals",
+                "Trust Fund":      "Long-term wealth preservation",
+                "Student Loan":    "Up to ₦2,000,000",
+                "Car Loan":        f"₦{emi:,.0f}/month" if emi else "Flexible repayment",
+                "Personal Loan":   f"₦{emi:,.0f}/month" if emi else "Quick approval",
+            }
+            subtitle = subtitle_map.get(primary, "Personalised for you")
+
+            cards.append({
+                "id":        uuid.uuid4().hex[:8],
+                "label":     style["label"],
+                "title":     primary,
+                "subtitle":  subtitle,
+                "cta":       "APPLY NOW",
+                "ctaRoute":  "loans",
+                "gradient":  style["grad"],
+                "reasoning": recommendation_result.get("reasoning", ""),
+            })
+
         return {
-            "status": "success" if cards else "no_recommendation",
+            "status":          "success" if cards else "no_recommendation",
             "recommendations": recommendation_result,
-            "cards": cards,
+            "cards":           cards,
         }
+
     except Exception as e:
         import traceback
-
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# @app.get("/trajectory/popup_recommendations", tags=["Agents"])
+# async def get_trajectory_popup(
+#     user: Customer = Depends(get_current_user),
+#     db: AsyncSession = Depends(get_db),
+# ):
+#     try:
+#         # Force fetch the user from DB to ensure customer_id is mapped just in case the JWT middleware detached it
+#         stmt = select(Customer).filter(Customer.email == user.email)
+#         res = await db.execute(stmt)
+#         active_user = res.scalars().first()
+
+#         customer_id = active_user.customer_id if active_user else user.customer_id
+#         if not customer_id:
+#             raise HTTPException(
+#                 status_code=400,
+#                 detail="Authenticated user is not linked to a customer profile.",
+#             )
+
+
+#         payload = {
+#             "type": "recommendation",
+#             "agent": "TrajectoryAgent",
+#             "customer_id": customer_id
+#         }
+        
+#         recommendation_result = await orchestrator.handle_request(payload)
+
+#         # Format into "Cards" for the frontend marquee/popup
+#         cards = []
+#         primary = recommendation_result.get("primary_product")
+
+#         if primary and recommendation_result.get("is_eligible"):
+#             # Determine visual style based on product type
+#             style = {
+#                 "Student Loan": {
+#                     "grad": ["#2F4F4F", "#1A2E2E"],
+#                     "label": "Education First",
+#                 },
+#                 "Car Loan": {"grad": ["#1e3a8a", "#1e1b4b"], "label": "Lifestyle"},
+#                 "Fixed Deposit": {
+#                     "grad": ["#065f46", "#064e3b"],
+#                     "label": "Grow Wealth",
+#                 },
+#                 "Credit Card": {"grad": ["#7c3aed", "#4c1d95"], "label": "Flexible"},
+#             }.get(primary, {"grad": ["#111827", "#000000"], "label": "Special Offer"})
+
+#             main_card = {
+#                 "id": uuid.uuid4().hex[:8],
+#                 "label": style["label"],
+#                 "title": primary,
+#                 "subtitle": f"Up to ₦{recommendation_result.get('monthly_emi', 0) * 10:,.0f}",
+#                 "cta": "APPLY NOW",
+#                 "ctaRoute": "loans",
+#                 "gradient": style["grad"],
+#                 "reasoning": recommendation_result.get("reasoning", ""),
+#             }
+#             cards.append(main_card)
+
+#         # If no recommendation exists, return an empty list of cards
+#         return {
+#             "status": "success" if cards else "no_recommendation",
+#             "recommendations": recommendation_result,
+#             "cards": cards,
+#         }
+#     except Exception as e:
+#         import traceback
+
+#         traceback.print_exc()
+#         raise HTTPException(status_code=500, detail=str(e))
 
 
 
@@ -1725,4 +1803,5 @@ async def get_faqs(prompt: Optional[str] = None):
             "searched_for": prompt
         }
 if __name__ == "__main__":
-    uvicorn.run(app, host='0.0.0.0', port=8080)
+    # uvicorn.run(app, host='0.0.0.0', port=8080)
+      uvicorn.run(app, host='127.0.0.1', port=8080)
