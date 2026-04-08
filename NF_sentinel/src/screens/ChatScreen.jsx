@@ -66,7 +66,10 @@ const ChatScreen = () => {
     addMsg({ id: Date.now(), sender: 'user', type: 'text', text: q, time: now() });
     setFaqLoading(true);
     try {
+      console.log('[FAQ] Sending query to backend:', q);
       const res = await api.getFaqs(q);
+      console.log('[FAQ] Raw response from backend:', res?.data);
+
       // Backend returns { success: true, match: { answer, question, ... } } on hit
       // and { success: false, message: "..." } on miss
       const d = res?.data || {};
@@ -74,6 +77,8 @@ const ChatScreen = () => {
       const answer = matchFound
         ? (d.match?.answer || 'See our FAQ for more details.')
         : (d.message || "I couldn't find a specific answer to your question in our FAQs.");
+
+      console.log('[FAQ] Match found:', matchFound, '| Answer preview:', answer?.substring(0, 80));
 
       if (!matchFound) {
         // No FAQ match — show answer + escalation option
@@ -86,7 +91,8 @@ const ChatScreen = () => {
       } else {
         addMsg({ id: Date.now(), sender: 'ai', type: 'text', text: answer, time: now() });
       }
-    } catch {
+    } catch (err) {
+      console.error('[FAQ] Error fetching FAQ:', err?.message || err);
       addMsg({
         id: Date.now(), sender: 'ai', type: 'text',
         text: 'Could not retrieve FAQ at this time. Please try again.',
@@ -249,39 +255,10 @@ const ChatScreen = () => {
             <span className="text-xs font-bold text-gray-400">AI Assistant</span>
           </div>
           <div className="bg-white rounded-[20px] rounded-tl-none shadow-sm border border-gray-100 max-w-[90%] overflow-hidden">
-            <div className="bg-green-50 px-4 py-3 flex items-center gap-2 border-b border-green-100">
+            <div className="bg-green-50 px-4 py-3 flex items-center gap-2">
               <CheckCircle size={16} className="text-green-500" />
               <span className="text-sm font-black text-green-700">Complaint Routed Successfully</span>
             </div>
-            <div className="p-4 space-y-2.5">
-              <div className="flex justify-between text-xs border-b border-gray-50 pb-2.5">
-                <span className="text-gray-400 font-bold uppercase tracking-wide">Complaint ID</span>
-                <span className="font-bold text-gray-900 font-mono">{r.complaint_id}</span>
-              </div>
-              <div className="flex justify-between text-xs border-b border-gray-50 pb-2.5">
-                <span className="text-gray-400 font-bold uppercase tracking-wide">Department</span>
-                <span className="font-bold text-gray-900">{r.department_name}</span>
-              </div>
-              <div className="flex justify-between text-xs border-b border-gray-50 pb-2.5">
-                <span className="text-gray-400 font-bold uppercase tracking-wide">Priority</span>
-                <span className={`font-bold ${r.priority_level === 'High' ? 'text-red-600' : r.priority_level === 'Medium' ? 'text-orange-500' : 'text-green-600'}`}>
-                  {r.priority_level}
-                </span>
-              </div>
-              <div className="flex justify-between text-xs border-b border-gray-50 pb-2.5">
-                <span className="text-gray-400 font-bold uppercase tracking-wide">SLA</span>
-                <span className="font-bold text-gray-900">{r.sla_hours}hrs</span>
-              </div>
-              <div className="flex justify-between text-xs">
-                <span className="text-gray-400 font-bold uppercase tracking-wide">Confidence</span>
-                <span className="font-bold text-gray-900">{r.confidence ? `${Math.round(r.confidence * 100)}%` : '—'}</span>
-              </div>
-            </div>
-            {r.reasoning && (
-              <div className="mx-4 mb-4 bg-blue-50 border border-blue-100 rounded-xl p-3 text-xs text-blue-700 leading-relaxed">
-                <span className="font-bold">AI Reasoning: </span>{r.reasoning}
-              </div>
-            )}
           </div>
           <span className="text-[10px] text-gray-400 mt-1">{msg.time}</span>
         </div>
@@ -443,10 +420,10 @@ const ChatScreen = () => {
         <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Quick Actions</p>
         <div className="flex gap-2 overflow-x-auto hide-scrollbar pb-2">
           {[
-            'Check balance',
-            'Account statement',
-            'Transaction history',
-            'Block my card',
+            'ATM debit no cash',
+            'Wrong transfer reversal',
+            'Daily transfer limit',
+            
           ].map((q, i) => (
             <button key={i}
               onClick={() => handleFaqSend(q)}

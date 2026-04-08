@@ -1,11 +1,12 @@
 import axios from 'axios';
 const MOCK_MODE    = false;
 const API_BASE_URL = 'https://sentinnelbanking.com';
+// const API_BASE_URL = 'http://localhost:8080';
 
 const apiClient = axios.create({
   baseURL: API_BASE_URL,
   headers: { 'Content-Type': 'application/json' },
-  timeout: 20000,
+  timeout: 30000,
 });
 
 
@@ -243,14 +244,19 @@ export const api = {
     formParams.append('username', body.email);
     formParams.append('password', body.password);
 
+    console.log('[Login] Sending credentials for:', body.email);
+
     let token;
     try {
       const response = await apiClient.post('/auth/token', formParams, {
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       });
       token = response.data.access_token;
+      console.log('[Login] Token received successfully');
     } catch (err) {
-      throw new Error(err.detail || err.message || 'Invalid email or password. Please try again.');
+      const msg = err.detail || err.message || 'Invalid email or password. Please try again.';
+      console.error('[Login] Auth token request failed:', msg);
+      throw new Error(msg);
     }
 
     if (!token) throw new Error('No token received from server. Please try again.');
@@ -263,7 +269,9 @@ export const api = {
       });
       profile = meRes.data;
     } catch (err) {
-      throw new Error(err.detail || err.message || 'Logged in but failed to load profile.');
+      const msg = err.detail || err.message || 'Logged in but failed to load profile.';
+      console.error('[Login] Profile fetch failed:', msg);
+      throw new Error(msg);
     }
 
     const fullName =

@@ -4,7 +4,6 @@ from pathlib import Path
 import os
 import time
 import asyncio
-import botocore.exceptions
 from sqlalchemy import inspect, text
 from sqlalchemy.ext.asyncio import AsyncEngine
 from app.data.db_connections import get_engine, init_db
