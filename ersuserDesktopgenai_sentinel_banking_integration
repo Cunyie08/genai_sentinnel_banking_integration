@@ -1,0 +1,42 @@
+[33m66fdff9[m[33m ([m[1;31morigin/frontend_integration[m[33m, [m[1;32mfrontend_integration[m[33m)[m Trajectory frontend
+[33mca2f92c[m resolve model.pkl conflict - keep master
+[33m9fd9477[m protected routing trajectory
+[33md84c2a0[m Added the database url and s3 keys, still testing
+[33m6e75915[m[33m ([m[1;31morigin/cleanup/secure-restructure[m[33m)[m Merge branch 'master' of https://github.com/Cunyie08/genai_sentinel_banking_integration into cleanup/secure-restructure
+[33m2a50246[m Added train_model without using S3
+[33m3f8825f[m Added the database url and s3 keys
+[33mdc6aecf[m Merge pull request #60 from Cunyie08/frontend_integration
+[33m091d6a3[m Stop tracking log files already in .gitignore
+[33m9208b39[m Resolve merge conflicts in log files
+[33md16f57a[m Frontend changes
+[33maf50d44[m Merge pull request #59 from Cunyie08
+[33mfa0026f[m accepted changes from master
+[33m66e8da8[m Merge branch 'master' of https://github.com/Cunyie08/genai_sentinel_banking_integration into cleanup/secure-restructure
+[33medb1689[m modified some files
+[33m89e171c[m Merge pull request #58 from Cunyie08/Demo_Ready_Backend
+[33m80647a7[m fix
+[33mc09949c[m Merge pull request #57 from Cunyie08/Demo_Ready_Backend
+[33mf285b94[m solve cors error
+[33m1b53a09[m Merge pull request #56 from Cunyie08/Demo_Ready_Backend
+[33mdbc2c75[m files renaming
+[33mc07ba90[m Merge pull request #55 from Cunyie08/Demo_Ready_Backend
+[33m9efccbf[m email_naming_conflicts
+[33m8b3b266[m Merge pull request #54 from Cunyie08/Demo_Ready_Backend
+[33m962a3ed[m requirements update
+[33m24a2c26[m Merge pull request #53 from Cunyie08/Demo_Ready_Backend
+[33m87ad418[m deploy.yml file
+[33m1d55edb[m Merge pull request #52 from Cunyie08/Demo_Ready_Backend
+[33me746a86[m fix cors error
+[33mba0ef2d[m documentation
+[33m087a26f[m Merge pull request #51 from Cunyie08/frontend_integration
+[33m6e2c6aa[m fix NF_sentinel submodule to regular folder
+[33m9b0e70b[m Update README.md
+[33mef98662[m Merge pull request #50 from Cunyie08/frontend_integration
+[33m64e6875[m frontend integration
+[33m997f4c2[m Merge pull request #49 from Cunyie08/rag
+[33mbc709e4[m Merge branch 'master' into rag
+[33mdc602bf[m updated
+[33m684b778[m Merge pull request #48 from Cunyie08/Demo_Ready_Backend
+[33ma842c4c[m minor changes
+[33mf0f45be[m Merge pull request #47 from Cunyie08/Demo_Ready_Backend
+[33m0a3b6e1[m complaints dashboard endpoints
