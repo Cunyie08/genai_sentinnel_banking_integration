@@ -34,6 +34,38 @@ const FALLBACK_CARDS = [
   { id: 'fb3', label: 'Flexible', labelColor: '#C4B5FD', title: 'Credit Card', subtitle: 'Pre-approved', gradient: ['#7c3aed', '#4c1d95'], cta: 'GET CARD', ctaRoute: '#', reasoning: 'Based on your spending patterns, you qualify for our premium credit card.' },
 ];
 
+// ─── Style map with visible gradients ────────────────────────────────
+const styleMap = {
+  'Student Loan':    { grad: ['#155e2f', '#14532d'], label: 'Education First',      labelColor: '#ffd700' },
+  'Car Loan':        { grad: ['#1d4ed8', '#1e1b4b'], label: 'Lifestyle',            labelColor: '#93c5fd' },
+  'Fixed Deposit':   { grad: ['#0f766e', '#0d5e56'], label: 'Grow Wealth',          labelColor: '#6ee7b7' },
+  'Credit Card':     { grad: ['#7c3aed', '#4c1d95'], label: 'Flexible',             labelColor: '#c4b5fd' },
+  'Investment Plan': { grad: ['#1d4ed8', '#1e3a8a'], label: 'Smart Investing',      labelColor: '#93c5fd' },
+  'Trust Fund':      { grad: ['#5b21b6', '#3b0764'], label: 'Wealth Preservation',  labelColor: '#a78bfa' },
+  'Personal Loan':   { grad: ['#b45309', '#7c2d12'], label: 'Quick Cash',           labelColor: '#fdba74' },
+  'Savings Plan':    { grad: ['#0f766e', '#064e3b'], label: 'Save Smart',           labelColor: '#6ee7b7' },
+  'Mortgage':        { grad: ['#1e40af', '#1e3a5f'], label: 'Home Ownership',       labelColor: '#7dd3fc' },
+  'Insurance':       { grad: ['#6d28d9', '#4c1d95'], label: 'Stay Protected',       labelColor: '#ddd6fe' },
+};
+
+const getSubtitle = (product, emi) => {
+  const amount = (emi || 0) * 10;
+  if (amount > 0) return `Up to ₦${amount.toLocaleString()}`;
+  const fallbacks = {
+    'Student Loan':    'Zero interest for 3 months',
+    'Car Loan':        'Flexible repayment plans',
+    'Fixed Deposit':   'Up to 15% annual returns',
+    'Credit Card':     'Pre-approved for you',
+    'Investment Plan': 'Tailored to your goals',
+    'Savings Plan':    'Start saving today',
+    'Personal Loan':   'Quick approval process',
+    'Mortgage':        'Affordable monthly payments',
+    'Insurance':       'Comprehensive coverage',
+    'Trust Fund':      'Wealth preservation plan',
+  };
+  return fallbacks[product] || 'Personalized for you';
+};
+
 const InjectStyles = () => (
   <style>{`
     @keyframes slideLeft {
@@ -63,7 +95,6 @@ const InjectStyles = () => (
 
 const HomeScreen = () => {
   const navigate = useNavigate();
-
   const dispatch = useDispatch();
   const user = useSelector((state) => state.auth.user);
   const account = useSelector((state) => state.account?.details);
@@ -73,13 +104,11 @@ const HomeScreen = () => {
   const [feedCards, setFeedCards] = useState([]);
   const [loadingFeed, setLoadingFeed] = useState(true);
 
-  // ── Sentinel Alert state ──────────────────────────────────────────
   const [sentinelAlert, setSentinelAlert] = useState(null);
-  const [confirmStep, setConfirmStep] = useState('idle'); // idle | password | verifying | success | rejected
+  const [confirmStep, setConfirmStep] = useState('idle');
   const [password, setPassword] = useState('');
   const [confirmError, setConfirmError] = useState('');
 
-  // Use the first card from trajectory for the popup (fallback if empty)
   const displayCards = feedCards.length > 0 ? feedCards : FALLBACK_CARDS;
   const popupCard = displayCards[0];
 
@@ -93,105 +122,69 @@ const HomeScreen = () => {
         console.log('[SmartFeed] Raw response:', JSON.stringify(data, null, 2));
         let cards = data.cards || [];
 
-        // Style map covering all possible product types from trajectory agent
-        const styleMap = {
-          'Student Loan': { grad: ['#2F4F4F', '#1a2e2e'], label: 'Education First', labelColor: '#ffd700' },
-          'Car Loan': { grad: ['#1e3a8a', '#1e1b4b'], label: 'Lifestyle', labelColor: '#93c5fd' },
-          'Fixed Deposit': { grad: ['#065f46', '#064e3b'], label: 'Grow Wealth', labelColor: '#6ee7b7' },
-          'Credit Card': { grad: ['#7c3aed', '#4c1d95'], label: 'Flexible', labelColor: '#c4b5fd' },
-          'Investment Plan': { grad: ['#0f172a', '#1e293b'], label: 'Smart Investing', labelColor: '#38bdf8' }, // ← ADD
-          'Trust Fund': { grad: ['#1a1a2e', '#16213e'], label: 'Wealth Preservation', labelColor: '#a78bfa' }, // ← ADD
-          'Personal Loan': { grad: ['#7c2d12', '#431407'], label: 'Quick Cash', labelColor: '#fdba74' }, // ← ADD
-          'Savings Plan': { grad: ['#065f46', '#064e3b'], label: 'Save Smart', labelColor: '#6ee7b7' },
-          'Mortgage': { grad: ['#1e3a5f', '#0c1929'], label: 'Home Ownership', labelColor: '#7dd3fc' },
-          'Insurance': { grad: ['#4a1d96', '#2e1065'], label: 'Stay Protected', labelColor: '#ddd6fe' },
-        };
-
-        // Helper: generate a meaningful subtitle for a product
-        const getSubtitle = (product, emi) => {
-          const amount = (emi || 0) * 10;
-          if (amount > 0) return `Up to ₦${amount.toLocaleString()}`;
-          // Fallback subtitles when no EMI data is available
-          const fallbacks = {
-            'Student Loan': 'Zero interest for 3 months',
-            'Car Loan': 'Flexible repayment plans',
-            'Fixed Deposit': 'Up to 15% annual returns',
-            'Credit Card': 'Pre-approved for you',
-            'Investment Plan': 'Tailored to your goals',
-            'Savings Plan': 'Start saving today',
-            'Personal Loan': 'Quick approval process',
-            'Mortgage': 'Affordable monthly payments',
-            'Insurance': 'Comprehensive coverage',
-          };
-          return fallbacks[product] || 'Personalized for you';
-        };
-
-        // If backend returned empty cards but has recommendation data with primary_product,
-        // build a card from it on the frontend
-        if ((!Array.isArray(cards) || cards.length === 0) && data.recommendations?.primary_product) {
-          let cards = data.cards || [];
-
-          // if backend says no_recommendation but product exists, build card anyway
-          if (data.status === "no_recommendation" && data.recommendations?.primary_product) {
-            const rec = data.recommendations;
-            const product = rec.primary_product;
-            const style = styleMap[product] || { grad: ['#111827', '#1f2937'], label: 'Special Offer', labelColor: '#fcd34d' };
-            cards = [{
-              id: `rec-${Date.now()}`,
-              label: style.label,
-              labelColor: style.labelColor,
-              title: product,
-              subtitle: getSubtitle(product, rec.monthly_emi),
-              cta: 'APPLY NOW',
-              ctaRoute: 'loans',
-              gradient: style.grad,
-              reasoning: rec.reasoning || 'Based on your financial profile, we think this is a great fit for you.',
-            }];
-          }
-
-            console.log('[SmartFeed] Built card from recommendations.primary_product:', product);
-          }
-
-          // Post-process cards from backend that may have "Up to ₦0" subtitle
-          if (Array.isArray(cards) && cards.length > 0) {
-            cards = cards.map(card => {
-              if (card.subtitle && card.subtitle.includes('₦0')) {
-                const style = styleMap[card.title];
-                return { ...card, subtitle: getSubtitle(card.title, 0), ...(style ? { labelColor: style.labelColor } : {}) };
-              }
-              return card;
-            });
-            setFeedCards(cards);
-          }
-          // If cards is still empty, fallback cards will be shown automatically
-        } catch (err) {
-          console.warn('Smart feed unavailable, using fallback cards:', err?.message || err);
-        } finally {
-          setLoadingFeed(false);
+        // If backend returned cards, enrich them with styleMap
+        if (cards.length > 0) {
+          cards = cards.map(card => {
+            const style = styleMap[card.title];
+            return {
+              ...card,
+              gradient:   style?.grad      || card.gradient || ['#1d4ed8', '#1e3a8a'],
+              label:      card.label       || style?.label  || card.title,
+              labelColor: style?.labelColor || card.labelColor || '#ffffff',
+              subtitle:   card.subtitle?.includes('₦0')
+                ? getSubtitle(card.title, 0)
+                : card.subtitle || getSubtitle(card.title, 0),
+            };
+          });
+          setFeedCards(cards);
+          return;
         }
-      };
 
-      loadFeed();
-    }, [dispatch, user?.id]);
+        // No cards — build one from recommendations if available
+        if (data.recommendations?.primary_product) {
+          const rec = data.recommendations;
+          const product = rec.primary_product;
+          const style = styleMap[product] || { grad: ['#1d4ed8', '#1e3a8a'], label: 'Special Offer', labelColor: '#93c5fd' };
+          const builtCard = [{
+            id: `rec-${Date.now()}`,
+            label:      style.label,
+            labelColor: style.labelColor,
+            title:      product,
+            subtitle:   getSubtitle(product, rec.monthly_emi),
+            cta:        'APPLY NOW',
+            ctaRoute:   'loans',
+            gradient:   style.grad,
+            reasoning:  rec.reasoning || 'Based on your financial profile, we think this is a great fit for you.',
+          }];
+          console.log('[SmartFeed] Built card from recommendations:', product);
+          setFeedCards(builtCard);
+        }
 
-  // ── Poll for pending Sentinel transactions (from merchant checkout) ──
+      } catch (err) {
+        console.warn('Smart feed unavailable, using fallback cards:', err?.message || err);
+      } finally {
+        setLoadingFeed(false);
+      }
+    };
+
+    loadFeed();
+  }, [dispatch, user?.id]);
+
+  // ── Poll for pending Sentinel transactions ──
   useEffect(() => {
     const checkPending = () => {
       const raw = localStorage.getItem('sentinel_pending_txn');
       if (raw) {
         try {
           const data = JSON.parse(raw);
-          // Only set alert if we don't already have one being confirmed
           setSentinelAlert(prev => {
             if (prev?.transaction_id === data.transaction_id) return prev;
             return data;
           });
-          // Don't reset confirmStep if the user is actively in the confirmation flow
           setConfirmStep(prev => (prev === 'idle' || prev === 'success') ? 'idle' : prev);
         } catch { /* ignore */ }
       }
     };
-
     checkPending();
     const interval = setInterval(checkPending, 2000);
     const onStorage = (e) => { if (e.key === 'sentinel_pending_txn') checkPending(); };
@@ -207,39 +200,37 @@ const HomeScreen = () => {
   }, [showPopup, popupCard, dispatch]);
 
   const quickItems = [
-    { icon: Smartphone, label: "Airtime", route: "airtime" },
-    { icon: Wifi, label: "Data", route: "data" },
-    { icon: Gamepad2, label: "Betting", route: "betting" },
-    { icon: Zap, label: "Electricity", route: "bills" },
+    { icon: Smartphone, label: "Airtime",     route: "airtime" },
+    { icon: Wifi,       label: "Data",        route: "data" },
+    { icon: Gamepad2,   label: "Betting",     route: "betting" },
+    { icon: Zap,        label: "Electricity", route: "bills" },
   ];
 
-  // ── Biometric / password confirmation handler ─────────────────────
+  const approveTransaction = async (method, pwd) => {
+    try {
+      await api.confirmTransaction({
+        transaction_id: sentinelAlert.transaction_id,
+        password: pwd || 'biometric_verified'
+      });
+      setConfirmStep('success');
+      localStorage.removeItem('sentinel_pending_txn');
+      localStorage.setItem('sentinel_txn_result', JSON.stringify({
+        status: 'APPROVED',
+        transaction_id: sentinelAlert.transaction_id,
+        method,
+      }));
+      setTimeout(() => { setSentinelAlert(null); setConfirmStep('idle'); dispatch(fetchDashboard()); }, 3000);
+    } catch (err) {
+      setConfirmStep('password');
+      setConfirmError(err?.detail || 'Verification failed. Please enter password.');
+    }
+  };
+
   const handleConfirmTransaction = async () => {
     if (!sentinelAlert) return;
     setConfirmError('');
     setConfirmStep('scanning');
 
-    const approveTransaction = async () => {
-      try {
-        await api.confirmTransaction({
-          transaction_id: sentinelAlert.transaction_id,
-          password: user?.password || 'biometric_verified'
-        });
-        setConfirmStep('success');
-        localStorage.removeItem('sentinel_pending_txn');
-        localStorage.setItem('sentinel_txn_result', JSON.stringify({
-          status: 'APPROVED',
-          transaction_id: sentinelAlert.transaction_id,
-          method: 'biometric'
-        }));
-        setTimeout(() => { setSentinelAlert(null); setConfirmStep('idle'); dispatch(fetchDashboard()); }, 3000);
-      } catch (err) {
-        setConfirmStep('password');
-        setConfirmError(err?.detail || 'Verification failed. Please enter password.');
-      }
-    };
-
-    // Try Web Authentication API (biometric) first
     if (window.PublicKeyCredential && typeof PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable === 'function') {
       try {
         const available = await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
@@ -249,22 +240,14 @@ const HomeScreen = () => {
           window.crypto.getRandomValues(challenge);
 
           if (credentialIdBase64) {
-            // Trigger native biometric prompt using the specifically created local credential
             await navigator.credentials.get({
               publicKey: {
-                challenge,
-                timeout: 60000,
-                userVerification: 'required',
+                challenge, timeout: 60000, userVerification: 'required',
                 rpId: window.location.hostname,
-                allowCredentials: [{
-                  type: 'public-key',
-                  id: base64urlToBuffer(credentialIdBase64),
-                  transports: ['internal']
-                }],
+                allowCredentials: [{ type: 'public-key', id: base64urlToBuffer(credentialIdBase64), transports: ['internal'] }],
               }
             });
           } else {
-            // Create a credential to bind to the device's biometrics locally
             const userId = new Uint8Array(16);
             window.crypto.getRandomValues(userId);
             const cred = await navigator.credentials.create({
@@ -274,29 +257,20 @@ const HomeScreen = () => {
                 user: { id: userId, name: "user_sentinel", displayName: user?.name || "Sentinel User" },
                 pubKeyCredParams: [{ type: "public-key", alg: -7 }, { type: "public-key", alg: -257 }],
                 authenticatorSelection: { authenticatorAttachment: "platform", userVerification: "required" },
-                timeout: 60000,
-                attestation: "none"
+                timeout: 60000, attestation: "none"
               }
             });
             localStorage.setItem('sentinel_biometric_id', bufferToBase64url(cred.rawId));
           }
-          await approveTransaction();
+          await approveTransaction('biometric');
           return;
         }
       } catch (bioErr) {
-        if (bioErr.name === 'NotAllowedError') {
-          // User explicitly cancelled or failed native prompt
-          setConfirmStep('idle');
-          return;
-        }
-        console.warn('Native biometric failed, falling through to simulation:', bioErr);
+        if (bioErr.name === 'NotAllowedError') { setConfirmStep('idle'); return; }
+        console.warn('Native biometric failed:', bioErr);
       }
     }
-
-    // Fallback: no biometric available — visually simulate scanning then go to password entry
-    setTimeout(() => {
-      setConfirmStep('password');
-    }, 2000);
+    setTimeout(() => setConfirmStep('password'), 2000);
   };
 
   const handlePasswordConfirm = async () => {
@@ -304,18 +278,7 @@ const HomeScreen = () => {
     setConfirmStep('verifying');
     setConfirmError('');
     try {
-      await api.confirmTransaction({
-        transaction_id: sentinelAlert.transaction_id,
-        password: password
-      });
-      setConfirmStep('success');
-      localStorage.removeItem('sentinel_pending_txn');
-      localStorage.setItem('sentinel_txn_result', JSON.stringify({
-        status: 'APPROVED',
-        transaction_id: sentinelAlert.transaction_id,
-        method: 'password'
-      }));
-      setTimeout(() => { setSentinelAlert(null); setConfirmStep('idle'); setPassword(''); dispatch(fetchDashboard()); }, 3000);
+      await approveTransaction('password', password);
     } catch (err) {
       setConfirmStep('password');
       setConfirmError(err?.detail || 'Invalid password. Please try again.');
@@ -341,7 +304,6 @@ const HomeScreen = () => {
       {sentinelAlert && confirmStep !== 'success' && confirmStep !== 'rejected' && (
         <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm" style={{ animation: 'fadeUp 0.3s ease' }}>
           <div className="relative w-[min(92vw,380px)] max-h-[90dvh] flex flex-col bg-white rounded-[28px] shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
-            {/* Red top banner */}
             <div className="bg-gradient-to-r from-[#A01030] to-[#6B0A20] px-6 py-5 text-white shrink-0">
               <div className="flex items-center gap-3 mb-1">
                 <ShieldAlert size={24} />
@@ -351,7 +313,6 @@ const HomeScreen = () => {
             </div>
 
             <div className="p-6 space-y-4 overflow-y-auto">
-              {/* Transaction details */}
               <div className="space-y-3">
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-400 font-bold">Merchant</span>
@@ -367,7 +328,6 @@ const HomeScreen = () => {
                 </div>
               </div>
 
-              {/* AI Reasoning */}
               <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
                 <p className="text-[10px] font-black text-amber-600 uppercase tracking-wider mb-2">Sentinnel AI says:</p>
                 <p className="text-xs text-amber-900 leading-relaxed font-medium">
@@ -386,7 +346,6 @@ const HomeScreen = () => {
                 )}
               </div>
 
-              {/* Password entry (fallback) */}
               {confirmStep === 'password' && (
                 <div className="space-y-3">
                   <p className="text-xs font-bold text-gray-500">Enter your password to confirm:</p>
@@ -402,16 +361,12 @@ const HomeScreen = () => {
                   </div>
                   {confirmError && <p className="text-xs text-red-500 font-bold">{confirmError}</p>}
                   <button onClick={handlePasswordConfirm} className="w-full bg-[#A01030] text-white py-3.5 rounded-xl font-bold text-sm active:scale-95 transition-all mt-2">Confirm with Password</button>
-                  <button
-                    onClick={handleRejectTransaction}
-                    className="w-full flex items-center justify-center gap-2 bg-white text-gray-600 py-3.5 rounded-xl font-bold text-sm border border-gray-200 active:scale-95 transition-all"
-                  >
+                  <button onClick={handleRejectTransaction} className="w-full flex items-center justify-center gap-2 bg-white text-gray-600 py-3.5 rounded-xl font-bold text-sm border border-gray-200 active:scale-95 transition-all">
                     <XCircle size={18} /> Cancel
                   </button>
                 </div>
               )}
 
-              {/* Verifying generic state */}
               {confirmStep === 'verifying' && (
                 <div className="flex flex-col items-center py-4 gap-3">
                   <Loader2 size={28} className="text-[#A01030] animate-spin" />
@@ -419,7 +374,6 @@ const HomeScreen = () => {
                 </div>
               )}
 
-              {/* Scanning visual state (Biometric Simulation fallback) */}
               {confirmStep === 'scanning' && (
                 <div className="flex flex-col items-center py-6 gap-4">
                   <div className="relative flex items-center justify-center">
@@ -434,25 +388,15 @@ const HomeScreen = () => {
                 </div>
               )}
 
-              {/* Action buttons (initial state) */}
               {confirmStep === 'idle' && (
                 <div className="space-y-3">
-                  <button
-                    onClick={handleConfirmTransaction}
-                    className="w-full flex items-center justify-center gap-2.5 bg-[#A01030] text-white py-4 rounded-xl font-bold text-sm shadow-lg shadow-red-900/20 active:scale-95 transition-all"
-                  >
+                  <button onClick={handleConfirmTransaction} className="w-full flex items-center justify-center gap-2.5 bg-[#A01030] text-white py-4 rounded-xl font-bold text-sm shadow-lg shadow-red-900/20 active:scale-95 transition-all">
                     <Fingerprint size={20} /> Confirm with Biometric
                   </button>
-                  <button
-                    onClick={handleRejectTransaction}
-                    className="w-full flex items-center justify-center gap-2 bg-white text-gray-600 py-3.5 rounded-xl font-bold text-sm border border-gray-200 active:scale-95 transition-all"
-                  >
+                  <button onClick={handleRejectTransaction} className="w-full flex items-center justify-center gap-2 bg-white text-gray-600 py-3.5 rounded-xl font-bold text-sm border border-gray-200 active:scale-95 transition-all">
                     <XCircle size={18} /> Reject
                   </button>
-                  <button
-                    onClick={() => setConfirmStep('password')}
-                    className="w-full text-center text-xs text-gray-400 font-bold mt-2 hover:underline"
-                  >
+                  <button onClick={() => setConfirmStep('password')} className="w-full text-center text-xs text-gray-400 font-bold mt-2 hover:underline">
                     Use Password instead
                   </button>
                 </div>
@@ -488,7 +432,7 @@ const HomeScreen = () => {
         </div>
       )}
 
-      {/* ═══ TRAJECTORY POPUP (Welcome Offer) ══════════════════════════════ */}
+      {/* ═══ TRAJECTORY POPUP ══════════════════════════════════════════════ */}
       {showPopup && popupCard && !sentinelAlert && (
         <div
           className="fixed top-0 left-0 right-0 bottom-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm"
@@ -497,7 +441,7 @@ const HomeScreen = () => {
           <div
             className="relative text-white shadow-2xl border border-white/10"
             style={{
-              background: `linear-gradient(to bottom right, ${popupCard.gradient?.[0] || '#2F4F4F'}, ${popupCard.gradient?.[1] || '#1A2E2E'})`,
+              background: `linear-gradient(to bottom right, ${popupCard.gradient?.[0] || '#1d4ed8'}, ${popupCard.gradient?.[1] || '#1e3a8a'})`,
               width: "min(92vw, 360px)",
               borderRadius: "28px",
               padding: "clamp(20px, 4vw, 28px)"
@@ -524,14 +468,14 @@ const HomeScreen = () => {
                 <button
                   onClick={() => { dispatch(dismissWelcome()); navigate(popupCard.ctaRoute || '#'); }}
                   className="w-full bg-white text-xs font-extrabold py-3.5 rounded-full shadow-lg active:scale-95 hover:shadow-xl transition-all"
-                  style={{ color: popupCard.gradient?.[0] || '#2F4F4F' }}
+                  style={{ color: popupCard.gradient?.[0] || '#1d4ed8' }}
                 >
                   {popupCard.cta}
                 </button>
                 <button
                   type="button"
                   onClick={() => dispatch(dismissWelcome())}
-                  className="w-full text-white/50 text-[10px] font-bold uppercase tracking-widest hover:text-white active:text-white transition-colors py-1 cursor-pointer"
+                  className="w-full text-white/50 text-[10px] font-bold uppercase tracking-widest hover:text-white transition-colors py-1 cursor-pointer"
                 >
                   Cancel
                 </button>
@@ -541,7 +485,7 @@ const HomeScreen = () => {
         </div>
       )}
 
-      {/* New Header + Balance Area */}
+      {/* ═══ HEADER + BALANCE ══════════════════════════════════════════════ */}
       <div className="w-full bg-gradient-to-br from-[#800020] via-[#A01030] to-[#5a0a1e] text-white px-4 sm:px-6 xl:px-8 pt-8 pb-6 rounded-b-[32px] shadow-lg shadow-red-900/10 mb-6 relative z-20">
         <div className="flex justify-between items-center mb-6 fu fu1">
           <div className="flex items-center gap-3">
@@ -565,16 +509,14 @@ const HomeScreen = () => {
         </div>
 
         <div className="flex items-center gap-2 mb-4 fu fu2">
-          <span className="text-white/80 text-[12px] sm:text-[13px] font-medium">Tier {account?.tier} Savings Account | <span className="text-white font-bold">{account?.number}</span></span>
-          <button className="text-white hover:text-white/80 transition-colors">
-            <Copy size={16} />
-          </button>
+          <span className="text-white/80 text-[12px] sm:text-[13px] font-medium">
+            Tier {account?.tier} Savings Account | <span className="text-white font-bold">{account?.number}</span>
+          </span>
+          <button className="text-white hover:text-white/80 transition-colors"><Copy size={16} /></button>
         </div>
 
         <div className="bg-white/10 backdrop-blur-md border border-white/20 rounded-2xl p-5 relative fu fu3">
-          <div className="absolute top-0 right-0 bg-white text-green-700 text-[11px] font-bold px-3 py-1 rounded-bl-[14px] rounded-tr-[14px]">
-            Active
-          </div>
+          <div className="absolute top-0 right-0 bg-white text-green-700 text-[11px] font-bold px-3 py-1 rounded-bl-[14px] rounded-tr-[14px]">Active</div>
           <p className="text-white text-sm font-medium mb-1.5">Account Balance</p>
           <div className="flex items-center gap-2 mb-6">
             <h1 className="text-4xl font-extrabold tracking-tight">
@@ -584,7 +526,6 @@ const HomeScreen = () => {
               {showBal ? <EyeOff size={22} /> : <Eye size={22} />}
             </button>
           </div>
-
           <div className="grid grid-cols-2 gap-3 pt-2">
             <button onClick={() => navigate('/fund')} className="w-full flex items-center justify-center gap-2 py-3 bg-transparent border border-white/50 shadow-sm rounded-xl hover:bg-white/10 transition-colors font-semibold text-sm">
               <Plus size={18} /> Fund Account
@@ -598,26 +539,17 @@ const HomeScreen = () => {
 
       <div className="w-full px-4 sm:px-6 xl:px-8 py-2 pb-28 space-y-6">
 
-        {/* Send Action */}
+        {/* Send / Pay Bills / Cards */}
         <div className="fu fu3 grid grid-cols-3 gap-3 sm:gap-4 xl:gap-6 w-full">
-          <button
-            onClick={() => navigate('/send')}
-            className="w-full h-full min-h-[85px] md:min-h-[100px] bg-[#A01030] rounded-2xl md:rounded-3xl flex flex-col items-center justify-center gap-2 text-white shadow-xl shadow-red-900/20 active:scale-95 hover:scale-[1.03] transition-transform p-3"
-          >
+          <button onClick={() => navigate('/send')} className="w-full h-full min-h-[85px] md:min-h-[100px] bg-[#A01030] rounded-2xl md:rounded-3xl flex flex-col items-center justify-center gap-2 text-white shadow-xl shadow-red-900/20 active:scale-95 hover:scale-[1.03] transition-transform p-3">
             <Send className="w-6 h-6 md:w-8 md:h-8" />
             <span className="text-[11px] sm:text-xs md:text-sm font-bold truncate">Send</span>
           </button>
-          <button
-            onClick={() => navigate('/bills')}
-            className="w-full h-full min-h-[85px] md:min-h-[100px] bg-white rounded-2xl md:rounded-3xl flex flex-col items-center justify-center gap-2 text-[#A01030] shadow-sm border border-gray-100 active:scale-95 hover:scale-[1.03] transition-transform p-3"
-          >
+          <button onClick={() => navigate('/bills')} className="w-full h-full min-h-[85px] md:min-h-[100px] bg-white rounded-2xl md:rounded-3xl flex flex-col items-center justify-center gap-2 text-[#A01030] shadow-sm border border-gray-100 active:scale-95 hover:scale-[1.03] transition-transform p-3">
             <FileText className="w-6 h-6 md:w-8 md:h-8" />
             <span className="text-[11px] sm:text-xs md:text-sm font-bold truncate text-gray-700">Pay Bills</span>
           </button>
-          <button
-            onClick={() => navigate('#')}
-            className="w-full h-full min-h-[85px] md:min-h-[100px] bg-white rounded-2xl md:rounded-3xl flex flex-col items-center justify-center gap-2 text-[#A01030] shadow-sm border border-gray-100 active:scale-95 hover:scale-[1.03] transition-transform p-3"
-          >
+          <button onClick={() => navigate('#')} className="w-full h-full min-h-[85px] md:min-h-[100px] bg-white rounded-2xl md:rounded-3xl flex flex-col items-center justify-center gap-2 text-[#A01030] shadow-sm border border-gray-100 active:scale-95 hover:scale-[1.03] transition-transform p-3">
             <QrCode className="w-6 h-6 md:w-8 md:h-8" />
             <span className="text-[11px] sm:text-xs md:text-sm font-bold truncate text-gray-700">Cards</span>
           </button>
@@ -658,7 +590,7 @@ const HomeScreen = () => {
                   <div
                     key={`${card.id}-${i}`}
                     className="w-[240px] sm:w-[280px] xl:w-[300px] h-[145px] xl:h-[160px] rounded-[24px] sm:rounded-[28px] p-5 sm:p-6 text-white flex flex-col justify-between shrink-0 shadow-lg relative overflow-hidden"
-                    style={{ background: card.gradient ? `linear-gradient(to right, ${card.gradient[0]}, ${card.gradient[1]})` : '#333' }}
+                    style={{ background: `linear-gradient(135deg, ${card.gradient?.[0] || '#1d4ed8'}, ${card.gradient?.[1] || '#1e3a8a'})` }}
                   >
                     <div className="absolute right-0 top-0 w-32 h-32 bg-white/5 rounded-full blur-3xl -mr-10 -mt-10 pointer-events-none" />
                     <div>
@@ -670,7 +602,7 @@ const HomeScreen = () => {
                     <button
                       onClick={() => card.ctaRoute && navigate(card.ctaRoute)}
                       className="bg-white text-[10px] font-bold px-5 py-2.5 rounded-full w-fit hover:shadow-md active:scale-95 transition-all"
-                      style={{ color: card.gradient?.[0] || '#000' }}
+                      style={{ color: card.gradient?.[0] || '#1d4ed8' }}
                     >
                       {card.cta}
                     </button>
@@ -680,6 +612,7 @@ const HomeScreen = () => {
             )}
           </div>
         </div>
+
       </div>
     </div>
   );
