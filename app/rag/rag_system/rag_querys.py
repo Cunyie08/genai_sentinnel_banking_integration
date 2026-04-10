@@ -819,83 +819,137 @@ class RAGQueryEngine:
 
     async def validate_product_recommendation(
         self,
-        customer_data:        Dict[str, Any],
-        recommended_product:  str,
+        customer_data: Dict[str, Any],
+        recommended_product: str,
     ) -> Dict[str, Any]:
         """
         Validate whether a customer is eligible for a recommended product.
 
-        Uses LOAN_SIGNAL_SCORE_RANGES from policy_generator.py (single source of truth).
+        Hybrid Architecture:
+        - Primary: RAG-grounded policy validation
+        - Fallback: Deterministic score-based validation (fail-open)
 
-        Architecture (v2 — aligned to data_generator.py):
-            Product assignment is balanced across all 5 product classes
-            (600 customers each, 3000 total).  The Loan_signal_score is
-            PRE-ASSIGNED per product within a fixed range — it is NOT
-            computed from behavioral signals at runtime.  Eligibility is
-            determined by whether the Loan_signal_score meets the product's
-            floor threshold (the lower bound of its range).
-
-            Behavioral signals (salary_detected, uber_tracker,
-            monthly_inflow) are stored as context for explainability
-            but do NOT gate the recommendation.
-
-            Student Loan EXCEPTION: age is a HARD GATE (PRS-001 §4.2).
-            Customers outside the 18–35 band are NOT_ELIGIBLE for Student
-            Loan regardless of their Loan_signal_score. This mirrors the
-            hard gate in recommendation_engine.py to prevent split-brain
-            results where proactive recommendation and validation disagree.
-
+        Guarantees:
+        - System always returns a decision (no blocking)
+        - Student Loan age rule (18–35) is ALWAYS enforced
+        
         Args:
-            customer_data: Dict with customer financial attributes:
-                Loan_signal_score : float  — from transactions.csv (capital L)
-                monthly_inflow    : float  — cumulative credit amount
-                salary_detected   : bool   — proxy for salary payroll
-                age               : int    — from customers.csv
-            recommended_product: one of
-                "Car Loan" | "Personal Loan" | "Investment Plan" |
-                "Student Loan" | "Trust Fund"
+        customer_data: Dict with customer financial attributes:
+            Loan_signal_score : float  — from transactions.csv (capital L)
+            monthly_inflow    : float  — cumulative credit amount
+            salary_detected   : bool   — proxy for salary payroll
+            age               : int    — from customers.csv
+        recommended_product: one of
+            "Car Loan" | "Personal Loan" | "Investment Plan" |
+            "Student Loan" | "Trust Fund"
 
-        Returns:
-            Dict:
-              is_eligible      : bool
-              met_criteria     : list of passed criteria strings
-              unmet_criteria   : list of failed criteria strings
-              recommendation   : "APPROVED" | "NOT_ELIGIBLE" | "CANNOT_VALIDATE"
-              score_range      : (floor, ceiling) for the product
-              policy_basis     : RAG-grounded policy text
-              confidence       : retrieval confidence
+    Returns:
+        Dict:
+            is_eligible      : bool
+            met_criteria     : list of passed criteria strings
+            unmet_criteria   : list of failed criteria strings
+            recommendation   : "APPROVED" | "NOT_ELIGIBLE" | "CANNOT_VALIDATE"
+            score_range      : (floor, ceiling) for the product
+            policy_basis     : RAG-grounded policy text
+            confidence       : retrieval confidence
         """
+
+        # ── Step 1: Query policy via RAG ─────────────────────────────
         policy = await self.query(
-            question   = (
+            question=(
                 f"What are the eligibility criteria and minimum requirements "
                 f"for the {recommended_product} product?"
             ),
-            agent      = "Trajectory",
-            collection = "policies",
-            top_k      = 5,
+            agent="Trajectory",
+            collection="policies",
+            top_k=5,
         )
 
-        if not policy["grounded"]:
+        # ── Extract customer data ───────────────────────────────────
+        loan_score      = float(customer_data.get("Loan_signal_score", 0.0))
+        monthly_inflow  = float(customer_data.get("monthly_inflow", 0.0))
+        salary_detected = bool(customer_data.get("salary_detected", False))
+        age             = int(customer_data.get("age", 0))
+
+        # ── Score range lookup (single source of truth) ─────────────
+        score_range = LOAN_SIGNAL_SCORE_RANGES.get(recommended_product)
+
+        # ────────────────────────────────────────────────────────────
+        # FALLBACK MODE (RAG unavailable)
+        if not policy.get("grounded", False):
+
+            if score_range:
+                floor, ceiling = score_range
+
+                # ── Student Loan hard age gate (FULL enforcement) ──
+                if recommended_product == "Student Loan":
+                    if age > 35:
+                        return {
+                            "is_eligible":    False,
+                            "met_criteria":   [],
+                            "unmet_criteria": [
+                                f"Age {age} exceeds Student Loan maximum age of 35"
+                            ],
+                            "recommendation": "NOT_ELIGIBLE",
+                            "score_range":    score_range,
+                            "policy_basis":   "Score-based fallback (RAG unavailable)",
+                            "confidence":     0.75,
+                            "validation_mode": "FALLBACK",
+                        }
+                    elif age > 0 and age < 18:
+                        return {
+                            "is_eligible":    False,
+                            "met_criteria":   [],
+                            "unmet_criteria": [
+                                f"Age {age} below Student Loan minimum age of 18"
+                            ],
+                            "recommendation": "NOT_ELIGIBLE",
+                            "score_range":    score_range,
+                            "policy_basis":   "Score-based fallback (RAG unavailable)",
+                            "confidence":     0.75,
+                            "validation_mode": "FALLBACK",
+                        }
+
+                # ── Score-based decision ──
+                is_eligible = loan_score >= floor
+
+                return {
+                    "is_eligible":    is_eligible,
+                    "met_criteria":   [
+                        f"Loan_signal_score {loan_score:.2f} >= {floor:.2f} "
+                        f"{recommended_product} floor "
+                        f"(range {floor:.2f}-{ceiling:.2f})"
+                    ] if is_eligible else [],
+                    "unmet_criteria": [] if is_eligible else [
+                        f"Loan_signal_score {loan_score:.2f} below {floor:.2f} "
+                        f"{recommended_product} floor "
+                        f"(range {floor:.2f}-{ceiling:.2f})"
+                    ],
+                    "recommendation": "APPROVED" if is_eligible else "NOT_ELIGIBLE",
+                    "score_range":    score_range,
+                    "policy_basis":   "Score-based fallback (RAG unavailable)",
+                    "confidence":     0.75,
+                    "validation_mode": "FALLBACK",
+                }
+
+            # ── Unknown product (true last resort) ──
             return {
                 "is_eligible":    False,
                 "met_criteria":   [],
-                "unmet_criteria": ["No eligibility policy found in knowledge base"],
+                "unmet_criteria": [
+                    f"Unknown product '{recommended_product}'. "
+                    f"Valid products: {', '.join(PRODUCT_CLASSES)}"
+                ],
                 "recommendation": "CANNOT_VALIDATE",
                 "score_range":    None,
-                "policy_basis":   "",
+                "policy_basis":   "Fallback failed: unknown product",
                 "confidence":     0.0,
+                "validation_mode": "FALLBACK",
             }
 
-        # ── Extract customer data ─────────────────────────────────────────
-        # Primary eligibility signal: Loan_signal_score (capital L)
-        # This matches the field name in transactions.csv exactly.
-        loan_score      = float(customer_data.get("Loan_signal_score", 0.0))
-        monthly_inflow  = float(customer_data.get("monthly_inflow",    0.0))
-        salary_detected = bool( customer_data.get("salary_detected",   False))
-        age             = int(  customer_data.get("age",                0))
-
-        # ── Score range from policy constants ────────────────────────────
-        score_range = LOAN_SIGNAL_SCORE_RANGES.get(recommended_product)
+        # ────────────────────────────────────────────────────────────
+        #  RAG MODE (policy grounded)
+        # ────────────────────────────────────────────────────────────
 
         if score_range is None:
             return {
@@ -909,145 +963,70 @@ class RAGQueryEngine:
                 "score_range":    None,
                 "policy_basis":   policy.get("answer", "")[:400],
                 "confidence":     policy.get("confidence", 0.0),
+                "validation_mode": "RAG",
             }
 
         floor, ceiling = score_range
 
-        met: List[str]   = []
+        met: List[str] = []
         unmet: List[str] = []
 
-        # ── Per-product eligibility checks ────────────────────────────────
+        # ── Product-specific validation ─────────────────────────────
+
         if recommended_product == "Car Loan":
-            # Primary gate: Loan_signal_score >= floor (0.75)
             if loan_score >= floor:
-                met.append(
-                    f"Loan signal score {loan_score:.2f} >= {floor:.2f} "
-                    f"Car Loan floor threshold"
-                )
+                met.append(f"Loan signal score {loan_score:.2f} >= {floor:.2f}")
             else:
-                unmet.append(
-                    f"Loan signal score {loan_score:.2f} below {floor:.2f} "
-                    f"Car Loan floor (range {floor:.2f}-{ceiling:.2f})"
-                )
-            # Behavioral context (explainability — not a gate)
+                unmet.append(f"Loan signal score {loan_score:.2f} below {floor:.2f}")
+
             if salary_detected:
-                met.append("Salary inflow detected (supports repayment capacity)")
+                met.append("Salary inflow detected")
             if monthly_inflow >= 500_000:
-                met.append(
-                    f"Monthly inflow ₦{monthly_inflow:,.0f} "
-                    f">= ₦500,000 inflow signal"
-                )
+                met.append(f"Monthly inflow ₦{monthly_inflow:,.0f} ≥ ₦500,000")
 
         elif recommended_product == "Investment Plan":
-            # Primary gate: Loan_signal_score >= floor (0.70)
             if loan_score >= floor:
-                met.append(
-                    f"Loan signal score {loan_score:.2f} >= {floor:.2f} "
-                    f"Investment Plan floor threshold"
-                )
+                met.append(f"Loan signal score {loan_score:.2f} >= {floor:.2f}")
             else:
-                unmet.append(
-                    f"Loan signal score {loan_score:.2f} below {floor:.2f} "
-                    f"Investment Plan floor (range {floor:.2f}-{ceiling:.2f})"
-                )
-            # Behavioral context
+                unmet.append(f"Loan signal score {loan_score:.2f} below {floor:.2f}")
+
             if monthly_inflow >= 2_000_000:
-                met.append(
-                    f"Monthly inflow ₦{monthly_inflow:,.0f} "
-                    f">= ₦2,000,000 — high-value investment candidate"
-                )
-            elif monthly_inflow > 0:
-                met.append(
-                    f"Monthly inflow ₦{monthly_inflow:,.0f} on record"
-                )
+                met.append("High-value investment candidate")
 
         elif recommended_product == "Personal Loan":
-            # Primary gate: Loan_signal_score >= floor (0.70)
             if loan_score >= floor:
-                met.append(
-                    f"Loan signal score {loan_score:.2f} >= {floor:.2f} "
-                    f"Personal Loan floor threshold"
-                )
+                met.append(f"Loan signal score {loan_score:.2f} >= {floor:.2f}")
             else:
-                unmet.append(
-                    f"Loan signal score {loan_score:.2f} below {floor:.2f} "
-                    f"Personal Loan floor (range {floor:.2f}-{ceiling:.2f})"
-                )
-            # Behavioral context
+                unmet.append(f"Loan signal score {loan_score:.2f} below {floor:.2f}")
+
             if salary_detected:
-                met.append("Salary inflow detected (supports repayment capacity)")
+                met.append("Salary inflow detected")
             else:
-                met.append(
-                    "No salary pattern detected — recommend routing salary "
-                    "via Remita or Paystack to strengthen profile"
-                )
-            if monthly_inflow >= 300_000:
-                met.append(
-                    f"Monthly inflow ₦{monthly_inflow:,.0f} "
-                    f">= ₦300,000 minimum inflow signal"
-                )
+                met.append("No salary pattern detected")
 
         elif recommended_product == "Student Loan":
-            # Hard age gate (PRS-001 §4.2) — aligned with recommendation_engine.py.
-            # Must be checked BEFORE the score gate so the unmet_criteria message
-            # is clear: age disqualifies regardless of score.
+            # Full hard age enforcement
             if age > 35:
-                unmet.append(
-                    f"Age {age} exceeds Student Loan maximum age of 35 "
-                    f"(hard gate — ineligible regardless of Loan_signal_score)"
-                )
+                unmet.append(f"Age {age} exceeds Student Loan maximum age of 35")
             elif age > 0 and age < 18:
-                unmet.append(
-                    f"Age {age} below Student Loan minimum age of 18 "
-                    f"(hard gate)"
-                )
+                unmet.append(f"Age {age} below Student Loan minimum age of 18")
             else:
-                # Age is within the valid band — now check score
                 if loan_score >= floor:
-                    met.append(
-                        f"Loan signal score {loan_score:.2f} >= {floor:.2f} "
-                        f"Student Loan floor threshold"
-                    )
+                    met.append(f"Loan signal score {loan_score:.2f} >= {floor:.2f}")
                 else:
-                    unmet.append(
-                        f"Loan signal score {loan_score:.2f} below {floor:.2f} "
-                        f"Student Loan floor (range {floor:.2f}-{ceiling:.2f})"
-                    )
-                # Age context within valid band
-                if 18 <= age <= 25:
-                    met.append(
-                        f"Age {age} within Student Loan primary target band (18-25)"
-                    )
-                elif 26 <= age <= 35:
-                    met.append(
-                        f"Age {age} — within extended Student Loan eligibility (18-35). "
-                        f"Primary target band is 18-25 (solo_candidate accounts)."
-                    )
+                    unmet.append(f"Loan signal score {loan_score:.2f} below {floor:.2f}")
 
         elif recommended_product == "Trust Fund":
-            # Primary gate: Loan_signal_score >= floor (0.65)
             if loan_score >= floor:
-                met.append(
-                    f"Loan signal score {loan_score:.2f} >= {floor:.2f} "
-                    f"Trust Fund floor threshold"
-                )
+                met.append(f"Loan signal score {loan_score:.2f} >= {floor:.2f}")
             else:
-                unmet.append(
-                    f"Loan signal score {loan_score:.2f} below {floor:.2f} "
-                    f"Trust Fund floor (range {floor:.2f}-{ceiling:.2f})"
-                )
-            # Behavioral context — Trust Fund suits wealth-preservation profile
+                unmet.append(f"Loan signal score {loan_score:.2f} below {floor:.2f}")
+
             if monthly_inflow >= 1_000_000:
-                met.append(
-                    f"Monthly inflow ₦{monthly_inflow:,.0f} >= ₦1,000,000 "
-                    f"— high-net-worth indicator"
-                )
+                met.append("High-net-worth indicator")
 
         else:
-            unmet.append(
-                f"Unrecognised product '{recommended_product}'. "
-                f"Valid: {', '.join(PRODUCT_CLASSES)}"
-            )
+            unmet.append(f"Unrecognized product '{recommended_product}'")
 
         is_eligible = len(unmet) == 0
 
@@ -1059,8 +1038,8 @@ class RAGQueryEngine:
             "score_range":    score_range,
             "policy_basis":   policy.get("answer", "")[:400],
             "confidence":     policy.get("confidence", 0.0),
+            "validation_mode": "RAG",
         }
-
 
 # =============================================================================
 # Convenience Factory
