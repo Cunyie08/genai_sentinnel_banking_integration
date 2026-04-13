@@ -1,7 +1,7 @@
 import axios from 'axios';
 const MOCK_MODE    = false;
-// const API_BASE_URL = 'https://sentinnelbanking.com';
-const API_BASE_URL = 'http://127.0.0.1:8080';
+const API_BASE_URL = 'https://sentinnelbanking.com';
+// const API_BASE_URL = 'http://127.0.0.1:8080';
 // const API_BASE_URL = 'http://localhost:8080';
 
 const apiClient = axios.create({
