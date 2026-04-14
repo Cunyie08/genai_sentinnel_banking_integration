@@ -5,6 +5,7 @@ on:
     branches: [ master ]
     paths:
       - 'NF_sentinel/**'
+      - '.github/workflows/frontend-deploy.yml' # Now triggers if you edit this file
 
 jobs:
   deploy:
@@ -25,7 +26,6 @@ jobs:
           npm run build
 
       - name: Zip Dist Contents
-        # We go into the folder so the zip doesn't contain a nested 'dist' directory
         run: |
           cd NF_sentinel/dist
           zip -r ../../dist.zip .
@@ -46,13 +46,24 @@ jobs:
           username: ubuntu
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
+            # 0. Ensure unzip is installed on the server
+            sudo apt-get update && sudo apt-get install -y unzip
+
             # 1. Prepare directory
             sudo mkdir -p /var/www/sentinnel-banking-api/NF_sentinel/dist
             sudo chown ubuntu:ubuntu /var/www/sentinnel-banking-api/NF_sentinel/dist
             
             # 2. Clean old files and unzip new ones
             rm -rf /var/www/sentinnel-banking-api/NF_sentinel/dist/*
-            unzip -o /home/ubuntu/dist.zip -d /var/www/sentinnel-banking-api/NF_sentinel/dist/
+            
+            # Check if file exists before unzipping to avoid crash
+            if [ -f /home/ubuntu/dist.zip ]; then
+                unzip -o /home/ubuntu/dist.zip -d /var/www/sentinnel-banking-api/NF_sentinel/dist/
+                echo "Unzip successful"
+            else
+                echo "File /home/ubuntu/dist.zip not found!"
+                exit 1
+            fi
             
             # 3. Set permissions for Nginx and cleanup
             sudo chown -R www-data:www-data /var/www/sentinnel-banking-api/NF_sentinel/dist
