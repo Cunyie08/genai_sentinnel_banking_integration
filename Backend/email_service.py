@@ -1,6 +1,10 @@
+import asyncio
+import logging
 import os
 import resend
 from dotenv import load_dotenv
+
+logger = logging.getLogger(__name__)
 
 from Backend.email_templates import (
     get_otp_template,
@@ -60,11 +64,10 @@ async def send_department_routing_email(
 async def send_auth_email(to_email: str, subject: str, content: str):
     """
     Sends an authentication-related email using Resend.
+    Uses asyncio.to_thread so the blocking Resend SDK call does not stall the event loop.
     """
     if not resend.api_key:
-        print(f"\n[MOCK EMAIL SENT to {to_email}]")
-        print(f"Subject: {subject}")
-        print(f"Content: {content}\n")
+        logger.info("[MOCK EMAIL] subject=%s", subject)
         return True
 
     try:
@@ -74,9 +77,9 @@ async def send_auth_email(to_email: str, subject: str, content: str):
             "subject": subject,
             "html": content,
         }
-
-        email = resend.Emails.send(params)
+        # resend.Emails.send() is synchronous — run in thread pool to avoid blocking
+        email = await asyncio.to_thread(resend.Emails.send, params)
         return email
     except Exception as e:
-        print(f"Error sending email: {e}")
+        logger.error("Email send failed (%s): %s", type(e).__name__, e)
         return False

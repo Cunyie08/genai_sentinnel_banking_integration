@@ -39,26 +39,41 @@ router = APIRouter(prefix="/admin", tags=["Admin"])
 
 ADMIN_USERS_FILE = os.path.join(os.path.dirname(__file__), "admin_users.json")
 
+
+def _load_admin_users() -> list:
+    """Load admin users from JSON once at module import time."""
+    if not os.path.exists(ADMIN_USERS_FILE):
+        return []
+    try:
+        with open(ADMIN_USERS_FILE, "r") as f:
+            return json.load(f)
+    except Exception:
+        return []
+
+
+# Loaded once at startup — avoids a file read on every login/auth check
+_admin_users_cache: list = _load_admin_users()
+
+
 class MockAdminUser:
     def __init__(self, email):
         self.email = email
         self.customer_id = f"ADMIN_{email}"
         self.role = "admin"
 
+
 @router.post("/login")
 async def admin_login(form_data: OAuth2PasswordRequestForm = Depends()):
-    if not os.path.exists(ADMIN_USERS_FILE):
+    if not _admin_users_cache:
         raise HTTPException(status_code=500, detail="Admin credentials not configured")
-        
-    with open(ADMIN_USERS_FILE, "r") as f:
-        admins = json.load(f)
-        
-    for admin in admins:
+
+    for admin in _admin_users_cache:
         if admin["email"] == form_data.username and admin["password"] == form_data.password:
             access_token = create_access_token(data={"sub": admin["email"], "role": "admin"})
             return {"access_token": access_token, "token_type": "bearer"}
-            
+
     raise HTTPException(status_code=401, detail="Incorrect email or password")
+
 
 # ─── Guard: reject non-admin users ──────────────────────────
 def require_admin(token: HTTPAuthorizationCredentials = Security(oauth2_scheme)):
@@ -66,17 +81,14 @@ def require_admin(token: HTTPAuthorizationCredentials = Security(oauth2_scheme))
     payload = verify_access_token(token.credentials)
     if payload is None:
         raise HTTPException(status_code=401, detail="Invalid token")
-        
+
     email = payload.get("sub")
     if not email:
         raise HTTPException(status_code=401, detail="Token missing subject")
-        
-    if os.path.exists(ADMIN_USERS_FILE):
-        with open(ADMIN_USERS_FILE, "r") as f:
-            admins = json.load(f)
-            if any(a["email"] == email for a in admins):
-                return MockAdminUser(email)
-                
+
+    if any(a["email"] == email for a in _admin_users_cache):
+        return MockAdminUser(email)
+
     raise HTTPException(status_code=403, detail="Not authorized as admin")
 
 
@@ -149,27 +161,21 @@ async def get_user_transactions(
     admin=Depends(require_admin),
 ):
     """List transactions belonging to a user (via their accounts)."""
-    # Find the user's customer_id first
-    user_result = await db.execute(select(Customer).filter(Customer.customer_id == customer_id))
-    user_obj = user_result.scalars().first()
-    if not user_obj:
+    # Verify user exists (single lightweight query — only fetches customer_id)
+    user_check = await db.execute(
+        select(Customer.customer_id).filter(Customer.customer_id == customer_id)
+    )
+    cid = user_check.scalar_one_or_none()
+    if not cid:
         raise HTTPException(status_code=404, detail="User not found")
 
-    # Get all account IDs for this customer
-    acct_result = await db.execute(
-        select(Account.account_id).filter(Account.customer_id == user_obj.customer_id)
-    )
-    account_ids = [row[0] for row in acct_result.all()]
-
-    if not account_ids:
-        return {"total": 0, "transactions": []}
-
-    # Get transactions for those accounts
+    # Single query using a subquery for account IDs — replaces separate account lookup
+    acct_subq = select(Account.account_id).filter(Account.customer_id == cid).scalar_subquery()
     txn_result = await db.execute(
         select(Transaction)
         .filter(
-            (Transaction.sender_account_id.in_(account_ids))
-            | (Transaction.receiver_account_id.in_(account_ids))
+            (Transaction.sender_account_id.in_(acct_subq))
+            | (Transaction.receiver_account_id.in_(acct_subq))
         )
         .order_by(Transaction.transaction_timestamp.desc())
         .offset(skip)
