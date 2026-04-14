@@ -1,0 +1,52 @@
+name: Frontend Deploy
+
+on:
+  push:
+    branches: [ main ] # Or your specific branch name
+    paths:
+      - 'NF_sentinel/**' # Only runs if you change frontend files
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '20' # Use the version your project uses
+
+      - name: Install Dependencies & Build
+        run: |
+          cd NF_sentinel
+          npm install
+          npm run build
+
+      - name: Zip Dist folder
+        run: zip -r dist.zip NF_sentinel/dist
+
+      - name: Deploy to AWS via SSH
+        uses: appleboy/scp-action@master
+        with:
+          host: ${{ secrets.SERVER_IP }}
+          username: ubuntu
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          source: "dist.zip"
+          target: "/home/ubuntu/"
+
+      - name: Unpack on Server
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.SERVER_IP }}
+          username: ubuntu
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            sudo rm -rf /var/www/sentinnel-banking-api/NF_sentinel/dist/*
+            sudo unzip -o /home/ubuntu/dist.zip -d /home/ubuntu/temp_dist
+            sudo mv /home/ubuntu/temp_dist/NF_sentinel/dist/* /var/www/sentinnel-banking-api/NF_sentinel/dist/
+            sudo rm -rf /home/ubuntu/dist.zip /home/ubuntu/temp_dist
+            sudo chown -R www-data:www-data /var/www/sentinnel-banking-api/NF_sentinel/dist
+            sudo systemctl restart nginx
