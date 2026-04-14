@@ -2,7 +2,7 @@ name: Frontend Deploy
 
 on:
   push:
-    branches: [ main ] # Or your specific branch name
+    branches: [ master ] # Or your specific branch name
     paths:
       - 'NF_sentinel/**' # Only runs if you change frontend files
 
