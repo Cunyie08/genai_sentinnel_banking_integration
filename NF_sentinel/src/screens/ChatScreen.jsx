@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback, memo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useSelector } from 'react-redux';
 import {
@@ -10,6 +10,49 @@ import { api } from '../api/axiosConfig';
 
 // ─── Escalation steps after FAQ miss ──────────────────────────────────────────
 const ESC_STEPS = { IDLE: 0, ACCOUNT: 1, SENDING: 2, DONE: 3, ERROR: 4 };
+
+// ─── Memoized static message bubbles — only re-render when msg changes ────────
+const UserMessage = memo(({ msg }) => (
+  <div className="flex flex-col items-end">
+    <div className="max-w-[85%] bg-[#A01030] text-white p-4 rounded-[20px] rounded-tr-none shadow-md text-[14px] leading-relaxed font-medium">
+      {msg.text}
+    </div>
+    <span className="text-[10px] text-gray-400 mt-1 mr-1">{msg.time} • Read</span>
+  </div>
+));
+
+const AiTextMessage = memo(({ msg }) => (
+  <div className="flex flex-col">
+    <div className="flex items-center gap-2 mb-1">
+      <div className="w-5 h-5 bg-red-50 text-[#A01030] rounded-full flex items-center justify-center">
+        <Bot size={12} />
+      </div>
+      <span className="text-xs font-bold text-gray-400">AI Assistant</span>
+    </div>
+    <div className="bg-white p-4 rounded-[20px] rounded-tl-none shadow-sm border border-gray-100 max-w-[90%] text-[14px] font-medium text-gray-800 leading-relaxed">
+      {msg.text}
+    </div>
+    <span className="text-[10px] text-gray-400 mt-1">{msg.time}</span>
+  </div>
+));
+
+const RoutingResultMessage = memo(({ msg }) => (
+  <div className="flex flex-col">
+    <div className="flex items-center gap-2 mb-1">
+      <div className="w-5 h-5 bg-green-50 text-green-600 rounded-full flex items-center justify-center">
+        <CheckCircle size={12} />
+      </div>
+      <span className="text-xs font-bold text-gray-400">AI Assistant</span>
+    </div>
+    <div className="bg-white rounded-[20px] rounded-tl-none shadow-sm border border-gray-100 max-w-[90%] overflow-hidden">
+      <div className="bg-green-50 px-4 py-3 flex items-center gap-2">
+        <CheckCircle size={16} className="text-green-500" />
+        <span className="text-sm font-black text-green-700">Complaint Routed Successfully</span>
+      </div>
+    </div>
+    <span className="text-[10px] text-gray-400 mt-1">{msg.time}</span>
+  </div>
+));
 
 const ChatScreen = () => {
   const navigate   = useNavigate();
@@ -53,7 +96,7 @@ const ChatScreen = () => {
   const now = () => new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
   // ── FAQ send ───────────────────────────────────────────────────────────
-  const handleFaqSend = async (overrideQuery) => {
+  const handleFaqSend = useCallback(async (overrideQuery) => {
     const q = (overrideQuery || faqQuery).trim();
     if (!q) return;
     setFaqQuery('');
@@ -101,7 +144,7 @@ const ChatScreen = () => {
     } finally {
       setFaqLoading(false);
     }
-  };
+  }, [escQuery]);  // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Escalation: submit complaint ─────────────────────────────────────
   const handleEscalateSubmit = async (accountNumber, accountObj) => {
@@ -159,16 +202,9 @@ const ChatScreen = () => {
 
   // ── Render a message bubble ───────────────────────────────────────────
   const renderMessage = (msg) => {
-    // User bubble
+    // User bubble — memoized, skips re-render if msg unchanged
     if (msg.sender === 'user') {
-      return (
-        <div key={msg.id} className="flex flex-col items-end">
-          <div className="max-w-[85%] bg-[#A01030] text-white p-4 rounded-[20px] rounded-tr-none shadow-md text-[14px] leading-relaxed font-medium">
-            {msg.text}
-          </div>
-          <span className="text-[10px] text-gray-400 mt-1 mr-1">{msg.time} • Read</span>
-        </div>
-      );
+      return <UserMessage key={msg.id} msg={msg} />;
     }
 
     // AI greeting with options
@@ -243,43 +279,13 @@ const ChatScreen = () => {
       );
     }
 
-    // Routing result after complaint submission
+    // Routing result — memoized
     if (msg.type === 'routing-result' && msg.result) {
-      const r = msg.result;
-      return (
-        <div key={msg.id} className="flex flex-col">
-          <div className="flex items-center gap-2 mb-1">
-            <div className="w-5 h-5 bg-green-50 text-green-600 rounded-full flex items-center justify-center">
-              <CheckCircle size={12} />
-            </div>
-            <span className="text-xs font-bold text-gray-400">AI Assistant</span>
-          </div>
-          <div className="bg-white rounded-[20px] rounded-tl-none shadow-sm border border-gray-100 max-w-[90%] overflow-hidden">
-            <div className="bg-green-50 px-4 py-3 flex items-center gap-2">
-              <CheckCircle size={16} className="text-green-500" />
-              <span className="text-sm font-black text-green-700">Complaint Routed Successfully</span>
-            </div>
-          </div>
-          <span className="text-[10px] text-gray-400 mt-1">{msg.time}</span>
-        </div>
-      );
+      return <RoutingResultMessage key={msg.id} msg={msg} />;
     }
 
-    // Normal AI text bubble
-    return (
-      <div key={msg.id} className="flex flex-col">
-        <div className="flex items-center gap-2 mb-1">
-          <div className="w-5 h-5 bg-red-50 text-[#A01030] rounded-full flex items-center justify-center">
-            <Bot size={12} />
-          </div>
-          <span className="text-xs font-bold text-gray-400">AI Assistant</span>
-        </div>
-        <div className="bg-white p-4 rounded-[20px] rounded-tl-none shadow-sm border border-gray-100 max-w-[90%] text-[14px] font-medium text-gray-800 leading-relaxed">
-          {msg.text}
-        </div>
-        <span className="text-[10px] text-gray-400 mt-1">{msg.time}</span>
-      </div>
-    );
+    // Normal AI text bubble — memoized
+    return <AiTextMessage key={msg.id} msg={msg} />;
   };
 
   // ── Account selector for escalation ───────────────────────────────────

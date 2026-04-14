@@ -1,10 +1,13 @@
 #Libraries
+import asyncio
+import aiofiles
+import io
 import uvicorn
 from contextlib import asynccontextmanager
 from fastapi import Depends, FastAPI, APIRouter, HTTPException, status, Body, Request
 from fastapi import BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Dict, Any, List, Optional
 import csv
 from pathlib import Path
@@ -69,13 +72,16 @@ from Backend.auth import verify_password
 # Module-level cache for FAQ semantic search (lazy-loaded on first use)
 _faq_embedding_cache: dict = {"model": None, "embeddings": None}
 
+# Module-level cache for FAQ text content (loaded once at startup)
+_faq_content: str = ""
+
 
 class ComplaintQuery(BaseModel):
-    account_number: str
-    complaint_channel: str
-    complaint_text: str
-    linked_transaction_id: Optional[str] = None
-    linked_reference: Optional[str] = None
+    account_number: str = Field(..., min_length=1, max_length=20)
+    complaint_channel: str = Field(..., min_length=1, max_length=50)
+    complaint_text: str = Field(..., min_length=10, max_length=2000)
+    linked_transaction_id: Optional[str] = Field(None, max_length=50)
+    linked_reference: Optional[str] = Field(None, max_length=100)
 
 
 logger = logging.getLogger(__name__)
@@ -84,13 +90,23 @@ orchestrator = Orchestrator()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global orchestrator
-    print("Initializing Orchestrator globally...")
+    global orchestrator, _faq_content
+    logger.info("Initializing Orchestrator globally...")
     await orchestrator.initialize()
-    print("Orchestrator Initialization complete.")
+
+    # Pre-load FAQ content into memory so chat requests don't hit disk
+    faq_path = Path(__file__).parent.parent / "app" / "rag" / "knowledge_base" / "faqs" / "FAQ-001.txt"
+    if faq_path.exists():
+        with open(faq_path, "r", encoding="utf-8") as f:
+            _faq_content = f.read()
+        logger.info("FAQ content loaded into cache.")
+    else:
+        logger.warning("FAQ file not found at startup — FAQ cache is empty.")
+
+    logger.info("Orchestrator initialization complete.")
     yield
 
-    print("Shutting down: Disposing database engine...")
+    logger.info("Shutting down: Disposing database engine...")
     await engine.dispose()
 
 
@@ -108,8 +124,8 @@ app.add_middleware(
         "https://www.sentinnelbanking.com"
     ],
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PATCH", "DELETE"],
+    allow_headers=["Content-Type", "Authorization"],
 )
 
 
@@ -130,16 +146,15 @@ profile_router = APIRouter(tags=["User Profile"])
 async def get_me(
     current_user: Customer = Depends(get_current_user), db: AsyncSession = Depends(get_db)
 ):
-    # Fetch customer and account details
-    stmt = select(Customer).filter(Customer.customer_id == current_user.customer_id)
+    # Fetch customer and accounts in a single query using selectinload
+    stmt = (
+        select(Customer)
+        .options(selectinload(Customer.accounts))
+        .filter(Customer.customer_id == current_user.customer_id)
+    )
     result = await db.execute(stmt)
     customer = result.scalars().first()
-
-    stmt_accounts = select(Account).filter(
-        Account.customer_id == current_user.customer_id
-    )
-    result_accounts = await db.execute(stmt_accounts)
-    accounts = result_accounts.scalars().all()
+    accounts = customer.accounts if customer else []
 
     account_list = []
     for acc in accounts:
@@ -379,112 +394,96 @@ app.include_router(webhook_router)
 
 
 async def process_complaint_routing(complaint_id: str, complaint_text: str):
-    """Background task to route complaints using the AI Agent."""
-    async with SessionLocal() as db:
+    """Background task to route complaints. Retries up to 3 times with exponential backoff."""
+    max_retries = 3
+    for attempt in range(1, max_retries + 1):
         try:
-            # Initialize required components
-            # dataset_loader = DatasetLoader()  
-            # await dataset_loader.load()
-            # repo = BankRepository(dataset_loader)
-            # rag_engine = await create_engine()
-            complaint_request = {
-            "type": "complaint",
-            "department": "complaint",
-            "complaint_id": complaint_id,
-            "agent": "DispatcherAgent" 
-        }
-            result1 = await orchestrator.handle_request(complaint_request)
-            print("\n=== DISPATCHER OUTPUT ===")
-            print(result1)
-
-            # openai_client = (
-            #     AsyncOpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
-            # )
-            # openai_llm = LLMClient(
-            #     client=openai_client,
-            #     model_name="gpt-4o",
-            #     response_schema=RoutingResponse,
-            # )
-            # gemini_llm = LLMClient(
-            #     client=genai.Client(api_key=GEMINI_API_KEY),
-            #     model_name="gemini-2.0-flash",
-            #     response_schema=RoutingResponse,
-            # )
-
-            # agent = DispatcherAgent(
-            #     repo=repo,
-            #     rag_engine=rag_engine,
-            #     openai_llm=openai_llm,
-            #     gemini_llm=gemini_llm,
-            # )
-            # routing_result = await agent.run(payload={"complaint_id": complaint_id})
-
-            stmt = select(Complaint).filter(Complaint.complaint_id == complaint_id)
-            result = await db.execute(stmt)
-            complaint = result.scalars().first()
-
-            try:
-                # Dynamically filter values to only include defined column names
-                valid_columns = {c.name for c in ComplaintRoutingDecision.__table__.columns}
-                filtered_result = {k: v for k, v in result1.items() if k in valid_columns}
-
-                decision_record = ComplaintRoutingDecision(**filtered_result)
-                db.add(decision_record)
-            except Exception as saving_issue:
-                print(f"Failed to save ComplaintRoutingDecision: {saving_issue}")
-
-            if complaint:
-                complaint.department_code = result1.get("department_code")
-                complaint.department_name = result1.get("department_name")
-                complaint.priority_level = result1.get("priority_level")
-                complaint.sentiment = result1.get("sentiment")
-
-                await db.commit()
-                print(
-                    f"Successfully routed complaint {complaint_id} to {complaint.department_name}"
-                )
-
-                user_stmt = select(Customer).filter(
-                    Customer.customer_id == complaint.customer_id
-                )
-                user_result = await db.execute(user_stmt)
-                user = user_result.scalars().first()
-
-                # if user:
-                #     print(f"Sending auto-reply to {user.email}...")
-                #     await send_complaint_confirmation_email(
-                #         to_email=user.email,
-                #         complaint_id=complaint_id,
-                #         department=complaint.department_name,
-                #         priority=complaint.priority_level,
-                #     )
-
-                department_emails = {
-                    "TSU": "jofesdavid@gmail.com",
-                    "COC": "dekpo231998@gmail.com",
-                    "FRM": "ekpodavid120@gmail.com",
-                    "DCS": "oshoridwanullah@gmail.com",
-                    "AOD": "dekpo255@stu.ui.edu.ng",
-                    "CLS": "businesskaoshi@gmail.com"
+            async with SessionLocal() as db:
+                complaint_request = {
+                    "type": "complaint",
+                    "department": "complaint",
+                    "complaint_id": complaint_id,
+                    "agent": "DispatcherAgent",
                 }
-                
-                dept_code = complaint.department_code or ""
-                target_email = department_emails.get(dept_code, "support@sentinelbank.com")
+                result1 = await orchestrator.handle_request(complaint_request)
+                logger.info("Dispatcher output received for complaint %s", complaint_id)
+                logger.debug("Dispatcher result: %s", result1)
 
-                await send_department_routing_email(
-                    to_email=target_email,
-                    complaint_id=complaint_id,
-                    complaint_text=complaint_text,
-                    department=complaint.department_name or "General Support",
-                    priority=complaint.priority_level or "Low"
-                )
-            return result1
+                stmt = select(Complaint).filter(Complaint.complaint_id == complaint_id)
+                result = await db.execute(stmt)
+                complaint = result.scalars().first()
+
+                try:
+                    # Dynamically filter values to only include defined column names
+                    valid_columns = {c.name for c in ComplaintRoutingDecision.__table__.columns}
+                    filtered_result = {k: v for k, v in result1.items() if k in valid_columns}
+                    decision_record = ComplaintRoutingDecision(**filtered_result)
+                    db.add(decision_record)
+                except Exception as saving_issue:
+                    logger.warning(
+                        "Failed to save ComplaintRoutingDecision for %s: %s",
+                        complaint_id, type(saving_issue).__name__
+                    )
+
+                if complaint:
+                    complaint.department_code = result1.get("department_code")
+                    complaint.department_name = result1.get("department_name")
+                    complaint.priority_level = result1.get("priority_level")
+                    complaint.sentiment = result1.get("sentiment")
+
+                    await db.commit()
+                    logger.info(
+                        "Complaint %s routed to %s", complaint_id, complaint.department_name
+                    )
+
+                    department_emails = {
+                        "TSU": "jofesdavid@gmail.com",
+                        "COC": "dekpo231998@gmail.com",
+                        "FRM": "ekpodavid120@gmail.com",
+                        "DCS": "oshoridwanullah@gmail.com",
+                        "AOD": "dekpo255@stu.ui.edu.ng",
+                        "CLS": "businesskaoshi@gmail.com",
+                    }
+
+                    dept_code = complaint.department_code or ""
+                    target_email = department_emails.get(dept_code, "support@sentinelbank.com")
+
+                    await send_department_routing_email(
+                        to_email=target_email,
+                        complaint_id=complaint_id,
+                        complaint_text=complaint_text,
+                        department=complaint.department_name or "General Support",
+                        priority=complaint.priority_level or "Low",
+                    )
+                return result1  # success — exit retry loop
 
         except Exception as e:
-            print(f"CRITICAL AI ROUTING FAILURE for {complaint_id}: {e}")
+            logger.error(
+                "Routing attempt %d/%d failed for complaint %s: %s: %s",
+                attempt, max_retries, complaint_id, type(e).__name__, e
+            )
+            if attempt < max_retries:
+                await asyncio.sleep(2 ** attempt)  # 2s then 4s backoff
+
+    # All retries exhausted — mark complaint for manual review
+    logger.critical(
+        "All %d routing attempts exhausted for complaint %s", max_retries, complaint_id
+    )
+    try:
+        async with SessionLocal() as db_fallback:
+            stmt = select(Complaint).filter(Complaint.complaint_id == complaint_id)
+            result = await db_fallback.execute(stmt)
+            complaint = result.scalars().first()
+            if complaint:
+                complaint.department_name = "Manual Review Required"
+                await db_fallback.commit()
+    except Exception as e:
+        logger.critical(
+            "Could not set fallback status for complaint %s: %s", complaint_id, type(e).__name__
+        )
 
 class AIChatRequest(BaseModel):
-    user_prompt: str
+    user_prompt: str = Field(..., min_length=1, max_length=1000)
 
 class IntentResponse(BaseModel):
     intent: str
@@ -616,17 +615,13 @@ async def ai_chat(
                 bot_text = "I don't have a specific product recommendation for you right now, but check back soon as your profile grows!"
 
         else:
-            # General query handling
-            faq_path = Path(__file__).parent.parent / "app" / "rag" / "knowledge_base" / "faqs" / "FAQ-001.txt"
-            faq_content = ""
-            if faq_path.exists():
-                with open(faq_path, "r", encoding="utf-8") as f:
-                    faq_content = f.read()
+            # General query handling — use pre-loaded FAQ cache (loaded at startup)
+            faq_content = _faq_content
 
             prompt = f"""
             You are 'Sentinel AI', the internal banking chatbot for Sentinel Bank.
-            User: {user.email} (Customer ID: {user.customer_id})
-            
+            User: [Authenticated Customer]
+
             Here are the officially approved FAQs:
             ---
             {faq_content}
@@ -687,13 +682,13 @@ async def ai_chat(
         raise e
     except Exception as e:
         import traceback
-        logger.error(f"Chat error: {e}")
+        logger.error("Chat error for user [redacted]: %s", type(e).__name__)
         logger.error(traceback.format_exc())
         return {
             "id": uuid.uuid4().hex,
             "sender": "ai",
             "type": "text",
-            "text": f"Error: {str(e)}",
+            "text": "I encountered an issue processing your request. Please try again.",
             "time": datetime.now().strftime("%I:%M %p"),
         }
 
@@ -750,12 +745,15 @@ async def make_complaint(
         )
 
         return {
-            "message": "Customer complaint submitted sucessfully",
+            "message": "Customer complaint submitted successfully",
             "complaint_id": new_complaint_id
         }
+    except HTTPException:
+        raise
     except Exception as e:
         await db.rollback()
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error("Complaint submission error: %s", type(e).__name__)
+        raise HTTPException(status_code=500, detail="Failed to submit complaint. Please try again.")
 
 
 @app.post("/customers", tags=["DB_Operations"], status_code=status.HTTP_201_CREATED)
@@ -817,54 +815,56 @@ async def create_customer(
         await db.refresh(new_customer)
         await db.refresh(new_account)
 
-        # Append to customers.csv so agents can find it
+        # Append to customers.csv so agents can find it (async file write — non-blocking)
         csv_path = Path(__file__).parent.parent / "customers.csv"
         file_exists = csv_path.exists()
-        with open(csv_path, mode="a", newline="", encoding="utf-8") as file:
-            writer = csv.writer(file)
-            if not file_exists:
-                writer.writerow(
-                    [
-                        "customer_id",
-                        "first_name",
-                        "last_name",
-                        "full_name",
-                        "gender",
-                        "age",
-                        "date_of_birth",
-                        "bvn",
-                        "nin",
-                        "phone_number",
-                        "telco_provider",
-                        "email",
-                        "state_of_origin",
-                        "residential_state",
-                        "banking_branch",
-                        "solo_candidate",
-                        "onboarding_date",
-                    ]
-                )
+        csv_buffer = io.StringIO()
+        writer = csv.writer(csv_buffer)
+        if not file_exists:
             writer.writerow(
                 [
-                    new_customer.customer_id,
-                    new_customer.first_name,
-                    new_customer.last_name,
-                    new_customer.full_name,
-                    new_customer.gender,
-                    new_customer.age,
-                    new_customer.date_of_birth,
-                    new_customer.bvn,
-                    new_customer.nin,
-                    new_customer.phone_number,
-                    new_customer.telco_provider,
-                    new_customer.email,
-                    new_customer.state_of_origin,
-                    new_customer.residential_state,
-                    new_customer.banking_branch,
-                    True,  # Default solo_candidate to True
-                    new_customer.onboarding_date,
+                    "customer_id",
+                    "first_name",
+                    "last_name",
+                    "full_name",
+                    "gender",
+                    "age",
+                    "date_of_birth",
+                    "bvn",
+                    "nin",
+                    "phone_number",
+                    "telco_provider",
+                    "email",
+                    "state_of_origin",
+                    "residential_state",
+                    "banking_branch",
+                    "solo_candidate",
+                    "onboarding_date",
                 ]
             )
+        writer.writerow(
+            [
+                new_customer.customer_id,
+                new_customer.first_name,
+                new_customer.last_name,
+                new_customer.full_name,
+                new_customer.gender,
+                new_customer.age,
+                new_customer.date_of_birth,
+                new_customer.bvn,
+                new_customer.nin,
+                new_customer.phone_number,
+                new_customer.telco_provider,
+                new_customer.email,
+                new_customer.state_of_origin,
+                new_customer.residential_state,
+                new_customer.banking_branch,
+                True,  # Default solo_candidate to True
+                new_customer.onboarding_date,
+            ]
+        )
+        async with aiofiles.open(str(csv_path), mode="a", encoding="utf-8") as file:
+            await file.write(csv_buffer.getvalue())
 
         return {
             "message": "Customer and Bank Account created successfully",
@@ -872,9 +872,12 @@ async def create_customer(
             "account_number": new_account.account_number,
             "starting_balance": new_account.current_balance,
         }
+    except HTTPException:
+        raise
     except Exception as e:
         await db.rollback()
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error("Customer creation error: %s", type(e).__name__)
+        raise HTTPException(status_code=500, detail="Account creation failed. Please try again.")
 
 
 @app.post("/make_transaction", tags=["Agents"])
@@ -1840,5 +1843,5 @@ async def get_faqs(prompt: Optional[str] = None):
             "searched_for": prompt,
         }
 if __name__ == "__main__":
-    uvicorn.run(app, host='0.0.0.0', port=8080)
-    # uvicorn.run(app, host='127.0.0.1', port=8080)
+    # uvicorn.run(app, host='0.0.0.0', port=8080)
+    uvicorn.run(app, host='127.0.0.1', port=8080)
