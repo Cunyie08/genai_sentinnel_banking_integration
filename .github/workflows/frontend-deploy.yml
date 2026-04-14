@@ -23,12 +23,12 @@ jobs:
           cd NF_sentinel
           npm install
           npm run build
-          # Verify the build worked before zipping
-          ls -R dist 
 
-      - name: Zip Dist Folder
-        # We zip the contents so we don't get nested 'dist/dist' folders
-        run: cd NF_sentinel/dist && zip -r ../../dist.zip .
+      - name: Zip Dist Contents
+        # We go into the folder so the zip doesn't contain a nested 'dist' directory
+        run: |
+          cd NF_sentinel/dist
+          zip -r ../../dist.zip .
 
       - name: Copy Zip to EC2
         uses: appleboy/scp-action@v0.1.4
@@ -46,20 +46,17 @@ jobs:
           username: ubuntu
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
-            # 1. Ensure the destination directory exists and we can write to it
+            # 1. Prepare directory
             sudo mkdir -p /var/www/sentinnel-banking-api/NF_sentinel/dist
             sudo chown ubuntu:ubuntu /var/www/sentinnel-banking-api/NF_sentinel/dist
             
-            # 2. Clean old files
+            # 2. Clean old files and unzip new ones
             rm -rf /var/www/sentinnel-banking-api/NF_sentinel/dist/*
-            
-            # 3. Unzip directly into the final folder
             unzip -o /home/ubuntu/dist.zip -d /var/www/sentinnel-banking-api/NF_sentinel/dist/
             
-            # 4. Finalize permissions for Nginx
+            # 3. Set permissions for Nginx and cleanup
             sudo chown -R www-data:www-data /var/www/sentinnel-banking-api/NF_sentinel/dist
             rm /home/ubuntu/dist.zip
             
-            # 5. Restart Nginx to be safe
             sudo systemctl restart nginx
-            echo "✅ Frontend is live!"
+            echo "✅ Frontend updated successfully!"
