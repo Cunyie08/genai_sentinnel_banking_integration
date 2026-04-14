@@ -2,9 +2,10 @@ name: Frontend Deploy
 
 on:
   push:
-    branches: [ master ] # Or your specific branch name
+    branches: [ master ]
     paths:
-      - 'NF_sentinel/**' # Only runs if you change frontend files
+      - 'NF_sentinel/**' # Run only if files in the frontend folder change
+      - '.github/workflows/frontend-deploy.yml' # Run if the workflow itself is edited
 
 jobs:
   deploy:
