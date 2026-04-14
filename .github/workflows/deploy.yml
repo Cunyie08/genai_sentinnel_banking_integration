@@ -32,27 +32,26 @@ jobs:
           script: |
             cd /var/www/sentinnel-banking-api
             
-            # 1. Ensure the directory exists and recreate the .env
+            # 1. Recreate .env in the folder where your code looks for it
             mkdir -p app/utils
             echo "DATABASE_URL=${{ secrets.DATABASE_URL }}" > app/utils/.env
             echo "AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY_ID }}" >> app/utils/.env
             echo "AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }}" >> app/utils/.env
             echo "S3_BUCKET_NAME=${{ secrets.S3_BUCKET_NAME }}" >> app/utils/.env
             
-            # 2. Update dependencies
+            # 2. Update Virtual Environment
             source venv/bin/activate
             pip install --upgrade pip
             pip install -r requirements.txt
             
-            # 3. Restart the service
+            # 3. Restart and Verify
             sudo systemctl daemon-reload
             sudo systemctl restart sentinnel-api
             
-            # 4. Verification
             sleep 3
             if ! sudo systemctl is-active --quiet sentinnel-api; then
-              echo "❌ ERROR: sentinnel-api failed to start."
+              echo "❌ Backend failed to start. Logs:"
               sudo journalctl -u sentinnel-api -n 20 --no-pager
               exit 1
             fi
-            echo "✅ Deployment Successful!"
+            echo "✅ Backend is live!"
