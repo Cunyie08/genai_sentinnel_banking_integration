@@ -3,7 +3,7 @@ name: Deploy Sentinel API to EC2
 on:
   push:
     branches:
-      - master
+      - master  # Change this to 'main' if your branch is named main
 
 jobs:
   deploy:
@@ -32,15 +32,32 @@ jobs:
           script: |
             cd /var/www/sentinnel-banking-api
             
-            # 1. Create the .env file with your AWS Secrets
-            echo "AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY_ID }}" > .env
-            echo "AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }}" >> .env
-            echo "S3_BUCKET_NAME=${{ secrets.S3_BUCKET_NAME }}" >> .env
+            # 1. Create the .env file in the expected directory
+            mkdir -p app/utils
+            echo "AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY_ID }}" > app/utils/.env
+            echo "AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }}" >> app/utils/.env
+            echo "S3_BUCKET_NAME=${{ secrets.S3_BUCKET_NAME }}" >> app/utils/.env
+            echo "DATABASE_URL=${{ secrets.DATABASE_URL }}" >> app/utils/.env
             
-            # 2. Set up Python Virtual Environment and install dependencies
-            python3 -m venv venv
+            # 2. Update dependencies in the virtual environment
+            # We assume 'venv' already exists from our manual setup
             source venv/bin/activate
+            pip install --upgrade pip
             pip install -r requirements.txt
             
-            # 3. Restart the FastAPI application (assuming a systemd service)
-            sudo systemctl restart sentinnel-banking-api
+            # 3. Reload systemd and restart the service
+            # We use 'sentinnel-api' as we configured on the server
+            sudo systemctl daemon-reload
+            sudo systemctl restart sentinnel-api
+            
+            # 4. Health Check: Verify if the service is actually running
+            echo "Checking service health..."
+            sleep 3
+            if ! sudo systemctl is-active --quiet sentinnel-api; then
+              echo "❌ ERROR: sentinnel-api failed to start."
+              echo "Printing last 30 lines of error logs:"
+              sudo journalctl -u sentinnel-api -n 30 --no-pager
+              exit 1
+            fi
+            
+            echo "✅ Deployment Successful! Backend is live."
