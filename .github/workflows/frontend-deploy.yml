@@ -4,50 +4,62 @@ on:
   push:
     branches: [ master ]
     paths:
-      - 'NF_sentinel/**' # Run only if files in the frontend folder change
-      - '.github/workflows/frontend-deploy.yml' # Run if the workflow itself is edited
+      - 'NF_sentinel/**'
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Setup Node.js
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
-          node-version: '20' # Use the version your project uses
+          node-version: '20'
 
-      - name: Install Dependencies & Build
+      - name: Install & Build
         run: |
           cd NF_sentinel
           npm install
           npm run build
+          # Verify the build worked before zipping
+          ls -R dist 
 
-      - name: Zip Dist folder
-        run: zip -r dist.zip NF_sentinel/dist
+      - name: Zip Dist Folder
+        # We zip the contents so we don't get nested 'dist/dist' folders
+        run: cd NF_sentinel/dist && zip -r ../../dist.zip .
 
-      - name: Deploy to AWS via SSH
-        uses: appleboy/scp-action@master
+      - name: Copy Zip to EC2
+        uses: appleboy/scp-action@v0.1.4
         with:
-          host: ${{ secrets.SERVER_IP }}
+          host: ${{ secrets.EC2_HOST }}
           username: ubuntu
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          key: ${{ secrets.EC2_SSH_KEY }}
           source: "dist.zip"
           target: "/home/ubuntu/"
 
-      - name: Unpack on Server
-        uses: appleboy/ssh-action@master
+      - name: Deploy on Server
+        uses: appleboy/ssh-action@v1.0.3
         with:
-          host: ${{ secrets.SERVER_IP }}
+          host: ${{ secrets.EC2_HOST }}
           username: ubuntu
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          key: ${{ secrets.EC2_SSH_KEY }}
           script: |
-            sudo rm -rf /var/www/sentinnel-banking-api/NF_sentinel/dist/*
-            sudo unzip -o /home/ubuntu/dist.zip -d /home/ubuntu/temp_dist
-            sudo mv /home/ubuntu/temp_dist/NF_sentinel/dist/* /var/www/sentinnel-banking-api/NF_sentinel/dist/
-            sudo rm -rf /home/ubuntu/dist.zip /home/ubuntu/temp_dist
+            # 1. Ensure the destination directory exists and we can write to it
+            sudo mkdir -p /var/www/sentinnel-banking-api/NF_sentinel/dist
+            sudo chown ubuntu:ubuntu /var/www/sentinnel-banking-api/NF_sentinel/dist
+            
+            # 2. Clean old files
+            rm -rf /var/www/sentinnel-banking-api/NF_sentinel/dist/*
+            
+            # 3. Unzip directly into the final folder
+            unzip -o /home/ubuntu/dist.zip -d /var/www/sentinnel-banking-api/NF_sentinel/dist/
+            
+            # 4. Finalize permissions for Nginx
             sudo chown -R www-data:www-data /var/www/sentinnel-banking-api/NF_sentinel/dist
+            rm /home/ubuntu/dist.zip
+            
+            # 5. Restart Nginx to be safe
             sudo systemctl restart nginx
+            echo "✅ Frontend is live!"
