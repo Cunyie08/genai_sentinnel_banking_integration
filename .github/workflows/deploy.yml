@@ -31,10 +31,12 @@ jobs:
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
             cd /var/www/sentinnel-banking-api
-            
-            # 1. Recreate .env in the folder where your code looks for it
+
+            # 1. Recreate .env with ALL required keys
             mkdir -p app/utils
             echo "DATABASE_URL=${{ secrets.DATABASE_URL }}" > app/utils/.env
+            echo "OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}" >> app/utils/.env
+            echo "GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}" >> app/utils/.env
             echo "AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY_ID }}" >> app/utils/.env
             echo "AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }}" >> app/utils/.env
             echo "S3_BUCKET_NAME=${{ secrets.S3_BUCKET_NAME }}" >> app/utils/.env
