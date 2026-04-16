@@ -49,7 +49,7 @@ const App = () => {
 
   if (isAuth || path === '/admin/login') {
     return (
-      <div className="h-[100dvh] w-full overflow-hidden font-sans">
+      <div className="min-h-[100dvh] w-full font-sans">
         <Routes>
           <Route path="/" element={<AuthScreens />} />
           <Route path="/login" element={<AuthScreens />} />

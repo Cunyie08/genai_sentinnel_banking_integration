@@ -6,7 +6,7 @@ import { triggerWelcome } from '../features/uiSlice';
 import {
   Eye, EyeOff, Fingerprint, Lock, ChevronRight,
   AlertCircle, ShieldCheck, Globe, Share2,
-  Zap, TrendingUp, Users, CheckCircle, XCircle, Bot
+  TrendingUp, CheckCircle, XCircle, Bot
 } from 'lucide-react';
 
 
@@ -35,16 +35,14 @@ const InjectStyles = () => (
 
 
 const BrandPanel = ({ isLogin }) => {
-  const navigate = useNavigate();
-
   const features = [
-    { icon: ShieldCheck, text: 'AI fraud detection + biometric approval — Every transaction is AI-scored instantly. Suspicious payments require fingerprint or Face ID.' },
-    { icon: Bot,         text: 'Smart complaint routing — Your issue reaches the right team in seconds, not days.' },
-    { icon: TrendingUp,  text: 'Personalised recommendations — Financial products matched to your actual behaviour, not guesswork.' },
+    { icon: ShieldCheck, text: 'AI fraud detection + biometric approval. Every transaction is AI-scored instantly. Suspicious payments require fingerprint or Face ID.' },
+    { icon: Bot,         text: 'Smart complaint routing. Your issue reaches the right team in seconds, not days.' },
+    { icon: TrendingUp,  text: 'Personalised recommendations. Financial products matched to your actual behaviour, not guesswork.' },
   ];
 
   return (
-    <div className="hidden lg:flex flex-col w-[44%] xl:w-[42%] 2xl:w-[40%] h-full shrink-0 bg-gradient-to-br from-[#800020] via-[#A01030] to-[#5a0a1e] relative overflow-hidden">
+    <div className="hidden lg:flex flex-col w-[44%] xl:w-[42%] 2xl:w-[40%] shrink-0 bg-gradient-to-br from-[#800020] via-[#A01030] to-[#5a0a1e] relative overflow-hidden">
       <div className="absolute -top-32 -left-32 w-96 h-96 bg-white/5 rounded-full blur-3xl pointer-events-none" />
       <div className="absolute -bottom-20 -right-20 w-80 h-80 bg-white/5 rounded-full blur-3xl pointer-events-none" />
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-64 bg-white/[0.03] rounded-full blur-2xl pointer-events-none" />
@@ -67,12 +65,12 @@ const BrandPanel = ({ isLogin }) => {
           <p className="text-white/55 text-xs font-bold uppercase tracking-widest mb-4">
             {isLogin ? 'Welcome back' : 'Get started today'}
           </p>
-          <h1 className="text-4xl xl:text-5xl 2xl:text-6xl font-black text-white leading-[1.1] mb-5">
+          <h2 className="text-2xl xl:text-5xl 2xl:text-6xl font-black text-white leading-[1.1] mb-5">
             {isLogin
-              ? <><span>Banking that</span><br /><span>thinks ahead.</span><br /><span className="text-rose-300">Powered by AI.</span><br /><span className="text-4xl xl:text-5xl text-white">Built for Nigeria.</span></>
+              ? <><span>Banking that thinks ahead.</span><br /><span className="text-rose-300">Powered by AI.</span><span className="text-2xl xl:text-5xl text-white"> Built for Nigeria.</span></>
               : <><span>Banking</span><br /><span>built for</span><br /><span className="text-rose-300">Nigeria.</span></>
             }
-          </h1>
+          </h2>
           <p className="text-white/60 text-sm xl:text-base leading-relaxed max-w-sm mb-8 xl:mb-10">
             {isLogin
               ? 'Sentinnel Banking uses real-time AI to protect every transaction, route your complaints instantly, and recommend financial products built around your life; not a generic template.'
@@ -80,7 +78,7 @@ const BrandPanel = ({ isLogin }) => {
           </p>
 
           {/* Features */}
-          <div className="space-y-3 xl:space-y-4">
+          <div className="space-y-4 xl:space-y-4">
             {features.map((f, i) => (
               <div key={i} className="flex items-center gap-3">
                 <div className="w-8 h-8 xl:w-9 xl:h-9 bg-white/10 rounded-xl flex items-center justify-center border border-white/10 shrink-0">
@@ -146,15 +144,14 @@ const AuthScreens = () => {
     gender: 'Other', date_of_birth: '', bvn: '', nin: '',
     telco_provider: '', state_of_origin: '', residential_state: '', banking_branch: ''
   });
-  const [showPass,   setShowPass]   = useState(false);
-  const [authError,  setAuthError]  = useState('');
+  const [showPass,  setShowPass]  = useState(false);
+  const [authError, setAuthError] = useState('');
 
-  // Password validation rules
   const passwordRules = [
-    { id: 'length',  text: 'Min. 8 characters',          regex: /.{8,}/       },
-    { id: 'upper',   text: '1 Uppercase letter',          regex: /[A-Z]/       },
-    { id: 'number',  text: '1 Number',                    regex: /\d/          },
-    { id: 'special', text: '1 Special char (@$!%*?&)',    regex: /[@$!%*?&]/   },
+    { id: 'length',  text: 'Min. 8 characters',       regex: /.{8,}/     },
+    { id: 'upper',   text: '1 Uppercase letter',       regex: /[A-Z]/     },
+    { id: 'number',  text: '1 Number',                 regex: /\d/        },
+    { id: 'special', text: '1 Special char (@$!%*?&)', regex: /[@$!%*?&]/ },
   ];
 
   const passwordRegex   = /^(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
@@ -165,7 +162,6 @@ const AuthScreens = () => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
-  // FIX: Clear both local and redux errors when switching views
   const switchView = (newView) => {
     setView(newView);
     setAuthError('');
@@ -184,8 +180,6 @@ const AuthScreens = () => {
       dispatch(triggerWelcome());
       navigate('/home');
     } catch (err) {
-      // .unwrap() returns the rejectWithValue payload directly (a string),
-      // not an Error object — so check both cases
       const msg = typeof err === 'string' ? err : (err?.message || err?.detail || 'Login failed');
       console.error('[Login] Failed:', msg);
       setAuthError(msg);
@@ -206,7 +200,7 @@ const AuthScreens = () => {
       return;
     }
     if (!isPasswordValid(formData.password)) {
-      setAuthError('Password must be at least 8 chars long, contain 1 uppercase letter, 1 number, and 1 special char.');
+      setAuthError('Password must be at least 8 chars, contain 1 uppercase letter, 1 number, and 1 special char.');
       return;
     }
     try {
@@ -227,14 +221,14 @@ const AuthScreens = () => {
   const passWrap  = "relative bg-gray-50 border border-gray-200 rounded-2xl overflow-hidden focus-within:border-[#A01030] focus-within:ring-2 focus-within:ring-[#A01030]/10 transition-all";
 
   return (
-    <div className="h-[100dvh] w-full flex flex-col lg:flex-row overflow-hidden font-sans">
+    <div className="min-h-[100dvh] w-full flex flex-col lg:flex-row font-sans">
       <InjectStyles />
 
-      {/* LEFT: Branding Panel */}
+      {/* LEFT: Branding Panel — stretches to match right side height naturally */}
       <BrandPanel isLogin={isLogin} />
 
-      {/* RIGHT: Auth Forms */}
-      <div className="flex-1 min-w-0 flex flex-col bg-[#F9FAFB] lg:bg-white overflow-y-auto">
+      {/* RIGHT: Auth Forms — no overflow, page handles scroll */}
+      <div className="flex-1 min-w-0 flex flex-col bg-[#F9FAFB] lg:bg-white">
 
         {/* Mobile Mini Header */}
         <div className="lg:hidden flex items-center gap-2.5 px-6 pt-8 pb-2 shrink-0">
@@ -247,12 +241,11 @@ const AuthScreens = () => {
           </div>
         </div>
 
-        {/* Scrollable Center Block */}
+        {/* Center Block */}
         <div className="flex-1 flex flex-col justify-center px-6 sm:px-10 lg:px-12 xl:px-16 2xl:px-24 py-8">
           <div className="w-full max-w-sm sm:max-w-md mx-auto lg:mx-0 lg:max-w-lg xl:max-w-xl">
 
             {isLogin ? (
-
               <>
                 <div className="hidden lg:flex w-14 h-14 xl:w-16 xl:h-16 bg-red-50 rounded-2xl xl:rounded-3xl items-center justify-center mb-6 au au1">
                   <Fingerprint size={28} className="text-[#A01030]" strokeWidth={1.5} />
@@ -275,15 +268,12 @@ const AuthScreens = () => {
                 )}
 
                 <form onSubmit={handleLogin} className="space-y-5 au au3">
-
-                  {/* Email */}
                   <div>
                     <label className="block text-xs xl:text-sm font-bold text-gray-700 mb-2 ml-1">Email Address</label>
                     <input name="email" type="email" placeholder="you@example.com"
                       className={inputBase} value={formData.email} onChange={handleChange} />
                   </div>
 
-                  {/* Password */}
                   <div>
                     <div className="flex justify-between items-center mb-2 ml-1">
                       <label className="text-xs xl:text-sm font-bold text-gray-700">Password</label>
@@ -303,7 +293,6 @@ const AuthScreens = () => {
                     </div>
                   </div>
 
-                  {/* Login Button */}
                   <button type="submit" disabled={isLoading}
                     className="w-full bg-[#A01030] text-white py-4 rounded-2xl font-bold text-sm xl:text-base shadow-xl shadow-red-900/20 hover:bg-[#850d28] transition-all flex items-center justify-center gap-2 active:scale-95 disabled:opacity-70">
                     {isLoading ? 'Logging in securely...' : 'Login to Account'}
@@ -323,7 +312,6 @@ const AuthScreens = () => {
 
                 <p className="text-sm text-gray-500 mt-6 text-center au au5">
                   Don't have an account?{' '}
-                  {/* FIX: Clear errors on view switch */}
                   <button onClick={() => switchView('signup')} className="text-[#A01030] font-bold hover:underline">
                     Create Account
                   </button>
@@ -336,7 +324,6 @@ const AuthScreens = () => {
               </>
 
             ) : (
-
               <>
                 <div className="hidden lg:flex w-14 h-14 xl:w-16 xl:h-16 bg-red-50 rounded-2xl xl:rounded-3xl items-center justify-center mb-6 au au1">
                   <CheckCircle size={28} className="text-[#A01030]" strokeWidth={1.5} />
@@ -441,7 +428,6 @@ const AuthScreens = () => {
                     </div>
                   </div>
 
-                  {/* Password */}
                   <div>
                     <label className="block text-xs xl:text-sm font-bold text-gray-700 mb-2 ml-1">Create Password</label>
                     <div className={passWrap}>
@@ -457,7 +443,6 @@ const AuthScreens = () => {
                       </button>
                     </div>
 
-                    {/* Live Validator */}
                     <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2 text-[10px] xl:text-xs">
                       {passwordRules.map(rule => {
                         const passed = rule.regex.test(formData.password);
@@ -487,7 +472,6 @@ const AuthScreens = () => {
 
                 <p className="text-sm text-gray-500 mt-6 text-center au au5">
                   Already have an account?{' '}
-                  {/* FIX: Clear errors on view switch */}
                   <button onClick={() => switchView('login')} className="text-[#A01030] font-bold hover:underline">
                     Log In
                   </button>
