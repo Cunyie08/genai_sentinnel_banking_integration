@@ -1,8 +1,12 @@
 import axios from 'axios';
 const MOCK_MODE    = false;
 const API_BASE_URL = 'https://sentinnelbanking.com';
-// const API_BASE_URL = 'http://127.0.0.1:8080';
 
+// Only log in local development — never in production builds
+const devLog   = (...args) => import.meta.env.DEV && console.log(...args);
+const devError = (...args) => import.meta.env.DEV && console.error(...args);
+// const API_BASE_URL = 'http://127.0.0.1:8080';
+// const API_BASE_URL = 'http://localhost:8080';
 
 const apiClient = axios.create({
   baseURL: API_BASE_URL,
@@ -225,7 +229,7 @@ export const api = {
     formParams.append('username', body.email);
     formParams.append('password', body.password);
 
-    console.log('[Login] Sending credentials for:', body.email);
+    devLog('[Login] Sending credentials for:', body.email);
 
     let token;
     try {
@@ -233,10 +237,10 @@ export const api = {
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       });
       token = response.data.access_token;
-      console.log('[Login] Token received successfully');
+      devLog('[Login] Token received successfully');
     } catch (err) {
       const msg = err.detail || err.message || 'Invalid email or password. Please try again.';
-      console.error('[Login] Auth token request failed:', msg);
+      devError('[Login] Auth token request failed:', msg);
       throw new Error(msg);
     }
 
@@ -251,7 +255,7 @@ export const api = {
       profile = meRes.data;
     } catch (err) {
       const msg = err.detail || err.message || 'Logged in but failed to load profile.';
-      console.error('[Login] Profile fetch failed:', msg);
+      devError('[Login] Profile fetch failed:', msg);
       throw new Error(msg);
     }
 
@@ -295,23 +299,39 @@ export const api = {
       bvn_verified: false,
       nin_verified: false,
     };
-    await apiClient.post('/customers', payload);
+
+    try {
+      await apiClient.post('/customers', payload);
+    } catch (err) {
+      throw new Error(err.detail || err.message || 'Account creation failed. Please try again.');
+    }
 
     const formParams = new URLSearchParams();
     formParams.append('grant_type', 'password');
     formParams.append('username', payload.email);
     formParams.append('password', payload.password);
 
-    const response = await apiClient.post('/auth/token', formParams, {
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    });
+    let response;
+    try {
+      response = await apiClient.post('/auth/token', formParams, {
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      });
+    } catch (err) {
+      throw new Error(err.detail || err.message || 'Account created but sign-in failed. Please log in manually.');
+    }
 
     const token = response.data.access_token;
+    if (!token) throw new Error('No token received from server. Please log in manually.');
     localStorage.setItem('sentinel_token', token);
 
-    const meRes = await apiClient.get('/users/me', {
-      headers: { Authorization: `Bearer ${token}` },
-    });
+    let meRes;
+    try {
+      meRes = await apiClient.get('/users/me', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+    } catch (err) {
+      throw new Error(err.detail || err.message || 'Signed in but failed to load profile. Please refresh.');
+    }
     const profile = meRes.data;
     const fullName =
       profile?.customer_details?.full_name ||

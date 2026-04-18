@@ -32,15 +32,43 @@ jobs:
           script: |
             cd /var/www/sentinnel-banking-api
             
-            # 1. Create the .env file with your AWS Secrets
-            echo "AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY_ID }}" > .env
-            echo "AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }}" >> .env
-            echo "S3_BUCKET_NAME=${{ secrets.S3_BUCKET_NAME }}" >> .env
+            # 1. Create app/utils directory if it doesn't exist
+            mkdir -p app/utils
             
-            # 2. Set up Python Virtual Environment and install dependencies
-            python3 -m venv venv
+            # 2. Inject ALL secrets from your GitHub settings into the .env file
+            cat <<EOF > app/utils/.env
+            DATABASE_URL=${{ secrets.DATABASE_URL }}
+            OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
+            GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}
+            RESEND_API_KEY=${{ secrets.RESEND_API_KEY }}
+            SECRET_KEY=${{ secrets.SECRET_KEY }}
+            ALGORITHM=${{ secrets.ALGORITHM }}
+            APP_URL=${{ secrets.APP_URL }}
+            EMAIL_FROM=${{ secrets.EMAIL_FROM }}
+            REGION=${{ secrets.REGION }}
+            AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY_ID }}
+            AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }}
+            S3_ACCESS_KEY=${{ secrets.S3_ACCESS_KEY }}
+            S3_SECRET_ACCESS_KEY=${{ secrets.S3_SECRET_ACCESS_KEY }}
+            S3_BUCKET_NAME=${{ secrets.S3_BUCKET_NAME }}
+            EOF
+
+            # 3. Copy to root as well to ensure Gunicorn finds it
+            cp app/utils/.env .env
+            
+            # 4. Update Virtual Environment
             source venv/bin/activate
+            pip install --upgrade pip
             pip install -r requirements.txt
             
-            # 3. Restart the FastAPI application (assuming a systemd service)
-            sudo systemctl restart sentinnel-banking-api
+            # 5. Restart the service and verify
+            sudo systemctl daemon-reload
+            sudo systemctl restart sentinnel-api
+            
+            sleep 5
+            if ! sudo systemctl is-active --quiet sentinnel-api; then
+              echo "❌ Backend failed to start. Last logs:"
+              sudo journalctl -u sentinnel-api -n 20 --no-pager
+              exit 1
+            fi
+            echo "✅ Deployment Successful and Backend is Live!"
