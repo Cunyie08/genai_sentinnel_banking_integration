@@ -17,15 +17,11 @@ const apiClient = axios.create({
 
 apiClient.interceptors.request.use(
   (config) => {
-    //  Never attach a Bearer token to login endpoints.
-    // A stale/expired token in localStorage would cause FastAPI to reject
-    // the request with 401 before even checking the form credentials.
     if (config.url.includes('/auth/token') || config.url.includes('/admin/login')) {
       delete config.headers.Authorization;
       return config;
     }
 
-    // Admin routes use the admin-specific JWT token
     if (config.url.startsWith('/admin')) {
       const adminToken = localStorage.getItem('sentinel_admin_token');
       if (adminToken) config.headers.Authorization = `Bearer ${adminToken}`;
@@ -46,12 +42,9 @@ apiClient.interceptors.response.use(
     const status = error.response?.status;
     const data   = error.response?.data;
 
-    // Only clear token on 401 if a token actually existed (not during login)
     if (status === 401 && localStorage.getItem('sentinel_token')) {
       localStorage.removeItem('sentinel_token');
     }
-
-    // Normalize error so it ALWAYS has a .message and .detail
     const detail = data?.detail || data?.message || error.message || 'Something went wrong';
     const err = new Error(detail);
     err.status = status;
@@ -69,7 +62,7 @@ const mockData = {
     phone: '08012345678',
     avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Reuben',
     role: 'user',
-    // Accounts array — required so MerchantCheckout can detect the logged-in account
+
     accounts: [
       {
         account_number: '0123456789',
@@ -78,7 +71,7 @@ const mockData = {
         currency: 'NGN',
         status: 'Active',
         tier: 'Tier 3',
-        // Associated card for merchant payments
+
         card: {
           masked_number: '**** **** **** 4832',
           type: 'Visa',
@@ -184,7 +177,7 @@ const mock = {
   },
   getAdminUsers: async () => { await delay(800); return { data: mockData.adminUsers }; },
 
-  // ── Merchant / Card payment mock ────────────────────────────────────────
+
   cardTransaction: async (body) => {
     await delay(1800);
     const txnId = 'TXN-' + Math.random().toString(36).slice(2, 10).toUpperCase();
@@ -213,10 +206,8 @@ const mock = {
     };
   },
 
-  // ── Biometric / password confirmation mock ──────────────────────────────
   confirmTransaction: async (body) => {
     await delay(1000);
-    // In mock mode any password / biometric token is accepted
     return {
       data: {
         transaction_id: body.transaction_id,
@@ -229,19 +220,8 @@ const mock = {
 };
 
 export const api = {
-  // =========================================================================
-  // TO SWITCH TO REAL BACKEND:
-  // 1. Change `const MOCK_MODE = true;` to `false` at the top of this file.
-  // 2. Ensure `API_BASE_URL` points to your actual backend URL.
-  // 3. The `apiClient` requests below will then automatically use real endpoints.
-  // =========================================================================
-
   login: async (body) => {
     if (MOCK_MODE) return mock.login(body);
-
-    // Always wipe any stale token before a fresh login attempt.
-    // This prevents the interceptor from attaching an expired Bearer token
-    // to the /auth/token request, which causes FastAPI to return 401.
     localStorage.removeItem('sentinel_token');
 
     const formParams = new URLSearchParams();
@@ -301,7 +281,6 @@ export const api = {
   signup: async (body) => {
     if (MOCK_MODE) return mock.signup(body);
 
-    // FIX: Same stale token wipe for signup flow
     localStorage.removeItem('sentinel_token');
 
     const payload = {
@@ -428,7 +407,6 @@ export const api = {
   sendMessage:         (body) => MOCK_MODE ? mock.sendMessage(body) : apiClient.post('/ai/message', body),
 
   adminLogin: async (body) => {
-    // FIX: Wipe any stale admin token before a fresh login attempt.
     localStorage.removeItem('sentinel_admin_token');
 
     const formParams = new URLSearchParams();
@@ -457,7 +435,7 @@ export const api = {
   getAdminTickets:     (p)   => MOCK_MODE ? mock.getAdminDashboard() : apiClient.get('/admin/routing-decisions', { params: p }),
   getAdminFraud:       (p)   => apiClient.get('/admin/analytics/fraud', { params: p }),
 
-  // ── These two use mock in MOCK_MODE; real endpoints when backend is live ──
+
   cardTransaction:    (body) => MOCK_MODE ? mock.cardTransaction(body)    : apiClient.post('/card_transaction', body),
   confirmTransaction: async (body) => {
     if (MOCK_MODE) return mock.confirmTransaction(body);
@@ -467,12 +445,11 @@ export const api = {
       return { data: { status: 'success', message: 'Transaction verified via biometrics', transaction_id: body.transaction_id } };
     }
 
-    // Otherwise, verify the password securely by silently re-authenticating the user
     try {
       const token = localStorage.getItem('sentinel_token');
       if (!token) throw new Error("Authentication required");
 
-      // Extract email from JWT payload
+
       const base64Url = token.split('.')[1];
       const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
       const payloadData = JSON.parse(atob(base64));
@@ -486,7 +463,6 @@ export const api = {
       const res = await apiClient.post('/auth/token', formParams, {
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       });
-      // If login succeeds, password is correct
       localStorage.setItem('sentinel_token', res.data.access_token);
       
       return { data: { status: 'success', message: 'Transaction verified successfully', transaction_id: body.transaction_id } };

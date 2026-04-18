@@ -138,16 +138,14 @@ export const fetchTransactions = createAsyncThunk(
   async (params, { rejectWithValue }) => {
     try {
       const response = await api.getTransactions(params);
-      // Map backend fields to frontend fields
       const txs = (response.data || []).map(tx => ({
         id:       tx.transaction_id,
         name:     tx.narration || 'Transaction',
         amount:   Number(tx.amount),
         date:     tx.transaction_timestamp,
         ref:      tx.transaction_reference_number,
-        type:     tx.transaction_type, // 'credit' | 'debit'
+        type:     tx.transaction_type,
         status:   tx.transaction_status || 'completed',
-        // Infer category based on narration keywords
         category: (tx.narration || '').toLowerCase().includes('airtime')  ? 'airtime' :
                   (tx.narration || '').toLowerCase().includes('data')     ? 'data' :
                   (tx.narration || '').toLowerCase().includes('bill')     ? 'bills' :
@@ -169,7 +167,6 @@ export const sendMoney = createAsyncThunk(
       const response = await api.sendMoney(data);
       return response.data;
     } catch (err) {
-      // axios interceptor rejects with response.data (FastAPI returns { detail: "..." })
       const msg = err?.detail || err?.message || JSON.stringify(err) || 'Transfer failed';
       return rejectWithValue(msg);
     }

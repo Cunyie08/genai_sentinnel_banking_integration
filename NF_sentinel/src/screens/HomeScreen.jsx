@@ -10,7 +10,6 @@ import {
   ShieldAlert, Fingerprint, XCircle, CheckCircle, Loader2, Lock
 } from "lucide-react";
 
-// ─── WebAuthn Base64 Helpers ──────────────────────────────────────────
 const bufferToBase64url = (buffer) => {
   const bytes = new Uint8Array(buffer);
   let str = '';
@@ -27,16 +26,14 @@ const base64urlToBuffer = (base64url) => {
   return buffer;
 };
 
-// ─── Fallback cards when trajectory API returns empty ───────────────────
 const FALLBACK_CARDS = [
-  { id: 'fb1', label: 'Education First', labelColor: '#FFD700', title: 'Student Loan', subtitle: 'Up to ₦500k', gradient: ['#2F4F4F', '#1A2E2E'], cta: 'APPLY NOW', ctaRoute: 'loans', reasoning: 'Zero interest for the first 3 months. Apply instantly to secure your tuition fees.' },
-  { id: 'fb2', label: 'High Yield', labelColor: '#6EE7B7', title: 'Fixed Deposit', subtitle: '15% Interest', gradient: ['#0F766E', '#0D5E56'], cta: 'START SAVING', ctaRoute: 'savings', reasoning: 'Lock in your funds and earn 15% annual returns.' },
-  { id: 'fb3', label: 'Flexible', labelColor: '#C4B5FD', title: 'Credit Card', subtitle: 'Pre-approved', gradient: ['#7c3aed', '#4c1d95'], cta: 'GET CARD', ctaRoute: '#', reasoning: 'Based on your spending patterns, you qualify for our premium credit card.' },
+  { id: 'fb1', label: 'Education First', labelColor: '#22d3ee', title: 'Student Loan', subtitle: 'Up to ₦500k', gradient: ['#0B0C10', '#1A1B23'], cta: 'APPLY NOW', ctaRoute: 'loans', reasoning: 'Zero interest for the first 3 months. Apply instantly to secure your tuition fees.' },
+  { id: 'fb2', label: 'High Yield', labelColor: '#6EE7B7', title: 'Fixed Deposit', subtitle: '15% Interest', gradient: ['#0f766e', '#0d5e56'], cta: 'START SAVING', ctaRoute: 'savings', reasoning: 'Lock in your funds and earn 15% annual returns.' },
+  { id: 'fb3', label: 'Flexible', labelColor: '#a78bfa', title: 'Credit Card', subtitle: 'Pre-approved', gradient: ['#7c3aed', '#4c1d95'], cta: 'GET CARD', ctaRoute: '#', reasoning: 'Based on your spending patterns, you qualify for our premium credit card.' },
 ];
 
-// ─── Style map with visible gradients ────────────────────────────────
 const styleMap = {
-  'Student Loan':    { grad: ['#155e2f', '#14532d'], label: 'Education First',      labelColor: '#ffd700' },
+  'Student Loan':    { grad: ['#155e2f', '#14532d'], label: 'Education First',      labelColor: '#22d3ee' },
   'Car Loan':        { grad: ['#1d4ed8', '#1e1b4b'], label: 'Lifestyle',            labelColor: '#93c5fd' },
   'Fixed Deposit':   { grad: ['#0f766e', '#0d5e56'], label: 'Grow Wealth',          labelColor: '#6ee7b7' },
   'Credit Card':     { grad: ['#7c3aed', '#4c1d95'], label: 'Flexible',             labelColor: '#c4b5fd' },
@@ -93,6 +90,8 @@ const InjectStyles = () => (
   `}</style>
 );
 
+let _cachedFeedCards = null;
+
 const HomeScreen = () => {
   const navigate = useNavigate();
   const dispatch = useDispatch();
@@ -101,8 +100,8 @@ const HomeScreen = () => {
   const showPopup = useSelector((state) => state.ui.showWelcome);
 
   const [showBal, setShowBal] = useState(true);
-  const [feedCards, setFeedCards] = useState([]);
-  const [loadingFeed, setLoadingFeed] = useState(true);
+  const [feedCards, setFeedCards] = useState(_cachedFeedCards || []);
+  const [loadingFeed, setLoadingFeed] = useState(!_cachedFeedCards);
 
   const [sentinelAlert, setSentinelAlert] = useState(null);
   const [confirmStep, setConfirmStep] = useState('idle');
@@ -115,6 +114,12 @@ const HomeScreen = () => {
   useEffect(() => {
     dispatch(fetchDashboard());
 
+    if (_cachedFeedCards) {
+      setFeedCards(_cachedFeedCards);
+      setLoadingFeed(false);
+      return;
+    }
+
     const loadFeed = async () => {
       try {
         const res = await api.getSmartFeed();
@@ -122,7 +127,6 @@ const HomeScreen = () => {
         console.log('[SmartFeed] Raw response:', JSON.stringify(data, null, 2));
         let cards = data.cards || [];
 
-        // If backend returned cards, enrich them with styleMap
         if (cards.length > 0) {
           cards = cards.map(card => {
             const style = styleMap[card.title];
@@ -136,11 +140,11 @@ const HomeScreen = () => {
                 : card.subtitle || getSubtitle(card.title, 0),
             };
           });
+          _cachedFeedCards = cards;
           setFeedCards(cards);
           return;
         }
 
-        // No cards — build one from recommendations if available
         if (data.recommendations?.primary_product) {
           const rec = data.recommendations;
           const product = rec.primary_product;
@@ -157,6 +161,7 @@ const HomeScreen = () => {
             reasoning:  rec.reasoning || 'Based on your financial profile, we think this is a great fit for you.',
           }];
           console.log('[SmartFeed] Built card from recommendations:', product);
+          _cachedFeedCards = builtCard;
           setFeedCards(builtCard);
         }
 
@@ -170,7 +175,6 @@ const HomeScreen = () => {
     loadFeed();
   }, [dispatch, user?.id]);
 
-  // ── Poll for pending Sentinel transactions ──
   useEffect(() => {
     const checkPending = () => {
       const raw = localStorage.getItem('sentinel_pending_txn');
@@ -297,17 +301,16 @@ const HomeScreen = () => {
   };
 
   return (
-    <div className="min-h-full w-full bg-[#F8F9FB] font-sans relative">
+    <div className="min-h-full w-full bg-vault-light-bg dark:bg-vault-dark-bg font-sans relative vault-transition">
       <InjectStyles />
 
-      {/* ═══ SENTINEL ALERT MODAL ══════════════════════════════════════════ */}
       {sentinelAlert && confirmStep !== 'success' && confirmStep !== 'rejected' && (
         <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm" style={{ animation: 'fadeUp 0.3s ease' }}>
-          <div className="relative w-[min(92vw,380px)] max-h-[90dvh] flex flex-col bg-white rounded-[28px] shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
-            <div className="bg-gradient-to-r from-[#A01030] to-[#6B0A20] px-6 py-5 text-white shrink-0">
+          <div className="relative w-[min(92vw,380px)] max-h-[90dvh] flex flex-col bg-white dark:bg-vault-dark-card rounded-[28px] shadow-2xl overflow-hidden border border-gray-100 dark:border-white/5" onClick={e => e.stopPropagation()}>
+            <div className="vault-gradient px-6 py-5 text-white shrink-0">
               <div className="flex items-center gap-3 mb-1">
                 <ShieldAlert size={24} />
-                <h3 className="text-lg font-black">SENTINNEL ALERT</h3>
+                <h3 className="text-lg font-black">SENTINEL ALERT</h3>
               </div>
               <p className="text-white/80 text-xs font-medium">Suspicious Transaction Detected</p>
             </div>
@@ -315,53 +318,53 @@ const HomeScreen = () => {
             <div className="p-6 space-y-4 overflow-y-auto">
               <div className="space-y-3">
                 <div className="flex justify-between text-sm">
-                  <span className="text-gray-400 font-bold">Merchant</span>
-                  <span className="font-black text-gray-900">{sentinelAlert.merchant || 'Unknown'}</span>
+                  <span className="text-gray-400 dark:text-slate-500 font-bold">Merchant</span>
+                  <span className="font-black text-gray-900 dark:text-white">{sentinelAlert.merchant || 'Unknown'}</span>
                 </div>
                 <div className="flex justify-between text-sm">
-                  <span className="text-gray-400 font-bold">Amount</span>
-                  <span className="font-black text-[#A01030]">₦{Number(sentinelAlert.amount || 0).toLocaleString('en-NG')}</span>
+                  <span className="text-gray-400 dark:text-slate-500 font-bold">Amount</span>
+                  <span className="font-black vault-gradient-text">₦{Number(sentinelAlert.amount || 0).toLocaleString('en-NG')}</span>
                 </div>
                 <div className="flex justify-between text-sm">
-                  <span className="text-gray-400 font-bold">Time</span>
-                  <span className="font-bold text-gray-700">{sentinelAlert.time || new Date().toLocaleTimeString()}</span>
+                  <span className="text-gray-400 dark:text-slate-500 font-bold">Time</span>
+                  <span className="font-bold text-gray-700 dark:text-slate-300">{sentinelAlert.time || new Date().toLocaleTimeString()}</span>
                 </div>
               </div>
 
-              <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
-                <p className="text-[10px] font-black text-amber-600 uppercase tracking-wider mb-2">Sentinnel AI says:</p>
-                <p className="text-xs text-amber-900 leading-relaxed font-medium">
+              <div className="bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 rounded-xl p-4">
+                <p className="text-[10px] font-black text-amber-600 dark:text-amber-400 uppercase tracking-wider mb-2">Sentinel AI says:</p>
+                <p className="text-xs text-amber-900 dark:text-amber-200 leading-relaxed font-medium">
                   {sentinelAlert.fraud_analysis?.policy_explanation ||
                     sentinelAlert.fraud_analysis?.reasoning ||
                     `"This transaction is unusual because it is the first time you are paying ${sentinelAlert.merchant || 'this merchant'} and it occurred at an unusual hour."`}
                 </p>
                 {sentinelAlert.fraud_analysis?.total_risk_score != null && (
                   <div className="mt-2 flex items-center gap-2">
-                    <span className="text-[10px] font-bold text-amber-600">Risk Score:</span>
-                    <div className="flex-1 h-1.5 bg-amber-200 rounded-full overflow-hidden">
+                    <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400">Risk Score:</span>
+                    <div className="flex-1 h-1.5 bg-amber-200 dark:bg-amber-900/50 rounded-full overflow-hidden">
                       <div className="h-full bg-red-500 rounded-full" style={{ width: `${Math.min(sentinelAlert.fraud_analysis.total_risk_score, 100)}%` }} />
                     </div>
-                    <span className="text-[10px] font-bold text-red-600">{Math.round(sentinelAlert.fraud_analysis.total_risk_score)}%</span>
+                    <span className="text-[10px] font-bold text-red-600 dark:text-red-400">{Math.round(sentinelAlert.fraud_analysis.total_risk_score)}%</span>
                   </div>
                 )}
               </div>
 
               {confirmStep === 'password' && (
                 <div className="space-y-3">
-                  <p className="text-xs font-bold text-gray-500">Enter your password to confirm:</p>
+                  <p className="text-xs font-bold text-gray-500 dark:text-slate-400">Enter your password to confirm:</p>
                   <div className="relative">
-                    <Lock size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
+                    <Lock size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 dark:text-slate-500" />
                     <input
                       type="password" value={password} onChange={e => setPassword(e.target.value)}
                       onKeyDown={e => e.key === 'Enter' && handlePasswordConfirm()}
                       placeholder="Your password"
-                      className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm font-medium outline-none focus:border-[#A01030] transition-colors"
+                      className="w-full pl-10 pr-4 py-3 bg-gray-50 dark:bg-vault-dark-input border-0 rounded-xl text-sm font-medium outline-none focus:ring-2 focus:ring-vault-cyan/30 transition-colors text-gray-900 dark:text-white"
                       autoFocus
                     />
                   </div>
-                  {confirmError && <p className="text-xs text-red-500 font-bold">{confirmError}</p>}
-                  <button onClick={handlePasswordConfirm} className="w-full bg-[#A01030] text-white py-3.5 rounded-xl font-bold text-sm active:scale-95 transition-all mt-2">Confirm with Password</button>
-                  <button onClick={handleRejectTransaction} className="w-full flex items-center justify-center gap-2 bg-white text-gray-600 py-3.5 rounded-xl font-bold text-sm border border-gray-200 active:scale-95 transition-all">
+                  {confirmError && <p className="text-xs text-red-500 dark:text-red-400 font-bold">{confirmError}</p>}
+                  <button onClick={handlePasswordConfirm} className="w-full vault-gradient text-white py-3.5 rounded-xl font-bold text-sm active:scale-95 transition-all mt-2 vault-glow">Confirm with Password</button>
+                  <button onClick={handleRejectTransaction} className="w-full flex items-center justify-center gap-2 bg-white dark:bg-white/5 text-gray-600 dark:text-slate-300 py-3.5 rounded-xl font-bold text-sm border border-gray-200 dark:border-white/5 active:scale-95 transition-all">
                     <XCircle size={18} /> Cancel
                   </button>
                 </div>
@@ -369,34 +372,34 @@ const HomeScreen = () => {
 
               {confirmStep === 'verifying' && (
                 <div className="flex flex-col items-center py-4 gap-3">
-                  <Loader2 size={28} className="text-[#A01030] animate-spin" />
-                  <p className="text-sm font-bold text-gray-700">Verifying...</p>
+                  <Loader2 size={28} className="text-vault-cyan animate-spin" />
+                  <p className="text-sm font-bold text-gray-700 dark:text-white">Verifying...</p>
                 </div>
               )}
 
               {confirmStep === 'scanning' && (
                 <div className="flex flex-col items-center py-6 gap-4">
                   <div className="relative flex items-center justify-center">
-                    <div className="absolute w-24 h-24 rounded-full border-2 border-[#A01030]/20 animate-ping" />
-                    <div className="absolute w-20 h-20 rounded-full border border-[#A01030]/30 animate-pulse" />
-                    <div className="relative z-10 w-16 h-16 rounded-full bg-red-50 flex items-center justify-center text-[#A01030]">
+                    <div className="absolute w-24 h-24 rounded-full border-2 border-vault-cyan/20 animate-ping" />
+                    <div className="absolute w-20 h-20 rounded-full border border-vault-cyan/30 animate-pulse" />
+                    <div className="relative z-10 w-16 h-16 rounded-full bg-vault-cyan/10 dark:bg-vault-cyan/10 flex items-center justify-center text-vault-cyan">
                       <Fingerprint size={32} className="animate-pulse" />
                     </div>
                   </div>
-                  <p className="text-sm font-bold text-[#A01030] animate-pulse">Scanning Biometrics...</p>
-                  <p className="text-[10px] text-gray-400 text-center px-4">Use your fingerprint or Face ID to confirm</p>
+                  <p className="text-sm font-bold text-vault-cyan animate-pulse">Scanning Biometrics...</p>
+                  <p className="text-[10px] text-gray-400 dark:text-slate-500 text-center px-4">Use your fingerprint or Face ID to confirm</p>
                 </div>
               )}
 
               {confirmStep === 'idle' && (
                 <div className="space-y-3">
-                  <button onClick={handleConfirmTransaction} className="w-full flex items-center justify-center gap-2.5 bg-[#A01030] text-white py-4 rounded-xl font-bold text-sm shadow-lg shadow-red-900/20 active:scale-95 transition-all">
+                  <button onClick={handleConfirmTransaction} className="w-full flex items-center justify-center gap-2.5 vault-gradient text-white py-4 rounded-xl font-bold text-sm shadow-lg vault-glow active:scale-95 transition-all">
                     <Fingerprint size={20} /> Confirm with Biometric
                   </button>
-                  <button onClick={handleRejectTransaction} className="w-full flex items-center justify-center gap-2 bg-white text-gray-600 py-3.5 rounded-xl font-bold text-sm border border-gray-200 active:scale-95 transition-all">
+                  <button onClick={handleRejectTransaction} className="w-full flex items-center justify-center gap-2 bg-white dark:bg-white/5 text-gray-600 dark:text-slate-300 py-3.5 rounded-xl font-bold text-sm border border-gray-200 dark:border-white/5 active:scale-95 transition-all">
                     <XCircle size={18} /> Reject
                   </button>
-                  <button onClick={() => setConfirmStep('password')} className="w-full text-center text-xs text-gray-400 font-bold mt-2 hover:underline">
+                  <button onClick={() => setConfirmStep('password')} className="w-full text-center text-xs text-gray-400 dark:text-slate-500 font-bold mt-2 hover:underline">
                     Use Password instead
                   </button>
                 </div>
@@ -406,7 +409,6 @@ const HomeScreen = () => {
         </div>
       )}
 
-      {/* ═══ SENTINEL SUCCESS OVERLAY ══════════════════════════════════════ */}
       {sentinelAlert && confirmStep === 'success' && (
         <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/70 backdrop-blur-sm">
           <div className="text-center text-white space-y-4" style={{ animation: 'fadeUp 0.3s ease' }}>
@@ -414,12 +416,11 @@ const HomeScreen = () => {
               <CheckCircle size={40} />
             </div>
             <h3 className="text-2xl font-black">Transaction Approved</h3>
-            <p className="text-white/70 text-sm">Securely authorized via Sentinnel</p>
+            <p className="text-white/70 text-sm">Securely authorized via Sentinel</p>
           </div>
         </div>
       )}
 
-      {/* ═══ SENTINEL REJECTED OVERLAY ═════════════════════════════════════ */}
       {sentinelAlert && confirmStep === 'rejected' && (
         <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/70 backdrop-blur-sm">
           <div className="text-center text-white space-y-4" style={{ animation: 'fadeUp 0.3s ease' }}>
@@ -432,7 +433,6 @@ const HomeScreen = () => {
         </div>
       )}
 
-      {/* ═══ TRAJECTORY POPUP ══════════════════════════════════════════════ */}
       {showPopup && popupCard && !sentinelAlert && (
         <div
           className="fixed top-0 left-0 right-0 bottom-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm"
@@ -456,7 +456,7 @@ const HomeScreen = () => {
             </button>
             <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full blur-2xl -mr-10 -mt-10 pointer-events-none" />
             <div className="relative z-10">
-              <span className="text-[10px] font-bold uppercase tracking-wider mb-2 block" style={{ color: popupCard.labelColor || '#FFD700' }}>
+              <span className="text-[10px] font-bold uppercase tracking-wider mb-2 block" style={{ color: popupCard.labelColor || '#22d3ee' }}>
                 {popupCard.label}
               </span>
               <h3 className="text-xl sm:text-2xl font-black leading-tight mb-2">{popupCard.title}<br />{popupCard.subtitle}</h3>
@@ -485,22 +485,24 @@ const HomeScreen = () => {
         </div>
       )}
 
-      {/* ═══ HEADER + BALANCE ══════════════════════════════════════════════ */}
-      <div className="w-full bg-gradient-to-br from-[#800020] via-[#A01030] to-[#5a0a1e] text-white px-4 sm:px-6 xl:px-8 pt-8 pb-6 rounded-b-[32px] shadow-lg shadow-red-900/10 mb-6 relative z-20">
-        <div className="flex justify-between items-center mb-6 fu fu1">
+      <div className="w-full bg-gradient-to-br from-[#00b4d8] via-[#5b4bdb] to-[#7c3aed] text-white px-4 sm:px-6 xl:px-8 pt-8 pb-6 rounded-b-[32px] shadow-lg mb-6 relative z-20 overflow-hidden">
+        <div className="absolute -top-20 -right-20 w-60 h-60 bg-vault-cyan/15 rounded-full blur-[80px] pointer-events-none" />
+        <div className="absolute -bottom-10 -left-10 w-40 h-40 bg-vault-purple/15 rounded-full blur-[60px] pointer-events-none" />
+        
+        <div className="flex justify-between items-center mb-6 fu fu1 relative z-10">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full overflow-hidden shrink-0 bg-white/10 border-2 border-white/20">
               <img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${user?.name || 'Lukman'}`} alt="User" className="w-full h-full object-cover" />
             </div>
             <div>
-              <p className="text-white/90 text-[13px] font-medium leading-none mb-1">Good Afternoon</p>
+              <p className="text-white/70 text-[13px] font-medium leading-none mb-1">Good Afternoon</p>
               <h2 className="text-lg font-bold leading-tight">{user?.name}</h2>
             </div>
           </div>
           <div className="flex gap-2">
             <button className="relative w-10 h-10 flex items-center justify-center text-white hover:bg-white/10 rounded-full transition-colors">
               <Bell size={22} />
-              <span className="absolute top-2 right-2.5 w-2 h-2 bg-red-500 rounded-full border border-red-900" />
+              <span className="absolute top-2 right-2.5 w-2 h-2 bg-vault-cyan rounded-full border border-slate-800 dark:border-vault-dark-bg" />
             </button>
             <button className="w-10 h-10 flex items-center justify-center text-white hover:bg-white/10 rounded-full transition-colors">
               <Settings size={22} />
@@ -508,16 +510,16 @@ const HomeScreen = () => {
           </div>
         </div>
 
-        <div className="flex items-center gap-2 mb-4 fu fu2">
-          <span className="text-white/80 text-[12px] sm:text-[13px] font-medium">
+        <div className="flex items-center gap-2 mb-4 fu fu2 relative z-10">
+          <span className="text-white/60 text-[12px] sm:text-[13px] font-medium">
             Tier {account?.tier} Savings Account | <span className="text-white font-bold">{account?.number}</span>
           </span>
           <button className="text-white hover:text-white/80 transition-colors"><Copy size={16} /></button>
         </div>
 
-        <div className="bg-white/10 backdrop-blur-md border border-white/20 rounded-2xl p-5 relative fu fu3">
-          <div className="absolute top-0 right-0 bg-white text-green-700 text-[11px] font-bold px-3 py-1 rounded-bl-[14px] rounded-tr-[14px]">Active</div>
-          <p className="text-white text-sm font-medium mb-1.5">Account Balance</p>
+        <div className="vault-glass rounded-2xl p-5 relative fu fu3">
+          <div className="absolute top-0 right-0 bg-vault-cyan text-vault-dark-bg text-[11px] font-bold px-3 py-1 rounded-bl-[14px] rounded-tr-[14px]">Active</div>
+          <p className="text-white/70 text-sm font-medium mb-1.5">Account Balance</p>
           <div className="flex items-center gap-2 mb-6">
             <h1 className="text-4xl font-extrabold tracking-tight">
               {showBal ? `₦${Number(account?.balance ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}` : "••••••••"}
@@ -527,10 +529,10 @@ const HomeScreen = () => {
             </button>
           </div>
           <div className="grid grid-cols-2 gap-3 pt-2">
-            <button onClick={() => navigate('/fund')} className="w-full flex items-center justify-center gap-2 py-3 bg-transparent border border-white/50 shadow-sm rounded-xl hover:bg-white/10 transition-colors font-semibold text-sm">
+            <button onClick={() => navigate('/fund')} className="w-full flex items-center justify-center gap-2 py-3 bg-transparent border border-white/30 shadow-sm rounded-xl hover:bg-white/10 transition-colors font-semibold text-sm">
               <Plus size={18} /> Fund Account
             </button>
-            <button onClick={() => navigate('/history')} className="w-full flex items-center justify-center gap-2 py-3 bg-transparent border border-white/50 shadow-sm rounded-xl hover:bg-white/10 transition-colors font-semibold text-sm">
+            <button onClick={() => navigate('/history')} className="w-full flex items-center justify-center gap-2 py-3 bg-transparent border border-white/30 shadow-sm rounded-xl hover:bg-white/10 transition-colors font-semibold text-sm">
               <FileText size={18} /> History
             </button>
           </div>
@@ -539,50 +541,47 @@ const HomeScreen = () => {
 
       <div className="w-full px-4 sm:px-6 xl:px-8 py-2 pb-28 space-y-6">
 
-        {/* Send / Pay Bills / Cards */}
         <div className="fu fu3 grid grid-cols-3 gap-3 sm:gap-4 xl:gap-6 w-full">
-          <button onClick={() => navigate('/send')} className="w-full h-full min-h-[85px] md:min-h-[100px] bg-[#A01030] rounded-2xl md:rounded-3xl flex flex-col items-center justify-center gap-2 text-white shadow-xl shadow-red-900/20 active:scale-95 hover:scale-[1.03] transition-transform p-3">
+          <button onClick={() => navigate('/send')} className="w-full h-full min-h-[85px] md:min-h-[100px] vault-gradient rounded-2xl md:rounded-3xl flex flex-col items-center justify-center gap-2 text-white shadow-xl vault-glow active:scale-95 hover:scale-[1.03] transition-transform p-3">
             <Send className="w-6 h-6 md:w-8 md:h-8" />
             <span className="text-[11px] sm:text-xs md:text-sm font-bold truncate">Send</span>
           </button>
-          <button onClick={() => navigate('/bills')} className="w-full h-full min-h-[85px] md:min-h-[100px] bg-white rounded-2xl md:rounded-3xl flex flex-col items-center justify-center gap-2 text-[#A01030] shadow-sm border border-gray-100 active:scale-95 hover:scale-[1.03] transition-transform p-3">
+          <button onClick={() => navigate('/bills')} className="w-full h-full min-h-[85px] md:min-h-[100px] bg-white dark:bg-vault-dark-card rounded-2xl md:rounded-3xl flex flex-col items-center justify-center gap-2 text-vault-cyan shadow-sm dark:shadow-none border border-gray-100 dark:border-white/5 active:scale-95 hover:scale-[1.03] transition-transform p-3">
             <FileText className="w-6 h-6 md:w-8 md:h-8" />
-            <span className="text-[11px] sm:text-xs md:text-sm font-bold truncate text-gray-700">Pay Bills</span>
+            <span className="text-[11px] sm:text-xs md:text-sm font-bold truncate text-gray-700 dark:text-white">Pay Bills</span>
           </button>
-          <button onClick={() => navigate('#')} className="w-full h-full min-h-[85px] md:min-h-[100px] bg-white rounded-2xl md:rounded-3xl flex flex-col items-center justify-center gap-2 text-[#A01030] shadow-sm border border-gray-100 active:scale-95 hover:scale-[1.03] transition-transform p-3">
+          <button onClick={() => navigate('#')} className="w-full h-full min-h-[85px] md:min-h-[100px] bg-white dark:bg-vault-dark-card rounded-2xl md:rounded-3xl flex flex-col items-center justify-center gap-2 text-vault-purple shadow-sm dark:shadow-none border border-gray-100 dark:border-white/5 active:scale-95 hover:scale-[1.03] transition-transform p-3">
             <QrCode className="w-6 h-6 md:w-8 md:h-8" />
-            <span className="text-[11px] sm:text-xs md:text-sm font-bold truncate text-gray-700">Cards</span>
+            <span className="text-[11px] sm:text-xs md:text-sm font-bold truncate text-gray-700 dark:text-white">Cards</span>
           </button>
         </div>
 
-        {/* Quick Access */}
         <div className="fu fu4">
           <div className="flex justify-between items-center mb-3 sm:mb-4 xl:mb-5">
-            <h3 className="font-bold text-gray-900 text-sm md:text-base xl:text-lg">Quick Access</h3>
-            <span className="text-xs md:text-sm font-bold text-[#A01030] cursor-pointer hover:underline">View All</span>
+            <h3 className="font-bold text-gray-900 dark:text-white text-sm md:text-base xl:text-lg">Quick Access</h3>
+            <span className="text-xs md:text-sm font-bold text-vault-cyan cursor-pointer hover:underline">View All</span>
           </div>
           <div className="grid grid-cols-4 gap-3 md:gap-5 xl:gap-8">
             {quickItems.map((item, idx) => (
               <div key={idx} onClick={() => navigate(item.route)} className="flex flex-col items-center gap-2 xl:gap-3 cursor-pointer group">
-                <div className="w-14 h-14 sm:w-16 sm:h-16 xl:w-20 xl:h-20 bg-[#FFF5F7] rounded-[20px] xl:rounded-[24px] flex items-center justify-center text-[#A01030] group-hover:bg-rose-100 group-active:scale-90 transition-all">
+                <div className="w-14 h-14 sm:w-16 sm:h-16 xl:w-20 xl:h-20 bg-vault-cyan/10 dark:bg-vault-cyan/10 rounded-[20px] xl:rounded-[24px] flex items-center justify-center text-vault-cyan group-hover:bg-vault-cyan/20 group-active:scale-90 transition-all">
                   <item.icon className="w-6 h-6 xl:w-8 xl:h-8" />
                 </div>
-                <span className="text-[10px] sm:text-xs md:text-sm font-bold text-gray-500 text-center">{item.label}</span>
+                <span className="text-[10px] sm:text-xs md:text-sm font-bold text-gray-500 dark:text-slate-400 text-center">{item.label}</span>
               </div>
             ))}
           </div>
         </div>
 
-        {/* Smart Feed */}
         <div className="fu fu5 overflow-hidden pb-2">
           <div className="flex items-center gap-2 mb-3 sm:mb-4 xl:mb-5">
-            <h3 className="font-bold text-gray-900 text-sm md:text-base xl:text-lg">Smart Feed</h3>
-            <span className="bg-[#FCE7F3] text-[#BE185D] text-[9px] md:text-[10px] font-black px-2 py-0.5 rounded-md uppercase tracking-wide">AI Powered</span>
+            <h3 className="font-bold text-gray-900 dark:text-white text-sm md:text-base xl:text-lg">Smart Feed</h3>
+            <span className="vault-gradient text-white text-[9px] md:text-[10px] font-black px-2.5 py-0.5 rounded-md uppercase tracking-wide">AI Powered</span>
           </div>
           <div className="relative w-full overflow-hidden">
             {loadingFeed ? (
               <div className="flex gap-4">
-                {[1, 2].map(i => <div key={i} className="w-[240px] h-[145px] bg-gray-100 rounded-[24px] animate-pulse"></div>)}
+                {[1, 2].map(i => <div key={i} className="w-[240px] h-[145px] bg-gray-100 dark:bg-vault-dark-card rounded-[24px] animate-pulse"></div>)}
               </div>
             ) : (
               <div className="marquee-track">

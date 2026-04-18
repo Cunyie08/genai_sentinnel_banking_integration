@@ -1,12 +1,17 @@
 import React from 'react';
-import { Navigate } from 'react-router-dom';
+import { Navigate, useLocation } from 'react-router-dom';
 
 
 const ProtectedRoute = ({ children }) => {
-  const token = localStorage.getItem('sentinel_token');
+  const location = useLocation();
+  const isAdminRoute = location.pathname.toLowerCase().startsWith('/admin');
+
+  const token = isAdminRoute
+    ? localStorage.getItem('sentinel_admin_token')
+    : localStorage.getItem('sentinel_token');
 
   if (!token) {
-    return <Navigate to="/" replace />;
+    return <Navigate to={isAdminRoute ? '/admin/login' : '/'} replace />;
   }
 
   return children;

@@ -14,7 +14,6 @@ export const sendMessage = createAsyncThunk(
 const aiSlice = createSlice({
   name: 'ai',
   initialState: {
-    // Chat starts empty; the ChatScreen will inject a greeting using the real user name
     chatHistory: [],
     adminTickets: [],
     isLoading: false,
@@ -27,7 +26,6 @@ const aiSlice = createSlice({
       state.adminTickets.unshift(action.payload); 
     },
     initChatGreeting: (state, action) => {
-      // Only inject the greeting once (when chat is empty)
       if (state.chatHistory.length === 0) {
         const userName = action.payload || 'there';
         state.chatHistory = [
@@ -54,7 +52,6 @@ const aiSlice = createSlice({
       })
       .addCase(sendMessage.rejected, (state, action) => {
         state.isLoading = false;
-        // Show a fallback error message in the chat so the user knows something went wrong
         state.chatHistory.push({
           id: Date.now(),
           sender: 'ai',

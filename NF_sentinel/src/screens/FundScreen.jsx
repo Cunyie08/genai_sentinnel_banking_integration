@@ -50,20 +50,20 @@ const FundScreen = () => {
   
   if (lastTx?.type === 'credit') {
     return (
-      <div className="min-h-full w-full bg-[#F8F9FB] flex flex-col items-center justify-center p-6 font-sans">
-        <div className="bg-white rounded-3xl p-8 shadow-sm border border-gray-100 w-full max-w-sm text-center">
-          <div className="w-16 h-16 bg-green-50 rounded-full flex items-center justify-center mx-auto mb-4">
-            <CheckCircle size={32} className="text-green-500" />
+      <div className="min-h-full w-full bg-vault-light-bg dark:bg-vault-dark-bg flex flex-col items-center justify-center p-6 font-sans vault-transition">
+        <div className="bg-white dark:bg-vault-dark-card rounded-3xl p-8 shadow-sm border border-gray-100 dark:border-white/5 w-full max-w-sm text-center">
+          <div className="w-16 h-16 bg-green-50 dark:bg-green-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
+            <CheckCircle size={32} className="text-green-500 dark:text-green-400" />
           </div>
-          <h2 className="text-xl font-black text-gray-900 mb-1">Wallet Funded!</h2>
-          <p className="text-gray-500 text-sm mb-1">₦{Number(lastTx.amount).toLocaleString()} added to your wallet.</p>
-          <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mb-6">Ref: {lastTx.ref}</p>
+          <h2 className="text-xl font-black text-gray-900 dark:text-white mb-1">Wallet Funded!</h2>
+          <p className="text-gray-500 dark:text-slate-400 text-sm mb-1">₦{Number(lastTx.amount).toLocaleString()} added to your wallet.</p>
+          <p className="text-[10px] text-gray-400 dark:text-slate-500 font-bold uppercase tracking-widest mb-6">Ref: {lastTx.ref}</p>
           <button onClick={handleReset}
-            className="w-full bg-[#A01030] text-white py-3.5 rounded-2xl font-bold text-sm hover:bg-[#850d28] transition-colors mb-3">
+            className="w-full vault-gradient text-white py-3.5 rounded-2xl font-bold text-sm transition-colors mb-3 vault-glow">
             Fund Again
           </button>
           <button onClick={() => navigate('/home')}
-            className="w-full text-gray-500 text-sm font-bold hover:text-gray-700 py-2">
+            className="w-full text-gray-500 dark:text-slate-400 text-sm font-bold hover:text-gray-700 dark:hover:text-white py-2">
             Back to Home
           </button>
         </div>
@@ -72,22 +72,22 @@ const FundScreen = () => {
   }
 
   return (
-    <div className="min-h-full w-full bg-[#F8F9FB] font-sans">
-      <header className="sticky top-0 z-20 bg-[#F8F9FB]/95 backdrop-blur-sm border-b border-gray-100 px-4 sm:px-6 xl:px-8 py-4 flex items-center gap-3">
+    <div className="min-h-full w-full bg-vault-light-bg dark:bg-vault-dark-bg font-sans vault-transition">
+      <header className="sticky top-0 z-20 bg-vault-light-bg/95 dark:bg-vault-dark-bg/95 backdrop-blur-sm border-b border-gray-100 dark:border-white/5 px-4 sm:px-6 xl:px-8 py-4 flex items-center gap-3">
         <button onClick={() => navigate('/home')}
-          className="w-9 h-9 rounded-xl bg-white border border-gray-100 flex items-center justify-center shadow-sm hover:bg-gray-50 transition-colors">
-          <ChevronLeft size={20} className="text-gray-600" />
+          className="w-9 h-9 rounded-xl bg-white dark:bg-vault-dark-card border border-gray-100 dark:border-white/5 flex items-center justify-center shadow-sm hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
+          <ChevronLeft size={20} className="text-gray-600 dark:text-slate-400" />
         </button>
         <div>
-          <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest leading-none">Wallet</p>
-          <h1 className="text-lg font-extrabold text-gray-900">Fund Wallet</h1>
+          <p className="text-[10px] text-gray-400 dark:text-slate-500 font-bold uppercase tracking-widest leading-none">Wallet</p>
+          <h1 className="text-lg font-extrabold text-gray-900 dark:text-white">Fund Wallet</h1>
         </div>
       </header>
 
       <div className="w-full px-4 sm:px-6 xl:px-8 py-6 pb-28 max-w-2xl xl:max-w-none">
 
         {}
-        <div className="bg-gradient-to-br from-[#800020] via-[#A01030] to-[#5a0a1e] rounded-2xl p-5 text-white mb-5 relative overflow-hidden shadow-lg shadow-red-900/20">
+        <div className="vault-gradient rounded-2xl p-5 text-white mb-5 relative overflow-hidden shadow-lg vault-glow">
           <div className="absolute top-0 right-0 w-40 h-40 bg-white/5 rounded-full blur-2xl -mr-10 -mt-10 pointer-events-none" />
           <p className="text-white/60 text-[10px] font-bold uppercase tracking-widest mb-3">Your Sentinnel Account</p>
           <div className="flex items-center justify-between">
@@ -105,7 +105,7 @@ const FundScreen = () => {
         </div>
 
         {error && (
-          <div className="mb-5 p-3 bg-red-50 border border-red-100 text-red-600 rounded-xl text-xs font-bold flex items-center gap-2">
+          <div className="mb-5 p-3 bg-red-50 dark:bg-red-500/10 border border-red-100 dark:border-red-500/20 text-red-600 dark:text-red-400 rounded-xl text-xs font-bold flex items-center gap-2">
             <AlertCircle size={15} /> {error}
           </div>
         )}
@@ -113,46 +113,46 @@ const FundScreen = () => {
         <form onSubmit={handleSubmit} className="space-y-5">
 
           {}
-          <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
-            <p className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3">Funding Method</p>
+          <div className="bg-white dark:bg-vault-dark-card rounded-2xl p-5 shadow-sm border border-gray-100 dark:border-white/5">
+            <p className="text-xs font-bold text-gray-500 dark:text-slate-400 uppercase tracking-widest mb-3">Funding Method</p>
             <div className="space-y-2">
               {METHODS.map(m => (
                 <button key={m.id} type="button" onClick={() => setMethod(m.id)}
-                  className={`w-full flex items-center gap-4 p-4 rounded-2xl border-2 text-left transition-all ${method === m.id ? 'border-[#A01030] bg-rose-50' : 'border-gray-100 bg-gray-50 hover:bg-gray-100'}`}>
-                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${method === m.id ? 'bg-[#A01030] text-white' : 'bg-gray-200 text-gray-500'}`}>
+                  className={`w-full flex items-center gap-4 p-4 rounded-2xl border-2 text-left transition-all ${method === m.id ? 'border-vault-cyan bg-cyan-50 dark:bg-vault-cyan/10' : 'border-gray-100 dark:border-white/5 bg-gray-50 dark:bg-white/5 hover:bg-gray-100 dark:hover:bg-white/10'}`}>
+                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${method === m.id ? 'vault-gradient text-white' : 'bg-gray-200 dark:bg-white/10 text-gray-500 dark:text-slate-400'}`}>
                     <m.icon size={18} />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className={`text-sm font-bold ${method === m.id ? 'text-[#A01030]' : 'text-gray-800'}`}>{m.label}</p>
-                    <p className="text-[11px] text-gray-400">{m.desc}</p>
+                    <p className={`text-sm font-bold ${method === m.id ? 'text-vault-cyan' : 'text-gray-800 dark:text-white'}`}>{m.label}</p>
+                    <p className="text-[11px] text-gray-400 dark:text-slate-500">{m.desc}</p>
                   </div>
-                  <div className={`w-4 h-4 rounded-full border-2 shrink-0 ${method === m.id ? 'border-[#A01030] bg-[#A01030]' : 'border-gray-300'}`} />
+                  <div className={`w-4 h-4 rounded-full border-2 shrink-0 ${method === m.id ? 'border-vault-cyan bg-vault-cyan' : 'border-gray-300 dark:border-white/20'}`} />
                 </button>
               ))}
             </div>
           </div>
 
           {}
-          <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
-            <p className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3">Amount</p>
+          <div className="bg-white dark:bg-vault-dark-card rounded-2xl p-5 shadow-sm border border-gray-100 dark:border-white/5">
+            <p className="text-xs font-bold text-gray-500 dark:text-slate-400 uppercase tracking-widest mb-3">Amount</p>
             <div className="grid grid-cols-3 sm:grid-cols-7 gap-2 mb-4">
               {QUICK_AMOUNTS.map(a => (
                 <button key={a} type="button" onClick={() => setAmount(String(a))}
-                  className={`py-2.5 rounded-xl text-xs font-bold border-2 transition-all ${amount === String(a) ? 'bg-[#A01030] text-white border-[#A01030]' : 'bg-gray-50 text-gray-600 border-gray-100 hover:bg-gray-100'}`}>
+                  className={`py-2.5 rounded-xl text-xs font-bold border-2 transition-all ${amount === String(a) ? 'vault-gradient text-white border-transparent' : 'bg-gray-50 dark:bg-white/5 text-gray-600 dark:text-slate-300 border-gray-100 dark:border-white/5 hover:bg-gray-100 dark:hover:bg-white/10'}`}>
                   ₦{a >= 1000 ? (a/1000)+'k' : a}
                 </button>
               ))}
             </div>
-            <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-xl px-4 focus-within:border-[#A01030] focus-within:ring-2 focus-within:ring-[#A01030]/10 transition-all">
-              <span className="text-gray-500 font-bold text-sm">₦</span>
+            <div className="flex items-center gap-2 bg-gray-50 dark:bg-vault-dark-input border border-gray-200 dark:border-white/5 rounded-xl px-4 focus-within:border-vault-cyan focus-within:ring-2 focus-within:ring-vault-cyan/10 transition-all">
+              <span className="text-gray-500 dark:text-slate-400 font-bold text-sm">₦</span>
               <input type="number" placeholder="Or enter custom amount"
                 value={amount} onChange={e => setAmount(e.target.value)}
-                className="flex-1 py-3.5 bg-transparent outline-none text-sm font-medium text-gray-900 placeholder:text-gray-400" />
+                className="flex-1 py-3.5 bg-transparent outline-none text-sm font-medium text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-slate-500" />
             </div>
           </div>
 
           <button type="submit" disabled={isFunding || !amount}
-            className="w-full bg-[#A01030] text-white py-4 rounded-2xl font-bold text-sm shadow-lg shadow-red-900/20 hover:bg-[#850d28] transition-all flex items-center justify-center gap-2 active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed">
+            className="w-full vault-gradient text-white py-4 rounded-2xl font-bold text-sm shadow-lg vault-glow transition-all flex items-center justify-center gap-2 active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed">
             {isFunding ? (
               <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Processing...</>
             ) : `Fund ₦${amount ? Number(amount).toLocaleString() : '0'}`}

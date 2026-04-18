@@ -11,7 +11,7 @@ export const VoiceModal = () => {
     if (!isVoiceActive) return null;
 
     return (
-        <div className="absolute inset-0 z-[60] bg-black/90 backdrop-blur-xl flex flex-col items-center justify-center text-white animate-in fade-in duration-300">
+        <div className="absolute inset-0 z-[60] bg-vault-dark-bg/95 backdrop-blur-xl flex flex-col items-center justify-center text-white animate-in fade-in duration-300">
             
             {}
             <button 
@@ -23,8 +23,8 @@ export const VoiceModal = () => {
 
             {}
             <div className="relative mb-12">
-                <div className="absolute inset-0 bg-[#A01030] rounded-full blur-[60px] opacity-60 animate-pulse"></div>
-                <div className="w-32 h-32 rounded-full bg-gradient-to-tr from-[#A01030] to-[#FF4D6D] relative z-10 flex items-center justify-center shadow-[0_0_50px_rgba(160,16,48,0.5)] border-4 border-white/10">
+                <div className="absolute inset-0 vault-gradient rounded-full blur-[60px] opacity-60 animate-pulse"></div>
+                <div className="w-32 h-32 rounded-full vault-gradient relative z-10 flex items-center justify-center vault-glow-strong border-4 border-white/10">
                     <Mic size={48} className="text-white animate-bounce" />
                 </div>
                 {}
@@ -56,22 +56,22 @@ export const SentinelModal = () => {
 
     return (
         <div className="absolute inset-0 z-[70] flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in">
-            <div className="w-full max-w-sm bg-white rounded-[32px] p-6 shadow-2xl animate-in slide-in-from-bottom duration-300">
+            <div className="w-full max-w-sm bg-white dark:bg-vault-dark-card rounded-[32px] p-6 shadow-2xl animate-in slide-in-from-bottom duration-300 border border-gray-100 dark:border-white/5">
                 
-                <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mb-4">
-                    <ShieldAlert size={24} className="text-red-600" />
+                <div className="w-12 h-12 bg-red-100 dark:bg-red-500/20 rounded-full flex items-center justify-center mb-4">
+                    <ShieldAlert size={24} className="text-red-600 dark:text-red-400" />
                 </div>
 
-                <h3 className="text-xl font-bold text-gray-900 mb-2">Suspicious Attempt</h3>
-                <p className="text-gray-500 text-sm mb-6 leading-relaxed">
-                    We blocked a charge of <span className="font-bold text-gray-900">₦50,000</span> at <span className="font-bold text-gray-900">Jumia NG</span>. Was this you?
+                <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">Suspicious Attempt</h3>
+                <p className="text-gray-500 dark:text-slate-400 text-sm mb-6 leading-relaxed">
+                    We blocked a charge of <span className="font-bold text-gray-900 dark:text-white">₦50,000</span> at <span className="font-bold text-gray-900 dark:text-white">Jumia NG</span>. Was this you?
                 </p>
 
                 <div className="space-y-3">
-                    <button className="w-full bg-[#A01030] text-white py-4 rounded-xl font-bold flex items-center justify-center gap-2 shadow-lg shadow-red-900/20 active:scale-95 transition-transform">
+                    <button className="w-full vault-gradient text-white py-4 rounded-xl font-bold flex items-center justify-center gap-2 shadow-lg vault-glow active:scale-95 transition-transform">
                         <Fingerprint size={20} /> Verify Identity
                     </button>
-                    <button className="w-full bg-gray-50 text-gray-900 py-4 rounded-xl font-bold active:scale-95 transition-transform">
+                    <button className="w-full bg-gray-50 dark:bg-white/5 text-gray-900 dark:text-white py-4 rounded-xl font-bold active:scale-95 transition-transform">
                         No, Block Card
                     </button>
                 </div>

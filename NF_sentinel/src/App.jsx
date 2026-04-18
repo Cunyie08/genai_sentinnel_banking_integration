@@ -37,9 +37,20 @@ const App = () => {
   const isChat = path === '/chat';
   const isHome = path === '/home';
 
+  useEffect(() => {
+    const saved = localStorage.getItem('sentinel_dark_mode');
+    if (saved === 'true') {
+      document.documentElement.classList.remove('light');
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+      document.documentElement.classList.add('light');
+    }
+  }, []);
+
   if (isMerchant) {
     return (
-      <div className="h-[100dvh] w-full bg-[#0A0A0A] font-sans overflow-y-auto">
+      <div className="h-[100dvh] w-full bg-vault-dark-bg font-sans overflow-y-auto">
         <Routes>
           <Route path="/merchant" element={<MerchantCheckout />} />
         </Routes>
@@ -61,15 +72,20 @@ const App = () => {
     );
   }
 
-// protected routes
+
   return (
-    <div className={`h-[100dvh] w-full flex overflow-hidden font-sans ${isAdmin ? 'bg-gray-100' : 'bg-gray-50'}`}>
+    <div className={`h-[100dvh] w-full flex overflow-hidden font-sans vault-bg-glow
+      ${isAdmin
+        ? 'bg-vault-light-bg dark:bg-vault-dark-bg'
+        : 'bg-vault-light-bg dark:bg-vault-dark-bg'
+      }`}
+    >
 
       {!isAdmin && !isAuth && (
         <DesktopSidebar activeRoute={path} />
       )}
 
-      <main className="flex-1 h-full flex flex-col overflow-hidden min-w-0 bg-white relative">
+      <main className="flex-1 h-full flex flex-col overflow-hidden min-w-0 bg-vault-light-card dark:bg-vault-dark-bg relative z-[1]">
         <div className="flex-1 overflow-y-auto hide-scrollbar">
           <Routes>
             <Route path="/home"            element={<ProtectedRoute><HomeScreen /></ProtectedRoute>} />

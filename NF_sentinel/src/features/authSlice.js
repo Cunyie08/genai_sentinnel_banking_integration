@@ -11,8 +11,6 @@ export const loginUser = createAsyncThunk(
       } else {
         response = await api.login(credentials);
       }
-      // Token is already set in localStorage by axiosConfig.js login()
-      // Just return the user object to store in redux
       return response.data.user;
     } catch (err) {
       return rejectWithValue(err.message || 'Authentication failed');
@@ -35,7 +33,6 @@ const authSlice = createSlice({
       state.isAuthenticated = false;
       state.error = null;
     },
-    // FIX: Allow components to clear stale errors (e.g. when switching login <-> signup)
     clearAuthError: (state) => {
       state.error = null;
     },

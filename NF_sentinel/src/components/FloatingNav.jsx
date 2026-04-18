@@ -18,13 +18,13 @@ const FloatingNav = () => {
       {}
       <button 
         onClick={() => dispatch(toggleVoice(true))}
-        className="pointer-events-auto w-14 h-14 rounded-full bg-gradient-to-b from-[#A01030] to-[#700b21] shadow-xl shadow-red-900/30 flex items-center justify-center border-2 border-white/20 active:scale-90 transition-transform"
+        className="pointer-events-auto w-14 h-14 rounded-full vault-gradient shadow-xl vault-glow flex items-center justify-center border-2 border-white/20 active:scale-90 transition-transform"
       >
         <Waves className="text-white w-6 h-6 animate-pulse" />
       </button>
 
       {}
-      <div className="pointer-events-auto flex-1 ml-4 h-16 bg-white rounded-[32px] shadow-[0_8px_30px_rgba(0,0,0,0.08)] flex items-center justify-between px-8 border border-gray-100">
+      <div className="pointer-events-auto flex-1 ml-4 h-16 bg-white dark:bg-vault-dark-card rounded-[32px] shadow-[0_8px_30px_rgba(0,0,0,0.08)] dark:shadow-[0_8px_30px_rgba(0,0,0,0.4)] flex items-center justify-between px-8 border border-gray-100 dark:border-white/5 vault-transition">
         <NavBtn 
             icon={Home} 
             label="Home" 
@@ -51,8 +51,8 @@ const FloatingNav = () => {
 
 const NavBtn = ({ icon: Icon, label, isActive, onClick }) => (
     <button onClick={onClick} className="flex flex-col items-center gap-1 group">
-        <Icon size={22} strokeWidth={isActive ? 3 : 2} className={isActive ? 'text-[#A01030]' : 'text-gray-300 group-hover:text-gray-500'} />
-        <span className={`text-[9px] font-bold ${isActive ? 'text-[#A01030]' : 'text-gray-300 group-hover:text-gray-500'}`}>
+        <Icon size={22} strokeWidth={isActive ? 3 : 2} className={isActive ? 'text-vault-cyan' : 'text-gray-300 dark:text-slate-500 group-hover:text-gray-500 dark:group-hover:text-slate-300'} />
+        <span className={`text-[9px] font-bold ${isActive ? 'text-vault-cyan' : 'text-gray-300 dark:text-slate-500 group-hover:text-gray-500 dark:group-hover:text-slate-300'}`}>
             {label}
         </span>
     </button>
