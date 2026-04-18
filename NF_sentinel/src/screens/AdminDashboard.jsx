@@ -20,7 +20,6 @@ const AdminDashboard = () => {
   const [loadingUsers, setLoadingUsers]     = useState(false);
   const [error, setError]               = useState('');
 
-  // Check admin session
   useEffect(() => {
     const session = localStorage.getItem('sentinel_admin');
     if (!session) {
@@ -28,7 +27,6 @@ const AdminDashboard = () => {
     }
   }, [navigate]);
 
-  // Fetch tickets — independent call, never blocked by other fetches
   const fetchTickets = useCallback(async () => {
     setLoadingTickets(true);
     setError('');
@@ -45,7 +43,6 @@ const AdminDashboard = () => {
     }
   }, []);
 
-  // Fetch users — independent call
   const fetchUsers = useCallback(async () => {
     setLoadingUsers(true);
     try {
@@ -60,7 +57,6 @@ const AdminDashboard = () => {
     }
   }, []);
 
-  // Fetch analytics stats — independent call
   const fetchStats = useCallback(async () => {
     try {
       const res = await api.getAdminDashboard();
@@ -71,11 +67,8 @@ const AdminDashboard = () => {
     }
   }, []);
 
-  // On mount and tab change, fetch the relevant data — all independent
   useEffect(() => {
-    // Always fetch tickets (used in overview count too)
     fetchTickets();
-    // Always fetch stats for overview
     fetchStats();
 
     if (activeTab === 'users') {
@@ -110,8 +103,8 @@ const AdminDashboard = () => {
 
       {activeTab === 'config' && (
         <div className="flex flex-col items-center justify-center h-full text-center opacity-50">
-          <h2 className="text-xl font-bold text-gray-900 mb-2">System Config</h2>
-          <p className="text-sm text-gray-500">Under Construction</p>
+          <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-2">System Config</h2>
+          <p className="text-sm text-gray-500 dark:text-slate-400">Under Construction</p>
         </div>
       )}
 

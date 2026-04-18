@@ -11,13 +11,11 @@ const STEPS = { CHECKOUT: 0, PROCESSING: 1, WAITING: 2, RESULT: 3 };
 
 const MerchantCheckout = () => {
   const dispatch     = useDispatch();
-  // Primary: user.accounts from auth slice (populated on login)
   const user         = useSelector(s => s.auth.user);
-  const accountInfo  = useSelector(s => s.account?.details); // accountSlice
+  const accountInfo  = useSelector(s => s.account?.details);
 
   const firstAccount = user?.accounts?.[0] || null;
 
-  // Synthesise an account object from the accountSlice when auth.user.accounts is empty.
   const synthesizedAccount = !firstAccount && accountInfo?.number
     ? {
         account_number: accountInfo.number,
@@ -30,27 +28,23 @@ const MerchantCheckout = () => {
       }
     : null;
 
-  // Local state for account fetched on mount (covers page-refresh / direct-URL scenario)
   const [fetchedAccount, setFetchedAccount]   = useState(null);
   const [accountLoading, setAccountLoading]   = useState(false);
 
-  // The account we will actually charge
   const resolvedAccount = firstAccount || synthesizedAccount || fetchedAccount;
 
   const [step, setStep]     = useState(STEPS.CHECKOUT);
   const [txnId, setTxnId]   = useState('');
   const [fraud, setFraud]   = useState(null);
   const [error, setError]   = useState('');
-  const [result, setResult] = useState(null); // APPROVED | REJECTED
+  const [result, setResult] = useState(null);
 
   const merchant = 'BetKing';
   const amount   = 250000;
   const card     = resolvedAccount?.card?.masked_number || '**** **** **** 4832';
   const time     = '02:14 AM';
 
-  // ── On mount: always auto-fetch account — works on any device/browser ────
   useEffect(() => {
-    // If Redux already has the account data, skip the fetch
     if (firstAccount || synthesizedAccount) return;
 
     setAccountLoading(true);
@@ -78,9 +72,8 @@ const MerchantCheckout = () => {
       })
       .finally(() => setAccountLoading(false));
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // run once on mount
+  }, []);
 
-  // ── Poll for transaction result from the banking app ──────────────────────
   useEffect(() => {
     if (step !== STEPS.WAITING) return;
 
@@ -130,7 +123,6 @@ const MerchantCheckout = () => {
       setTxnId(data?.transaction_id || '');
       setFraud(data?.fraud_analysis || null);
 
-      // Write to localStorage so the banking app (HomeScreen) picks it up
       localStorage.setItem('sentinel_pending_txn', JSON.stringify({
         transaction_id: data?.transaction_id,
         merchant,
@@ -148,10 +140,12 @@ const MerchantCheckout = () => {
   };
 
   return (
-    <div className="min-h-[100dvh] w-full bg-[#0A0A0A] flex flex-col items-center p-4 sm:p-6 md:p-8 font-sans overflow-x-hidden overflow-y-auto">
-      <div className="w-full max-w-md mt-4 mb-20 shrink-0">
+    <div className="min-h-[100dvh] w-full bg-vault-dark-bg flex flex-col items-center p-4 sm:p-6 md:p-8 font-sans overflow-x-hidden overflow-y-auto relative">
+      <div className="absolute -top-32 -right-32 w-96 h-96 bg-vault-cyan/8 rounded-full blur-[100px] pointer-events-none" />
+      <div className="absolute -bottom-20 -left-20 w-80 h-80 bg-vault-purple/10 rounded-full blur-[100px] pointer-events-none" />
 
-        {/* Merchant branding */}
+      <div className="w-full max-w-md mt-4 mb-20 shrink-0 relative z-10">
+
         <div className="text-center mb-8">
           <div className="inline-flex items-center gap-2 bg-white/5 border border-white/10 px-5 py-2 rounded-full mb-4">
             <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse" />
@@ -161,11 +155,9 @@ const MerchantCheckout = () => {
           <p className="text-white/40 text-sm mt-1">Powered by Sentinnel Payment Gateway</p>
         </div>
 
-        {/* ═══ CHECKOUT FORM ═══ */}
         {step === STEPS.CHECKOUT && (
-          <div className="bg-[#151515] border border-white/10 rounded-[24px] overflow-hidden shadow-2xl">
+          <div className="bg-vault-dark-card border border-white/5 rounded-[24px] overflow-hidden shadow-2xl">
             <div className="p-6 space-y-5">
-              {/* Merchant */}
               <div className="flex justify-between items-center">
                 <span className="text-white/40 text-sm font-bold">Merchant</span>
                 <div className="flex items-center gap-2">
@@ -174,22 +166,19 @@ const MerchantCheckout = () => {
                 </div>
               </div>
 
-              {/* Amount */}
               <div className="flex justify-between items-center">
                 <span className="text-white/40 text-sm font-bold">Amount</span>
                 <span className="text-white font-black text-2xl">₦{amount.toLocaleString('en-NG')}</span>
               </div>
 
-              {/* Payment Method */}
               <div className="flex justify-between items-center">
                 <span className="text-white/40 text-sm font-bold">Payment Method</span>
                 <div className="flex items-center gap-2">
-                  <CreditCard size={18} className="text-blue-400" />
+                  <CreditCard size={18} className="text-vault-cyan" />
                   <span className="text-white font-bold text-sm">Saved Visa Card {card}</span>
                 </div>
               </div>
 
-              {/* Authenticated Account — auto-detected from logged-in session */}
               <div className="flex justify-between items-center">
                 <span className="text-white/40 text-sm font-bold">Paying From</span>
                 <div className="flex items-center gap-2">
@@ -211,41 +200,38 @@ const MerchantCheckout = () => {
                 </div>
               </div>
 
-              {/* Divider */}
               <div className="border-t border-white/5" />
 
-              {/* Risk indicators (visible but styled as "hidden from user") */}
-              <div className="bg-yellow-900/20 border border-yellow-800/30 rounded-xl p-4">
+              <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-4">
                 <div className="flex items-center gap-2 mb-3">
-                  <AlertTriangle size={14} className="text-yellow-500" />
-                  <span className="text-[10px] font-black text-yellow-500 uppercase tracking-wider">Risk Indicators (Internal)</span>
+                  <AlertTriangle size={14} className="text-amber-500" />
+                  <span className="text-[10px] font-black text-amber-500 uppercase tracking-wider">Risk Indicators (Internal)</span>
                 </div>
                 <div className="space-y-1.5">
-                  <div className="flex items-center gap-2 text-yellow-400/80 text-xs font-medium">
+                  <div className="flex items-center gap-2 text-amber-400/80 text-xs font-medium">
                     <span className="w-1.5 h-1.5 bg-red-500 rounded-full" /> High Amount (₦250,000)
                   </div>
-                  <div className="flex items-center gap-2 text-yellow-400/80 text-xs font-medium">
+                  <div className="flex items-center gap-2 text-amber-400/80 text-xs font-medium">
                     <span className="w-1.5 h-1.5 bg-orange-500 rounded-full" /> New Merchant (First Transaction)
                   </div>
-                  <div className="flex items-center gap-2 text-yellow-400/80 text-xs font-medium">
+                  <div className="flex items-center gap-2 text-amber-400/80 text-xs font-medium">
                     <span className="w-1.5 h-1.5 bg-red-500 rounded-full" /> Late Night Transaction ({time})
                   </div>
                 </div>
               </div>
 
               {error && (
-                <div className="bg-red-900/30 border border-red-800/50 rounded-xl p-3 text-xs text-red-400 font-bold">
+                <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-3 text-xs text-red-400 font-bold">
                   {error}
                 </div>
               )}
             </div>
 
-            {/* Pay button */}
             <div className="px-6 pb-6">
               <button
                 onClick={handlePayNow}
                 disabled={accountLoading}
-                className="w-full bg-green-600 hover:bg-green-500 disabled:opacity-60 disabled:cursor-not-allowed text-white py-4.5 rounded-xl font-black text-base shadow-lg shadow-green-900/30 active:scale-[0.97] transition-all flex items-center justify-center gap-2"
+                className="w-full vault-gradient disabled:opacity-60 disabled:cursor-not-allowed text-white py-4.5 rounded-xl font-black text-base shadow-lg vault-glow active:scale-[0.97] transition-all flex items-center justify-center gap-2"
                 style={{ paddingTop: '18px', paddingBottom: '18px' }}
               >
                 {accountLoading
@@ -257,19 +243,17 @@ const MerchantCheckout = () => {
           </div>
         )}
 
-        {/* ═══ PROCESSING ═══ */}
         {step === STEPS.PROCESSING && (
-          <div className="bg-[#151515] border border-white/10 rounded-[24px] p-10 text-center">
-            <Loader2 size={48} className="text-green-500 animate-spin mx-auto mb-4" />
+          <div className="bg-vault-dark-card border border-white/5 rounded-[24px] p-10 text-center">
+            <Loader2 size={48} className="text-vault-cyan animate-spin mx-auto mb-4" />
             <h3 className="text-white font-black text-lg mb-2">Processing Payment...</h3>
             <p className="text-white/40 text-sm">Sentinnel AI is analyzing this transaction</p>
           </div>
         )}
 
-        {/* ═══ WAITING FOR APPROVAL ═══ */}
         {step === STEPS.WAITING && (
-          <div className="bg-[#151515] border border-white/10 rounded-[24px] overflow-hidden">
-            <div className="bg-amber-900/30 border-b border-amber-800/30 px-6 py-4 flex items-center gap-3">
+          <div className="bg-vault-dark-card border border-white/5 rounded-[24px] overflow-hidden">
+            <div className="bg-amber-500/10 border-b border-amber-500/20 px-6 py-4 flex items-center gap-3">
               <Clock size={20} className="text-amber-400" />
               <div>
                 <h3 className="text-amber-300 font-black text-sm">WAITING FOR CUSTOMER APPROVAL</h3>
@@ -298,7 +282,7 @@ const MerchantCheckout = () => {
               </div>
 
               {fraud && (
-                <div className="bg-red-900/20 border border-red-800/30 rounded-xl p-4 mt-3">
+                <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-4 mt-3">
                   <p className="text-[10px] font-black text-red-400 uppercase tracking-wider mb-2">Sentinnel AI Analysis</p>
                   <div className="flex items-center gap-2 mb-2">
                     <span className="text-xs text-white/50">Risk Score:</span>
@@ -320,9 +304,8 @@ const MerchantCheckout = () => {
           </div>
         )}
 
-        {/* ═══ RESULT ═══ */}
         {step === STEPS.RESULT && (
-          <div className="bg-[#151515] border border-white/10 rounded-[24px] p-10 text-center">
+          <div className="bg-vault-dark-card border border-white/5 rounded-[24px] p-10 text-center">
             {result === 'APPROVED' ? (
               <>
                 <div className="w-20 h-20 bg-green-500/20 rounded-full flex items-center justify-center mx-auto mb-4 ring-4 ring-green-500/10">
@@ -352,7 +335,6 @@ const MerchantCheckout = () => {
           </div>
         )}
 
-        {/* Footer */}
         <p className="text-center text-white/20 text-[10px] mt-6 uppercase tracking-widest font-bold">
           Sentinnel Payment Gateway • Simulated Merchant Environment
         </p>

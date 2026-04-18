@@ -20,10 +20,10 @@ const DesktopSidebar = ({ activeRoute }) => {
   ];
 
   return (
-    <aside className="hidden md:flex flex-col w-60 lg:w-64 xl:w-72 h-full bg-white border-r border-gray-100 shrink-0">
-      <div className="px-6 py-6 border-b border-gray-100">
-        <h1 className="text-lg font-extrabold text-gray-900">Sentinnel</h1>
-        <p className="text-xs text-gray-400">Bank</p>
+    <aside className="hidden md:flex flex-col w-60 lg:w-64 xl:w-72 h-full bg-white dark:bg-vault-dark-card border-r border-gray-100 dark:border-white/5 shrink-0 vault-transition">
+      <div className="px-6 py-6 border-b border-gray-100 dark:border-white/5">
+        <h1 className="text-lg font-extrabold vault-gradient-text">Sentinel</h1>
+        <p className="text-xs text-gray-400 dark:text-slate-500">Bank</p>
       </div>
 
       <nav className="flex-1 px-3 py-5 space-y-1 overflow-y-auto">
@@ -33,10 +33,10 @@ const DesktopSidebar = ({ activeRoute }) => {
             <button
               key={item.route}
               onClick={() => navigate(item.route)}
-              className={`w-full text-left px-4 py-2 rounded-xl text-sm transition
+              className={`w-full text-left px-4 py-2.5 rounded-xl text-sm transition-all
                 ${active
-                  ? 'bg-rose-50 text-rose-700 font-bold'
-                  : 'text-gray-500 hover:bg-gray-50 hover:text-gray-800'}`}
+                  ? 'vault-gradient text-white font-bold shadow-lg vault-glow'
+                  : 'text-gray-500 dark:text-slate-400 hover:bg-gray-50 dark:hover:bg-white/5 hover:text-gray-800 dark:hover:text-white'}`}
             >
               {item.label}
             </button>

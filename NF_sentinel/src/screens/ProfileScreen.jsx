@@ -13,7 +13,7 @@ import {
 
 const Toggle = ({ on, onToggle }) => (
   <button onClick={onToggle} type="button"
-    className={`relative w-11 h-6 rounded-full transition-colors duration-200 ${on ? 'bg-[#A01030]' : 'bg-gray-200'}`}>
+    className={`relative w-11 h-6 rounded-full transition-colors duration-200 ${on ? 'vault-gradient' : 'bg-gray-200 dark:bg-white/10'}`}>
     <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow-sm transition-transform duration-200 ${on ? 'translate-x-5' : 'translate-x-0'}`} />
   </button>
 );
@@ -25,8 +25,23 @@ const ProfileScreen = () => {
   const user = useSelector(s => s.auth.user);
   const [notifs,      setNotifs]      = useState(true);
   const [biometrics,  setBiometrics]  = useState(true);
-  const [darkMode,    setDarkMode]    = useState(false);
+  const [darkMode,    setDarkMode]    = useState(() => {
+    return localStorage.getItem('sentinel_dark_mode') === 'true';
+  });
   const [loggingOut,  setLoggingOut]  = useState(false);
+
+  const handleDarkModeToggle = () => {
+    const next = !darkMode;
+    setDarkMode(next);
+    localStorage.setItem('sentinel_dark_mode', String(next));
+    if (next) {
+      document.documentElement.classList.remove('light');
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+      document.documentElement.classList.add('light');
+    }
+  };
 
   const handleLogout = async () => {
     setLoggingOut(true);
@@ -36,34 +51,34 @@ const ProfileScreen = () => {
 
   const SettingRow = ({ icon: Icon, label, sublabel, action, danger = false, right }) => (
     <button onClick={action}
-      className={`w-full flex items-center gap-4 px-5 py-4 hover:bg-gray-50 transition-colors text-left ${danger ? 'hover:bg-red-50' : ''}`}>
-      <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${danger ? 'bg-red-50' : 'bg-gray-100'}`}>
-        <Icon size={17} className={danger ? 'text-red-500' : 'text-gray-500'} />
+      className={`w-full flex items-center gap-4 px-5 py-4 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors text-left ${danger ? 'hover:bg-red-50 dark:hover:bg-red-500/5' : ''}`}>
+      <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${danger ? 'bg-red-50 dark:bg-red-500/10' : 'bg-gray-100 dark:bg-white/5'}`}>
+        <Icon size={17} className={danger ? 'text-red-500 dark:text-red-400' : 'text-gray-500 dark:text-slate-400'} />
       </div>
       <div className="flex-1 min-w-0">
-        <p className={`text-sm font-bold ${danger ? 'text-red-600' : 'text-gray-800'}`}>{label}</p>
-        {sublabel && <p className="text-[11px] text-gray-400">{sublabel}</p>}
+        <p className={`text-sm font-bold ${danger ? 'text-red-600 dark:text-red-400' : 'text-gray-800 dark:text-white'}`}>{label}</p>
+        {sublabel && <p className="text-[11px] text-gray-400 dark:text-slate-500">{sublabel}</p>}
       </div>
-      {right ?? <ChevronRight size={16} className="text-gray-300 shrink-0" />}
+      {right ?? <ChevronRight size={16} className="text-gray-300 dark:text-slate-600 shrink-0" />}
     </button>
   );
 
   return (
-    <div className="min-h-full w-full bg-[#F8F9FB] font-sans">
+    <div className="min-h-full w-full bg-vault-light-bg dark:bg-vault-dark-bg font-sans vault-transition">
 
       {}
-      <header className="sticky top-0 z-20 bg-[#F8F9FB]/95 backdrop-blur-sm border-b border-gray-100 px-4 sm:px-6 xl:px-8 py-4 flex items-center gap-3">
+      <header className="sticky top-0 z-20 bg-vault-light-bg/95 dark:bg-vault-dark-bg/95 backdrop-blur-sm border-b border-gray-100 dark:border-white/5 px-4 sm:px-6 xl:px-8 py-4 flex items-center gap-3">
         <button onClick={() => navigate('/home')}
-          className="w-9 h-9 rounded-xl bg-white border border-gray-100 flex items-center justify-center shadow-sm hover:bg-gray-50 transition-colors">
-          <ChevronLeft size={20} className="text-gray-600" />
+          className="w-9 h-9 rounded-xl bg-white dark:bg-vault-dark-card border border-gray-100 dark:border-white/5 flex items-center justify-center shadow-sm hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
+          <ChevronLeft size={20} className="text-gray-600 dark:text-slate-400" />
         </button>
-        <h1 className="text-lg font-extrabold text-gray-900">Profile & Settings</h1>
+        <h1 className="text-lg font-extrabold text-gray-900 dark:text-white">Profile & Settings</h1>
       </header>
 
       <div className="w-full px-4 sm:px-6 xl:px-8 py-6 pb-28 max-w-2xl xl:max-w-none space-y-5">
 
         {}
-        <div className="bg-gradient-to-br from-[#800020] via-[#A01030] to-[#5a0a1e] rounded-2xl p-6 text-white shadow-lg shadow-red-900/20 relative overflow-hidden">
+        <div className="vault-gradient rounded-2xl p-6 text-white shadow-lg vault-glow relative overflow-hidden">
           <div className="absolute top-0 right-0 w-40 h-40 bg-white/5 rounded-full blur-2xl -mr-10 -mt-10 pointer-events-none" />
           <div className="flex items-center gap-4 relative z-10">
             <div className="w-16 h-16 rounded-2xl bg-white/20 border-2 border-white/30 overflow-hidden shrink-0">
@@ -93,8 +108,8 @@ const ProfileScreen = () => {
         </div>
 
         {}
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest px-5 pt-4 pb-2">Account</p>
+        <div className="bg-white dark:bg-vault-dark-card rounded-2xl shadow-sm border border-gray-100 dark:border-white/5 overflow-hidden">
+          <p className="text-[10px] font-bold text-gray-400 dark:text-slate-500 uppercase tracking-widest px-5 pt-4 pb-2">Account</p>
           <SettingRow icon={User}       label="Personal Information"  sublabel="Name, phone, email"         action={() => {}} />
           <SettingRow icon={CreditCard} label="Bank Accounts"         sublabel="Linked accounts & cards"    action={() => {}} />
           <SettingRow icon={Star}       label="Upgrade to Premium"    sublabel="Unlock higher limits"       action={() => {}} />
@@ -102,8 +117,8 @@ const ProfileScreen = () => {
         </div>
 
         {}
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest px-5 pt-4 pb-2">Preferences</p>
+        <div className="bg-white dark:bg-vault-dark-card rounded-2xl shadow-sm border border-gray-100 dark:border-white/5 overflow-hidden">
+          <p className="text-[10px] font-bold text-gray-400 dark:text-slate-500 uppercase tracking-widest px-5 pt-4 pb-2">Preferences</p>
           <SettingRow icon={Bell}
             label="Push Notifications"
             sublabel={notifs ? 'Enabled' : 'Disabled'}
@@ -119,48 +134,47 @@ const ProfileScreen = () => {
           <SettingRow icon={Moon}
             label="Dark Mode"
             sublabel={darkMode ? 'On' : 'Off'}
-            action={() => setDarkMode(!darkMode)}
-            right={<Toggle on={darkMode} onToggle={() => setDarkMode(!darkMode)} />}
+            action={handleDarkModeToggle}
+            right={<Toggle on={darkMode} onToggle={handleDarkModeToggle} />}
           />
           <SettingRow icon={Globe} label="Language" sublabel="English (Nigeria)" action={() => {}} />
         </div>
 
         {}
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest px-5 pt-4 pb-2">Security</p>
+        <div className="bg-white dark:bg-vault-dark-card rounded-2xl shadow-sm border border-gray-100 dark:border-white/5 overflow-hidden">
+          <p className="text-[10px] font-bold text-gray-400 dark:text-slate-500 uppercase tracking-widest px-5 pt-4 pb-2">Security</p>
           <SettingRow icon={Shield} label="Change PIN"     sublabel="Update your transaction PIN" action={() => {}} />
           <SettingRow icon={Shield} label="Change Password" sublabel="Update login password"      action={() => {}} />
           <SettingRow icon={Shield} label="2-Factor Auth"  sublabel="Add extra login security"    action={() => {}} />
         </div>
 
         {}
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest px-5 pt-4 pb-2">Support</p>
+        <div className="bg-white dark:bg-vault-dark-card rounded-2xl shadow-sm border border-gray-100 dark:border-white/5 overflow-hidden">
+          <p className="text-[10px] font-bold text-gray-400 dark:text-slate-500 uppercase tracking-widest px-5 pt-4 pb-2">Support</p>
           <SettingRow icon={HelpCircle} label="Help Center"    sublabel="FAQs and guides"        action={() => {}} />
           <SettingRow icon={HelpCircle} label="Contact Us"     sublabel="Chat with support"      action={() => navigate('/chat')} />
           <SettingRow icon={Star}       label="Rate the App"   sublabel="Leave us a review"      action={() => {}} />
         </div>
 
-        {/* Demo Simulation */}
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest px-5 pt-4 pb-2">Demo & Simulation</p>
+        <div className="bg-white dark:bg-vault-dark-card rounded-2xl shadow-sm border border-gray-100 dark:border-white/5 overflow-hidden">
+          <p className="text-[10px] font-bold text-gray-400 dark:text-slate-500 uppercase tracking-widest px-5 pt-4 pb-2">Demo & Simulation</p>
           <button
             onClick={() => window.open('/merchant', '_blank')}
-            className="w-full flex items-center gap-4 px-5 py-4 hover:bg-blue-50 transition-colors text-left"
+            className="w-full flex items-center gap-4 px-5 py-4 hover:bg-blue-50 dark:hover:bg-blue-500/5 transition-colors text-left"
           >
-            <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 bg-blue-100">
-              <ShoppingCart size={17} className="text-blue-600" />
+            <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 bg-blue-100 dark:bg-blue-500/10">
+              <ShoppingCart size={17} className="text-blue-600 dark:text-blue-400" />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-bold text-gray-800">Merchant Simulator</p>
-              <p className="text-[11px] text-gray-400">Simulate a card payment to test Sentinnel AI</p>
+              <p className="text-sm font-bold text-gray-800 dark:text-white">Merchant Simulator</p>
+              <p className="text-[11px] text-gray-400 dark:text-slate-500">Simulate a card payment to test Sentinnel AI</p>
             </div>
             <ExternalLink size={16} className="text-blue-400 shrink-0" />
           </button>
         </div>
 
         {}
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+        <div className="bg-white dark:bg-vault-dark-card rounded-2xl shadow-sm border border-gray-100 dark:border-white/5 overflow-hidden">
           <SettingRow icon={LogOut}
             label={loggingOut ? 'Logging out...' : 'Logout'}
             sublabel="Sign out of your account"
@@ -168,12 +182,12 @@ const ProfileScreen = () => {
             danger
             right={loggingOut
               ? <div className="w-4 h-4 border-2 border-red-400 border-t-transparent rounded-full animate-spin" />
-              : <ChevronRight size={16} className="text-red-300 shrink-0" />
+              : <ChevronRight size={16} className="text-red-300 dark:text-red-500/50 shrink-0" />
             }
           />
         </div>
 
-        <p className="text-center text-[10px] text-gray-300 font-bold uppercase tracking-widest pb-4">
+        <p className="text-center text-[10px] text-gray-300 dark:text-slate-600 font-bold uppercase tracking-widest pb-4">
           Sentinnel Licensed by CBN
         </p>
       </div>

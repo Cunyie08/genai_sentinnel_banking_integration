@@ -1,13 +1,50 @@
 @import "tailwindcss";
 
+/* Force class-based dark mode (toggle via Profile, not OS) */
+@custom-variant dark (&:where(.dark, .dark *));
+
 @theme {
-  --color-primary: #A31135;
-  --color-primary-dark: #7A0D28;
-  --color-primary-light: #D91A4D;
-  --color-bg-gray: #F9FAFB;
+  /* ═══ LUMINESCENT VAULT — Brand Identity ═══ */
+  --color-vault-cyan: #00b4d8;
+  --color-vault-cyan-light: #22d3ee;
+  --color-vault-purple: #7c3aed;
+  --color-vault-purple-light: #a78bfa;
+  --color-vault-indigo: #4F46E5;
+
+  /* ═══ Dark Mode Surfaces ═══ */
+  --color-vault-dark-bg: #0B0C10;
+  --color-vault-dark-card: #1A1B23;
+  --color-vault-dark-card-hover: #22232E;
+  --color-vault-dark-input: #111218;
+  --color-vault-dark-border: rgba(255,255,255,0.06);
+
+  /* ═══ Light Mode Surfaces ═══ */
+  --color-vault-light-bg: #F8FAFC;
+  --color-vault-light-card: #FFFFFF;
+  --color-vault-light-input: #F1F5F9;
+  --color-vault-light-border: rgba(0,0,0,0.04);
 }
 
-/* Custom Utilities */
+/* ═══ BASE STYLES ═══ */
+*, *::before, *::after {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  margin: 0;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  background-color: var(--color-vault-light-bg);
+  color: #0f172a;
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+html.dark body {
+  background-color: var(--color-vault-dark-bg);
+  color: #f8fafc;
+}
+
+/* ═══ SCROLLBAR HIDE ═══ */
 .hide-scrollbar::-webkit-scrollbar {
   display: none;
 }
@@ -16,9 +53,166 @@
   scrollbar-width: none;
 }
 
-body {
-  background-color: #f3f4f6;
-  margin: 0;
-  font-family: system-ui, -apple-system, sans-serif;
-  /* overflow: hidden; Prevents double scrollbars on desktop */
+/* ═══ BRAND GRADIENT UTILITIES ═══ */
+.vault-gradient {
+  background: linear-gradient(135deg, var(--color-vault-cyan) 0%, var(--color-vault-purple) 100%);
+}
+
+.vault-gradient-text {
+  background: linear-gradient(135deg, var(--color-vault-cyan) 0%, var(--color-vault-purple) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.vault-gradient-reverse {
+  background: linear-gradient(135deg, var(--color-vault-purple) 0%, var(--color-vault-cyan) 100%);
+}
+
+/* ═══ GLOW EFFECTS ═══ */
+.vault-glow {
+  box-shadow:
+    0 0 20px rgba(0, 180, 216, 0.25),
+    0 0 40px rgba(124, 58, 237, 0.15);
+}
+
+.vault-glow-strong {
+  box-shadow:
+    0 0 25px rgba(0, 180, 216, 0.35),
+    0 0 50px rgba(124, 58, 237, 0.25),
+    0 0 80px rgba(124, 58, 237, 0.1);
+}
+
+.vault-glow-cyan {
+  box-shadow: 0 0 30px rgba(0, 180, 216, 0.3);
+}
+
+.vault-glow-purple {
+  box-shadow: 0 0 30px rgba(124, 58, 237, 0.3);
+}
+
+/* ═══ LUMINESCENT BACKGROUND GLOWS ═══ */
+.vault-bg-glow {
+  position: relative;
+  overflow: hidden;
+}
+
+/* ── Light Mode: soft cyan top-left, lavender bottom-right ── */
+.vault-bg-glow::before {
+  content: '';
+  position: fixed;
+  top: -15%;
+  left: -10%;
+  width: 700px;
+  height: 700px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(0, 180, 216, 0.18) 0%, rgba(0, 180, 216, 0.05) 50%, transparent 75%);
+  pointer-events: none;
+  z-index: 0;
+  filter: blur(80px);
+  transition: all 0.5s ease;
+}
+
+.vault-bg-glow::after {
+  content: '';
+  position: fixed;
+  bottom: -15%;
+  right: -10%;
+  width: 650px;
+  height: 650px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(124, 58, 237, 0.14) 0%, rgba(167, 139, 250, 0.06) 50%, transparent 75%);
+  pointer-events: none;
+  z-index: 0;
+  filter: blur(80px);
+  transition: all 0.5s ease;
+}
+
+/* ── Dark Mode: deep purple ring right, teal accent left ── */
+html.dark .vault-bg-glow::before {
+  top: 20%;
+  left: auto;
+  right: -12%;
+  width: 600px;
+  height: 600px;
+  background:
+    radial-gradient(circle, transparent 30%, rgba(124, 58, 237, 0.15) 45%, rgba(124, 58, 237, 0.08) 55%, transparent 70%);
+  filter: blur(40px);
+}
+
+html.dark .vault-bg-glow::after {
+  top: -10%;
+  bottom: auto;
+  left: -8%;
+  right: auto;
+  width: 500px;
+  height: 500px;
+  background: radial-gradient(circle, rgba(0, 180, 216, 0.12) 0%, rgba(0, 180, 216, 0.04) 50%, transparent 75%);
+  filter: blur(60px);
+}
+
+/* ═══ GLASSMORPHISM ═══ */
+.vault-glass {
+  background: rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+html.dark .vault-glass-card {
+  background: rgba(26, 27, 35, 0.8);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+/* ═══ GRADIENT BORDER UTILITY ═══ */
+.vault-border-gradient {
+  position: relative;
+  border: none;
+}
+
+.vault-border-gradient::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(135deg, var(--color-vault-cyan), var(--color-vault-purple));
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+}
+
+/* ═══ DARK MODE TRANSITIONS ═══ */
+.vault-transition {
+  transition: background-color 0.3s ease, border-color 0.3s ease, color 0.3s ease, box-shadow 0.3s ease;
+}
+
+/* ═══ DARK MODE CARD STYLES ═══ */
+html.dark .vault-card {
+  background-color: var(--color-vault-dark-card);
+  border-color: var(--color-vault-dark-border);
+  color: #f8fafc;
+}
+
+html.dark .vault-input {
+  background-color: var(--color-vault-dark-input);
+  border-color: transparent;
+  color: #f8fafc;
+}
+
+html.dark .vault-input::placeholder {
+  color: #64748b;
+}
+
+/* ═══ PULSE GLOW ANIMATION ═══ */
+@keyframes vaultPulse {
+  0%, 100% { opacity: 0.6; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.05); }
+}
+
+.vault-pulse {
+  animation: vaultPulse 3s ease-in-out infinite;
 }

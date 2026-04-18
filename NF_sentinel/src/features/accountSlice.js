@@ -41,7 +41,6 @@ const accountSlice = createSlice({
       })
       .addCase(fetchDashboard.fulfilled, (state, action) => {
         state.isLoading = false;
-        // The real backend returns account_details array, while mock returns .account
         const acc = action.payload.account || (action.payload.account_details && action.payload.account_details[0]);
         if (acc) {
           state.details = {
