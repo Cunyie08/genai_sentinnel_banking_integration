@@ -5,7 +5,7 @@ on:
     branches: [ master ]
     paths:
       - 'NF_sentinel/**'
-      - '.github/workflows/frontend-deploy.yml' # Now triggers if you edit this file
+      - '.github/workflows/frontend-deploy.yml'
 
 jobs:
   deploy:
@@ -46,28 +46,37 @@ jobs:
           username: ubuntu
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
-            # 0. Ensure unzip is installed on the server
+            # 1. Install Unzip if missing
             sudo apt-get update && sudo apt-get install -y unzip
 
-            # 1. Prepare directory
-            sudo mkdir -p /var/www/sentinnel-banking-api/NF_sentinel/dist
-            sudo chown ubuntu:ubuntu /var/www/sentinnel-banking-api/NF_sentinel/dist
-            
-            # 2. Clean old files and unzip new ones
-            rm -rf /var/www/sentinnel-banking-api/NF_sentinel/dist/*
-            
-            # Check if file exists before unzipping to avoid crash
+            # 2. Define target path
+            TARGET_DIR="/var/www/sentinnel-banking-api/NF_sentinel/dist"
+
+            # 3. FIX PERMISSIONS FIRST
+            # We take back ownership so the 'rm' command below actually works
+            sudo mkdir -p $TARGET_DIR
+            sudo chown -R ubuntu:ubuntu $TARGET_DIR
+
+            # 4. NUCLEAR CLEAN
+            # Remove all old assets to prevent "ghosting" of old theme files
+            rm -rf $TARGET_DIR/*
+
+            # 5. DEPLOY NEW FILES
             if [ -f /home/ubuntu/dist.zip ]; then
-                unzip -o /home/ubuntu/dist.zip -d /var/www/sentinnel-banking-api/NF_sentinel/dist/
-                echo "Unzip successful"
+                unzip -o /home/ubuntu/dist.zip -d $TARGET_DIR/
+                echo "✅ Unzip successful"
             else
-                echo "File /home/ubuntu/dist.zip not found!"
+                echo "❌ Error: dist.zip not found!"
                 exit 1
             fi
-            
-            # 3. Set permissions for Nginx and cleanup
-            sudo chown -R www-data:www-data /var/www/sentinnel-banking-api/NF_sentinel/dist
+
+            # 6. FINAL PERMISSIONS (The "Golden Ratio")
+            # User (ubuntu) has Full access to deploy next time
+            # Group (www-data) has Read access so Nginx can show the site
+            sudo chown -R ubuntu:www-data $TARGET_DIR
+            sudo chmod -R 775 $TARGET_DIR
+
+            # 7. CLEANUP & RELOAD
             rm /home/ubuntu/dist.zip
-            
             sudo systemctl restart nginx
-            echo "✅ Frontend updated successfully!"
+            echo "🚀 Deployment Complete: Sentinnel Red Theme is live!"
