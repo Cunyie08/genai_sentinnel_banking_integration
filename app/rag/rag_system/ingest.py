@@ -329,7 +329,9 @@ class DocumentIngester:
         for chunk in raw_chunks:
             # Normalize whitespace for embedding quality
             clean = re.sub(r"\s+", " ", chunk["content"]).strip()
-
+            if len(clean) < 10:  # Skip chunks that are just whitespace or empty
+                logger.warning(f"Skipping tiny/empty chunk: {chunk['chunk_id']}")
+                continue
             content_hash  = hashlib.md5(clean.encode()).hexdigest()
             key_terms     = self.chunker.extract_key_terms(clean)
             contains_sla  = any(t in clean.lower() for t in SLA_TERMS)
