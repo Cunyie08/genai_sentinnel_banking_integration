@@ -504,8 +504,8 @@ async def ai_chat(
             raise HTTPException(status_code=400, detail="Missing user_prompt")
 
         # 1. Initialize Infrastructure
-        orchestrator = Orchestrator()
-        await orchestrator.initialize()
+        # Use the global orchestrator already initialized in the lifespan
+        global orchestrator
         
         # 2. Intent Classification using OpenAI with Gemini Fallback
         intent_prompt = f"""
@@ -1784,8 +1784,11 @@ async def get_faqs(prompt: Optional[str] = None):
     model = _faq_embedding_cache["model"]
     question_embeddings = _faq_embedding_cache["embeddings"]
 
-    prompt_embedding = model.encode([prompt], convert_to_numpy=True)
-    similarities = sklearn_cosine_sim(prompt_embedding, question_embeddings)[0]
+   # Defensive 2D conversion for production stability
+    p_vec = np.atleast_2d(model.encode([prompt], convert_to_numpy=True))
+    q_vecs = np.atleast_2d(question_embeddings)
+
+    similarities = sklearn_cosine_sim(p_vec, q_vecs)[0]
 
     # Rank all FAQs by similarity score, highest first
     ranked = sorted(enumerate(similarities), key=lambda x: x[1], reverse=True)
