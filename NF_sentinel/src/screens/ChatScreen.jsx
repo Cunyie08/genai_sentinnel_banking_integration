@@ -45,8 +45,7 @@ const ChatScreen = () => {
 
   const addMsg = (msg) => setMessages(prev => [...prev, msg]);
   const now = () => new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-
-  const handleFaqSend = async (overrideQuery) => {
+const handleFaqSend = async (overrideQuery) => {
     const q = (overrideQuery || faqQuery).trim();
     if (!q) return;
     setFaqQuery('');
@@ -57,40 +56,49 @@ const ChatScreen = () => {
     addMsg({ id: Date.now(), sender: 'user', type: 'text', text: q, time: now() });
     setFaqLoading(true);
     try {
-      console.log('[FAQ] Sending query to backend:', q);
       const res = await api.getFaqs(q);
-      console.log('[FAQ] Raw response from backend:', res?.data);
-
       const d = res?.data || {};
       const matchFound = d.success === true;
-      const answer = matchFound
+      
+      // 1. Get the raw answer from the backend
+      let rawAnswer = matchFound
         ? (d.match?.answer || 'See our FAQ for more details.')
-        : (d.message || "I couldn't find a specific answer to your question in our FAQs.");
+        : (d.message || "I couldn't find a specific answer, but I can escalate this for you.");
 
-      console.log('[FAQ] Match found:', matchFound, '| Answer preview:', answer?.substring(0, 80));
+      // 2. CLEANING LOGIC (Applied to BOTH matches and escalations)
+      let cleanedAnswer = rawAnswer
+        .replace(/channel\s*=\s*"atm"/gi, 'our ATM system')
+        .replace(/failure_reason\s*=\s*"[^"]*"/gi, 'a daily limit')
+        .replace(/transaction_status\s*=\s*"[^"]*"/gi, 'a temporary delay')
+        .replace(/Step\s\d:/gi, '•')
+        .trim();
+      
+      // 3. SPLIT LOGIC (Look for BOTH possible tags to be safe)
+      if (cleanedAnswer.includes('[HUMAN_RESPONSE]')) {
+        cleanedAnswer = cleanedAnswer.split('[HUMAN_RESPONSE]').pop().trim();
+      } else if (cleanedAnswer.includes('[CUSTOMER MESSAGE]')) {
+        cleanedAnswer = cleanedAnswer.split('[CUSTOMER MESSAGE]').pop().trim();
+      }
 
+      // 4. ROUTING TO UI
       if (!matchFound) {
+        // This ensures the POPUP only gets the 'cleaned' and 'split' text
         addMsg({
           id: Date.now(), sender: 'ai', type: 'escalation',
-          text: answer,
+          text: cleanedAnswer, 
           time: now(),
         });
         setEscQuery(q);
       } else {
-        addMsg({ id: Date.now(), sender: 'ai', type: 'text', text: answer, time: now() });
+        addMsg({ id: Date.now(), sender: 'ai', type: 'text', text: cleanedAnswer, time: now() });
       }
     } catch (err) {
-      console.error('[FAQ] Error fetching FAQ:', err?.message || err);
-      addMsg({
-        id: Date.now(), sender: 'ai', type: 'text',
-        text: 'Could not retrieve FAQ at this time. Please try again.',
-        time: now(),
-      });
+      console.error('[FAQ] Error:', err);
+      addMsg({ id: Date.now(), sender: 'ai', type: 'text', text: 'Service unavailable.', time: now() });
     } finally {
       setFaqLoading(false);
     }
   };
-
   const handleEscalateSubmit = async (accountNumber, accountObj) => {
     setEscAccount(accountNumber);
     setEscAccountObj(accountObj);
@@ -105,6 +113,9 @@ const ChatScreen = () => {
       setEscStep(ESC_STEPS.DONE);
       addMsg({
         id: Date.now(), sender: 'ai', type: 'routing-result',
+        text: res.data.reasoning.includes('[CUSTOMER MESSAGE]') 
+        ? res.data.reasoning.split('[CUSTOMER MESSAGE]').pop().trim() 
+        : res.data.reasoning,
         result: res.data,
         time: now(),
       });
@@ -239,7 +250,13 @@ const ChatScreen = () => {
               <CheckCircle size={16} className="text-green-500 dark:text-green-400" />
               <span className="text-sm font-black text-green-700 dark:text-green-400">Complaint Routed Successfully</span>
             </div>
+            <div className="p-4">
+              <p className="text-[14px] font-medium text-gray-800 dark:text-white leading-relaxed">
+                {msg.text}
+              </p>
+            </div>
           </div>
+          
           <span className="text-[10px] text-gray-400 dark:text-slate-500 mt-1">{msg.time}</span>
         </div>
       );

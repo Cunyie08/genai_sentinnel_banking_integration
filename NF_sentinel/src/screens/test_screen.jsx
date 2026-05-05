@@ -87,12 +87,6 @@ const InjectStyles = () => (
     .fu3 { animation-delay: 0.18s; }
     .fu4 { animation-delay: 0.26s; }
     .fu5 { animation-delay: 0.34s; }
-
-    @keyframes scaleIn {
-      from { opacity: 0; transform: scale(0.92) translateY(16px); }
-      to   { opacity: 1; transform: scale(1) translateY(0); }
-    }
-    .scale-in { animation: scaleIn 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) both; }
   `}</style>
 );
 
@@ -114,16 +108,8 @@ const HomeScreen = () => {
   const [password, setPassword] = useState('');
   const [confirmError, setConfirmError] = useState('');
 
-  // ── Application modal state ──────────────────────────────────────────────
-  const [appliedProduct, setAppliedProduct] = useState(null);
-
   const displayCards = feedCards.length > 0 ? feedCards : FALLBACK_CARDS;
   const popupCard = displayCards[0];
-
-  // ── Handler: fires when any CTA / Apply button is tapped ─────────────────
-  const handleApply = (card) => {
-    setAppliedProduct(card);
-  };
 
   useEffect(() => {
     dispatch(fetchDashboard());
@@ -318,7 +304,6 @@ const HomeScreen = () => {
     <div className="min-h-full w-full bg-vault-light-bg dark:bg-vault-dark-bg font-sans relative vault-transition">
       <InjectStyles />
 
-      {/* ── Sentinel Alert Modal ──────────────────────────────────────────── */}
       {sentinelAlert && confirmStep !== 'success' && confirmStep !== 'rejected' && (
         <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm" style={{ animation: 'fadeUp 0.3s ease' }}>
           <div className="relative w-[min(92vw,380px)] max-h-[90dvh] flex flex-col bg-white dark:bg-vault-dark-card rounded-[28px] shadow-2xl overflow-hidden border border-gray-100 dark:border-white/5" onClick={e => e.stopPropagation()}>
@@ -348,21 +333,11 @@ const HomeScreen = () => {
 
               <div className="bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 rounded-xl p-4">
                 <p className="text-[10px] font-black text-amber-600 dark:text-amber-400 uppercase tracking-wider mb-2">Sentinel AI says:</p>
-              <p className="text-xs text-amber-900 dark:text-amber-200 leading-relaxed font-medium">
-                {(() => {
-                  const score = sentinelAlert.fraud_analysis?.total_risk_score || 0;
-                  const merchant = sentinelAlert.merchant || 'this merchant';
-                  const amount = Number(sentinelAlert.amount || 0);
-                  const time = sentinelAlert.time || '';
-                  const isLateNight = time.includes('AM') && parseInt(time) < 6;
-
-                  if (score >= 61)
-                    return `We've flagged this payment as high risk. Paying ₦${amount.toLocaleString('en-NG')} to ${merchant}${isLateNight ? ' at this hour of the night' : ''} matches patterns we associate with fraud. Only approve if you initiated this.`;
-                  if (score >= 30)
-                    return `This payment to ${merchant} looks unusual${isLateNight ? ', especially at this time of night' : ''}. Review carefully before approving.`;
-                  return `You're about to pay ₦${amount.toLocaleString('en-NG')} to ${merchant}${isLateNight ? ' at an unusual hour' : ''}. Please confirm this was you.`;
-                })()}
-              </p>
+                <p className="text-xs text-amber-900 dark:text-amber-200 leading-relaxed font-medium">
+                  {sentinelAlert.fraud_analysis?.policy_explanation ||
+                    sentinelAlert.fraud_analysis?.reasoning ||
+                    `"This transaction is unusual because it is the first time you are paying ${sentinelAlert.merchant || 'this merchant'} and it occurred at an unusual hour."`}
+                </p>
                 {sentinelAlert.fraud_analysis?.total_risk_score != null && (
                   <div className="mt-2 flex items-center gap-2">
                     <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400">Risk Score:</span>
@@ -434,7 +409,6 @@ const HomeScreen = () => {
         </div>
       )}
 
-      {/* ── Sentinel: Transaction Approved ───────────────────────────────── */}
       {sentinelAlert && confirmStep === 'success' && (
         <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/70 backdrop-blur-sm">
           <div className="text-center text-white space-y-4" style={{ animation: 'fadeUp 0.3s ease' }}>
@@ -447,7 +421,6 @@ const HomeScreen = () => {
         </div>
       )}
 
-      {/* ── Sentinel: Transaction Rejected ───────────────────────────────── */}
       {sentinelAlert && confirmStep === 'rejected' && (
         <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/70 backdrop-blur-sm">
           <div className="text-center text-white space-y-4" style={{ animation: 'fadeUp 0.3s ease' }}>
@@ -460,7 +433,6 @@ const HomeScreen = () => {
         </div>
       )}
 
-      {/* ── Welcome / Recommendation Popup ───────────────────────────────── */}
       {showPopup && popupCard && !sentinelAlert && (
         <div
           className="fixed top-0 left-0 right-0 bottom-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm"
@@ -494,7 +466,7 @@ const HomeScreen = () => {
               </p>
               <div className="space-y-3">
                 <button
-                  onClick={() => { dispatch(dismissWelcome()); handleApply(popupCard); }}
+                  onClick={() => { dispatch(dismissWelcome()); navigate(popupCard.ctaRoute || '#'); }}
                   className="w-full bg-white text-xs font-extrabold py-3.5 rounded-full shadow-lg active:scale-95 hover:shadow-xl transition-all"
                   style={{ color: popupCard.gradient?.[0] || '#1d4ed8' }}
                 >
@@ -513,151 +485,6 @@ const HomeScreen = () => {
         </div>
       )}
 
-      {/* ── Application Submitted Modal ───────────────────────────────────── */}
-      {appliedProduct && (
-        <div
-          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
-          style={{ animation: 'fadeUp 0.3s ease' }}
-          onClick={(e) => { if (e.target === e.currentTarget) setAppliedProduct(null); }}
-        >
-          <div
-            className="relative w-[min(92vw,400px)] bg-white dark:bg-vault-dark-card rounded-[28px] shadow-2xl overflow-hidden border border-gray-100 dark:border-white/5 scale-in"
-            onClick={e => e.stopPropagation()}
-          >
-            {/* Gradient header matching the card's own gradient */}
-            <div
-              className="px-6 pt-8 pb-7 text-white text-center relative overflow-hidden"
-              style={{
-                background: `linear-gradient(135deg, ${appliedProduct.gradient?.[0] || '#1d4ed8'}, ${appliedProduct.gradient?.[1] || '#1e3a8a'})`
-              }}
-            >
-              {/* Decorative blobs */}
-              <div className="absolute -top-10 -right-10 w-32 h-32 bg-white/5 rounded-full blur-2xl pointer-events-none" />
-              <div className="absolute -bottom-6 -left-6 w-24 h-24 bg-white/5 rounded-full blur-xl pointer-events-none" />
-
-              <div className="relative z-10">
-                {/* Animated success ring */}
-                <div className="relative w-20 h-20 mx-auto mb-4 flex items-center justify-center">
-                  <div className="absolute inset-0 rounded-full bg-white/10 animate-ping" style={{ animationDuration: '1.6s' }} />
-                  <div className="relative w-20 h-20 bg-white/20 rounded-full flex items-center justify-center border border-white/30">
-                    <CheckCircle size={34} className="text-white" />
-                  </div>
-                </div>
-                <h3 className="text-xl font-black mb-1">Application Received!</h3>
-                <p className="text-white/75 text-sm">
-                  Your <span className="font-bold text-white">{appliedProduct.title}</span> application has been submitted successfully.
-                </p>
-              </div>
-            </div>
-
-            {/* Body */}
-            <div className="p-6 space-y-5">
-
-              {/* Product summary pill */}
-              <div className="flex items-center justify-between bg-gray-50 dark:bg-white/5 rounded-2xl px-4 py-3 border border-gray-100 dark:border-white/5">
-                <div>
-                  <p className="text-[10px] font-black text-gray-400 dark:text-slate-500 uppercase tracking-wider mb-0.5">
-                    {appliedProduct.label}
-                  </p>
-                  <p className="text-sm font-black text-gray-900 dark:text-white">{appliedProduct.title}</p>
-                </div>
-                <span
-                  className="text-[10px] font-black px-3 py-1.5 rounded-full"
-                  style={{
-                    background: `${appliedProduct.gradient?.[0]}22`,
-                    color: appliedProduct.labelColor || '#22d3ee',
-                    border: `1px solid ${appliedProduct.labelColor || '#22d3ee'}33`
-                  }}
-                >
-                  PENDING REVIEW
-                </span>
-              </div>
-
-              {/* Next steps */}
-              <div className="space-y-1">
-                <p className="text-[11px] font-black text-gray-400 dark:text-slate-500 uppercase tracking-wider mb-3">
-                  What happens next
-                </p>
-                {[
-                  {
-                    icon: CheckCircle,
-                    color: 'text-emerald-500',
-                    bg: 'bg-emerald-50 dark:bg-emerald-500/10',
-                    title: 'Application submitted',
-                    sub: 'We\'ve received your request and it\'s in the queue',
-                    done: true,
-                  },
-                  {
-                    icon: Loader2,
-                    color: 'text-vault-cyan',
-                    bg: 'bg-cyan-50 dark:bg-cyan-500/10',
-                    title: 'Under review',
-                    sub: 'Our team will review your profile — usually 2–5 minutes',
-                    done: false,
-                  },
-                  {
-                    icon: Bell,
-                    color: 'text-vault-purple',
-                    bg: 'bg-purple-50 dark:bg-purple-500/10',
-                    title: 'Email confirmation',
-                    sub: `Check ${user?.email || 'your inbox'} for next steps & approval details`,
-                    done: false,
-                  },
-                  {
-                    icon: Sparkles,
-                    color: 'text-amber-500',
-                    bg: 'bg-amber-50 dark:bg-amber-500/10',
-                    title: 'Decision within 24 hrs',
-                    sub: 'You\'ll be notified in-app and via email once approved',
-                    done: false,
-                  },
-                ].map(({ icon: Icon, color, bg, title, sub, done }, idx) => (
-                  <div key={idx} className="flex items-start gap-3 py-2.5">
-                    <div className={`w-9 h-9 rounded-xl ${bg} flex items-center justify-center shrink-0 mt-0.5`}>
-                      <Icon size={17} className={`${color} ${!done && idx === 1 ? 'animate-spin' : ''}`} />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className={`text-sm font-bold leading-tight ${done ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-800 dark:text-white'}`}>
-                        {title}
-                      </p>
-                      <p className="text-[11px] text-gray-400 dark:text-slate-500 mt-0.5 leading-relaxed">{sub}</p>
-                    </div>
-                    {done && (
-                      <div className="w-5 h-5 bg-emerald-500 rounded-full flex items-center justify-center shrink-0 mt-1">
-                        <CheckCircle size={12} className="text-white" />
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-
-              {/* CTA buttons */}
-              <div className="space-y-3 pt-1">
-                <button
-                  onClick={() => setAppliedProduct(null)}
-                  className="w-full vault-gradient text-white py-4 rounded-xl font-bold text-sm vault-glow active:scale-95 transition-all shadow-lg"
-                >
-                  Got it, thanks!
-                </button>
-                {/* <button
-                  onClick={() => {
-                    setAppliedProduct(null);
-                    if (appliedProduct.ctaRoute && appliedProduct.ctaRoute !== '#') {
-                      navigate(appliedProduct.ctaRoute);
-                    }
-                  }}
-                  className="w-full text-center text-xs text-gray-400 dark:text-slate-500 font-bold hover:text-vault-cyan dark:hover:text-vault-cyan transition-colors py-1"
-                >
-                  View full application details →
-                </button> */}
-              </div>
-
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ── Hero header ──────────────────────────────────────────────────── */}
       <div className="w-full bg-gradient-to-br from-[#00b4d8] via-[#5b4bdb] to-[#7c3aed] text-white px-4 sm:px-6 xl:px-8 pt-8 pb-6 rounded-b-[32px] shadow-lg mb-6 relative z-20 overflow-hidden">
         <div className="absolute -top-20 -right-20 w-60 h-60 bg-vault-cyan/15 rounded-full blur-[80px] pointer-events-none" />
         <div className="absolute -bottom-10 -left-10 w-40 h-40 bg-vault-purple/15 rounded-full blur-[60px] pointer-events-none" />
@@ -712,10 +539,8 @@ const HomeScreen = () => {
         </div>
       </div>
 
-      {/* ── Main content ─────────────────────────────────────────────────── */}
       <div className="w-full px-4 sm:px-6 xl:px-8 py-2 pb-28 space-y-6">
 
-        {/* Quick action buttons */}
         <div className="fu fu3 grid grid-cols-3 gap-3 sm:gap-4 xl:gap-6 w-full">
           <button onClick={() => navigate('/send')} className="w-full h-full min-h-[85px] md:min-h-[100px] vault-gradient rounded-2xl md:rounded-3xl flex flex-col items-center justify-center gap-2 text-white shadow-xl vault-glow active:scale-95 hover:scale-[1.03] transition-transform p-3">
             <Send className="w-6 h-6 md:w-8 md:h-8" />
@@ -731,7 +556,6 @@ const HomeScreen = () => {
           </button>
         </div>
 
-        {/* Quick Access */}
         <div className="fu fu4">
           <div className="flex justify-between items-center mb-3 sm:mb-4 xl:mb-5">
             <h3 className="font-bold text-gray-900 dark:text-white text-sm md:text-base xl:text-lg">Quick Access</h3>
@@ -749,7 +573,6 @@ const HomeScreen = () => {
           </div>
         </div>
 
-        {/* Smart Feed */}
         <div className="fu fu5 overflow-hidden pb-2">
           <div className="flex items-center gap-2 mb-3 sm:mb-4 xl:mb-5">
             <h3 className="font-bold text-gray-900 dark:text-white text-sm md:text-base xl:text-lg">Smart Feed</h3>
@@ -776,7 +599,7 @@ const HomeScreen = () => {
                       <h3 className="text-lg sm:text-xl font-bold leading-tight">{card.title}<br />{card.subtitle}</h3>
                     </div>
                     <button
-                      onClick={() => handleApply(card)}
+                      onClick={() => card.ctaRoute && navigate(card.ctaRoute)}
                       className="bg-white text-[10px] font-bold px-5 py-2.5 rounded-full w-fit hover:shadow-md active:scale-95 transition-all"
                       style={{ color: card.gradient?.[0] || '#1d4ed8' }}
                     >

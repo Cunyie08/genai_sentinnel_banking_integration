@@ -4,7 +4,7 @@ Sentinel Bank Nigeria - PRODUCT RECOMMENDATION POLICY
 
 Document Code       : PRS-001
 Classification      : Internal -- Trajectory Agent Operational Reference
-Version             : 2.0
+Version             : 2.1
 Effective Date      : February 2026
 Review Frequency    : Quarterly
 
@@ -22,44 +22,44 @@ This document supersedes PRS-001 v1.0. The following changes are in
 effect from February 2026:
 
 1. PRODUCT EXPANSION
-   The product suite expanded from 3 to 5 products. Two new products
-   were introduced:
-     - Student Loan  (for solo_candidate customers, ages 18-25)
-     - Trust Fund    (wealth-preservation product for high-inflow
+  The product suite expanded from 3 to 5 products. Two new products
+  were introduced:
+    - Student Loan  (for solo_candidate customers, ages 18-25)
+    - Trust Fund    (wealth-preservation product for high-inflow
                       and high-balance customers)
 
 2. FIELD RENAME
-   The field car_loan_signal_score (a Car Loan-specific computed score)
-   has been renamed to Loan_signal_score (capital L). This field is now
-   generic and applies to all five products. The field name in
-   transactions.csv is "Loan_signal_score".
+  The field car_loan_signal_score (a Car Loan-specific computed score)
+  has been renamed to Loan_signal_score (capital L). This field is now
+  generic and applies to all five products. The field name in
+  transactions.csv is "Loan_signal_score".
 
 3. SCORE MODEL CHANGE
-   Version 1 computed car_loan_signal_score from three behavioral
-   signals at runtime:
-     uber_tracker >= 6    -> +0.4
-     salary_detected      -> +0.3
-     monthly_inflow > 500K -> +0.3
-   Version 2 pre-assigns Loan_signal_score from a fixed range
-   determined by the customer's assigned product. The score is locked
-   at data generation and stored in transactions.csv. It is not
-   recomputed by the agent.
+  Version 1 computed car_loan_signal_score from three behavioral
+  signals at runtime:
+    uber_tracker >= 6    -> +0.4
+    salary_detected      -> +0.3
+    monthly_inflow > 500K -> +0.3
+  Version 2 pre-assigns Loan_signal_score from a fixed range
+  determined by the customer's assigned product. The score is locked
+  at data generation and stored in transactions.csv. It is not
+  recomputed by the agent.
 
 4. ASSIGNMENT MODEL CHANGE
-   Version 1 used threshold-based assignment (compute signals, check
-   thresholds, assign product based on which threshold fires first).
-   Version 2 uses balanced random assignment: 3000 customers are
-   shuffled and split evenly across 5 products (600 per product).
-   The Loan_signal_score range is then set per-product.
+  Version 1 used threshold-based assignment (compute signals, check
+  thresholds, assign product based on which threshold fires first).
+  Version 2 uses balanced random assignment: 3000 customers are
+  shuffled and split evenly across 5 products (600 per product).
+  The Loan_signal_score range is then set per-product.
 
 5. BEHAVIORAL SIGNALS RECLASSIFIED
-   salary_detected, uber_tracker, and monthly_inflow_tracker are still
-   computed and stored in transactions.csv. They are now CONTEXT signals
-   used for explainability and credit assessment, not eligibility gates.
+  salary_detected, uber_tracker, and monthly_inflow_tracker are still
+  computed and stored in transactions.csv. They are now CONTEXT signals
+  used for explainability and credit assessment, not eligibility gates.
 
 6. ELIMINATION OF "None" RECOMMENDATION
-   All 3000 customers in the dataset receive a product recommendation.
-   recommended_product = None no longer appears in transactions.csv.
+  All 3000 customers in the dataset receive a product recommendation.
+  recommended_product = None no longer appears in transactions.csv.
 
 
 =========================================================================
@@ -81,15 +81,15 @@ LOAN_SIGNAL_SCORE_RANGES (exact values from data_generator.py):
   Product          Floor   Ceiling   Description
   -----------------------------------------------------------------------
   Student Loan     0.80    0.98      Highest range -- young borrowers
-                                     with strong educational intent signal
+                                    with strong educational intent signal
   Car Loan         0.75    0.95      High range -- strong transport and
-                                     income profile
+                                    income profile
   Personal Loan    0.70    0.92      Mid range -- stable salary income,
-                                     general credit profile
+                                    general credit profile
   Investment Plan  0.70    0.90      Mid range -- high inflow, wealth
-                                     accumulation behavior
+                                    accumulation behavior
   Trust Fund       0.65    0.85      Lowest range -- entry-level wealth-
-                                     preservation product
+                                    preservation product
 
 ELIGIBILITY RULE (applied by Trajectory Agent):
   Loan_signal_score >= floor for the assigned product -> APPROVED
@@ -111,7 +111,7 @@ Floor Threshold            : 0.80
 Department                 : CLS (Credit & Loan Services)
 KYC Tier Required          : Tier 2 minimum (solo account, BVN + NIN)
 Target Demographic         : solo_candidate = True in customers.csv
-                             Age range 18-25 (solo account band)
+                            Age range 18-25 (solo account band)
 
 TARGET CUSTOMER PROFILE:
   The Student Loan is designed for customers in the solo_candidate
@@ -252,17 +252,17 @@ PURPOSE AND STRUCTURE:
 
 BEHAVIORAL CONTEXT SIGNALS:
   monthly_inflow >= N1,000,000 : Indicates high-net-worth profile.
-                                   Stored as context for wealth managers.
+                                  Stored as context for wealth managers.
   account_type = "current"     : Strong indicator of Tier 3 customer.
   current_balance > N5,000,000 : Consistent high balance supports
-                                   wealth management relationship.
+                                  wealth management relationship.
 
 ADDITIONAL POLICY REQUIREMENTS (for Wealth Management Officers):
   - Minimum fund size         : N2,000,000 initial deposit
   - Trust period              : Minimum 2 years, no early withdrawal
   - Beneficiary designation   : Up to 5 named beneficiaries
   - Legal documentation       : Trust deed required (prepared by Sentinel
-                                 Bank's legal department)
+                                Bank's legal department)
   - Annual management fee     : 1.5% of fund value per annum
   - Returns                   : Variable (linked to investment performance)
 
@@ -306,7 +306,7 @@ ADDITIONAL POLICY REQUIREMENTS (for Human Credit Officers):
   - Maximum loan amount        : N5,000,000 (formal CLS assessment)
   - Tenor                      : 6 to 48 months
   - No collateral required     : Up to N1,000,000 (unsecured)
-                                 Collateral required above N1,000,000
+                                Collateral required above N1,000,000
 
 EXAMPLE VALIDATION:
   Customer: Loan_signal_score=0.71, salary_detected=True, inflow=450,000
@@ -355,7 +355,48 @@ monthly_inflow_tracker:
 
 
 =========================================================================
-SECTION 5: RECOMMENDATION HIERARCHY
+SECTION 5: INTEREST RATES AND DEBT SERVICE RATIO (DSR) — CBN ALIGNMENT
+=========================================================================
+
+As of February 2026, the following CBN-aligned interest rates apply:
+
+  Product          Rate (APR)  Monthly Rate  Notes
+  -----------------------------------------------------------------------
+  Personal Loan    30.0%       2.5%          Standard unsecured lending
+  Car Loan         24.0%       2.0%          Asset-backed, lower risk
+  Student Loan     18.0%       1.5%          Concessionary student rate
+  Investment Plan  N/A         N/A           No repayment obligation
+  Trust Fund       N/A         N/A           Managed wealth product
+
+DEBT SERVICE RATIO (DSR) CAP — CBN STANDARD:
+  Monthly EMI must not exceed 33.3% of monthly inflow.
+  Formula: DSR = EMI / monthly_inflow <= 0.333
+
+  EMI Formula (standard amortization):
+    EMI = P * r*(1+r)^n / ((1+r)^n - 1)
+    Where: P = principal, r = monthly rate, n = tenure (months)
+
+  Maximum Tenors:
+    Student Loan   : 48 months (academic program duration)
+    Car Loan        : 60 months (vehicle asset lifecycle)
+    Personal Loan   : 36 months (unsecured short-term)
+
+POLICY ON DSR BREACH:
+  A DSR breach does NOT automatically disqualify a customer in the
+  v2 model. The Trajectory Agent surfaces a DSR warning for the
+  credit officer. The final decision rests with the human credit
+  officer who may:
+    - Reduce principal to bring DSR within cap
+    - Extend tenure to reduce monthly EMI
+    - Require co-signatory or additional collateral
+    - Override with documented justification
+
+  This is consistent with behavioral signals as context: DSR is a
+  credit-quality signal, not an automated eligibility gate.
+
+
+=========================================================================
+SECTION 6: RECOMMENDATION HIERARCHY
 =========================================================================
 
 When a customer's behavioral context suggests qualification for multiple
@@ -364,15 +405,26 @@ Agent's primary recommendation. This hierarchy is for reference when
 deploying a LIVE recommendation engine; the v2 dataset uses balanced
 pre-assignment and does not apply this hierarchy at generation time.
 
-  PRIORITY 1: Investment Plan  (monthly_inflow context > N2,000,000)
-  PRIORITY 2: Trust Fund       (high balance + long-term customer)
-  PRIORITY 3: Car Loan         (uber_tracker >= 6 OR strong inflow)
-  PRIORITY 4: Personal Loan    (salary_detected + moderate inflow)
-  PRIORITY 5: Student Loan     (age 18-25, solo_candidate = True)
+  PRIORITY 1: Student Loan     (age 18-30, solo_candidate = True,
+                                highest score floor at 0.80)
+  PRIORITY 2: Car Loan         (uber_tracker >= 6 OR strong inflow,
+                                score floor 0.75)
+  PRIORITY 3: Investment Plan  (monthly_inflow context > N2,000,000,
+                                score floor 0.70, current account)
+  PRIORITY 4: Personal Loan    (salary_detected + moderate inflow,
+                                score floor 0.70)
+  PRIORITY 5: Trust Fund       (high balance + long-term customer,
+                                lowest score floor at 0.65)
+
+NOTE: Higher-priority products require higher score floors. A customer
+qualifying for both Student Loan (floor 0.80) and Car Loan (floor 0.75)
+will receive a Student Loan recommendation if the age and profile match.
+The Trajectory Agent must evaluate ALL qualifying products and surface
+the highest-priority match.
 
 
 =========================================================================
-SECTION 6: VALIDATION AGAINST COMPLAINTS DATASET
+SECTION 7: VALIDATION AGAINST COMPLAINTS DATASET
 =========================================================================
 
 Before finalizing any product recommendation, the Trajectory Agent
@@ -389,7 +441,7 @@ must check complaints.csv for the customer:
 
 
 =========================================================================
-SECTION 7: SAMPLE OUTPUT FORMAT FOR TRAJECTORY AGENT
+SECTION 8: SAMPLE OUTPUT FORMAT FOR TRAJECTORY AGENT
 =========================================================================
 
 PRODUCT RECOMMENDATION REPORT
@@ -398,7 +450,7 @@ Customer        : [Full Name] | ID: [customer_id]
 Account Type    : [savings / solo / current]
 Age             : [X] years
 
-ELIGIBILITY ASSESSMENT (per PRS-001 v2.0):
+ELIGIBILITY ASSESSMENT (per PRS-001 v2.1):
   Assigned Product         : [Product Name]
   Loan_signal_score        : [X.XX] (field: transactions.csv "Loan_signal_score")
   Score Range for Product  : [floor] -- [ceiling]
@@ -419,7 +471,7 @@ COMPLIANCE FLAGS:
   Active Fraud Complaints  : [Yes / No]
   SLA Breaches on Account  : [X] breaches in last 90 days
 
-Policy Reference           : Sentinel Bank Nigeria PRS-001 v2.0 (March 2026)
+Policy Reference           : Sentinel Bank Nigeria PRS-001 v2.1 (May 2026)
 --------------------------------------------------------------------------
 
 
@@ -432,7 +484,9 @@ Approver        : Chief Retail Banking Officer
 Review Cycle    : Quarterly
 Version History : v1.0 January 2026 (3 products, threshold model)
                   v2.0 February 2026 (5 products, score-range model)
-Last Updated    : March 2026
+                  v2.1 February 2026 (DSR/interest rates, priority order
+                                      corrected: Student Loan = priority 1)
+Last Updated    : May 2026
 Contact         : retailproducts@sentinelbank.ng | Ext. 6000
 
 

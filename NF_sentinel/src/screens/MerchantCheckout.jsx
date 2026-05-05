@@ -280,23 +280,70 @@ const MerchantCheckout = () => {
                 <span className="text-white/40 font-bold">Amount</span>
                 <span className="text-white font-bold">₦{amount.toLocaleString('en-NG')}</span>
               </div>
+{fraud && (() => {
+  const score = Math.round(fraud.total_risk_score || 0);
+  const isHigh   = score >= 61;
+  const isMedium = score >= 30 && score < 61;
 
-              {fraud && (
-                <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-4 mt-3">
-                  <p className="text-[10px] font-black text-red-400 uppercase tracking-wider mb-2">Sentinnel AI Analysis</p>
-                  <div className="flex items-center gap-2 mb-2">
-                    <span className="text-xs text-white/50">Risk Score:</span>
-                    <div className="flex-1 h-1.5 bg-white/10 rounded-full overflow-hidden">
-                      <div className="h-full bg-red-500 rounded-full" style={{ width: `${Math.min(fraud.total_risk_score || 0, 100)}%` }} />
-                    </div>
-                    <span className="text-xs font-bold text-red-400">{Math.round(fraud.total_risk_score || 0)}%</span>
-                  </div>
-                  <p className="text-xs text-white/50 leading-relaxed">
-                    {fraud.policy_explanation || fraud.reasoning || 'Transaction flagged for manual review.'}
-                  </p>
-                </div>
-              )}
+  const riskLabel  = isHigh ? 'High Risk' : isMedium ? 'Moderate Risk' : 'Low Risk';
+  const riskColor  = isHigh ? 'red' : isMedium ? 'amber' : 'green';
 
+  const colorMap = {
+    red:   { bg: 'bg-red-500/10',   border: 'border-red-500/20',   bar: 'bg-red-500',   text: 'text-red-400',   badge: 'bg-red-500/20 text-red-300' },
+    amber: { bg: 'bg-amber-500/10', border: 'border-amber-500/20', bar: 'bg-amber-400', text: 'text-amber-400', badge: 'bg-amber-500/20 text-amber-300' },
+    green: { bg: 'bg-green-500/10', border: 'border-green-500/20', bar: 'bg-green-500', text: 'text-green-400', badge: 'bg-green-500/20 text-green-300' },
+  };
+  const c = colorMap[riskColor];
+
+  // Derive human-readable flags from fraud object
+  const flags = [];
+  if (amount >= 200000)                              flags.push('Large transaction amount');
+  if (time && (time.includes('AM') && parseInt(time) < 5)) flags.push('Unusual transaction time');
+  if (fraud.is_new_merchant || fraud.new_merchant)  flags.push('First-time merchant');
+  if (fraud.multiple_failures)                      flags.push('Recent failed attempts on account');
+  if (isHigh || isMedium)                           flags.push('Additional verification required');
+
+  const messages = {
+    high:   "We've placed a hold on this payment. Our security system has detected patterns that need your confirmation before we can proceed.",
+    medium: "This payment looks a little unusual. Please review the details carefully before approving.",
+    low:    "This transaction looks fine. Please confirm in your banking app to complete the payment.",
+  };
+  const friendlyMsg = isHigh ? messages.high : isMedium ? messages.medium : messages.low;
+
+  return (
+    <div className={`${c.bg} border ${c.border} rounded-xl p-4 mt-3`}>
+      <div className="flex items-center justify-between mb-3">
+        <p className="text-[10px] font-black uppercase tracking-wider text-white/40">Security Check</p>
+        <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${c.badge}`}>
+          {riskLabel}
+        </span>
+      </div>
+
+      {/* Risk bar */}
+      <div className="flex items-center gap-2 mb-3">
+        <div className="flex-1 h-1.5 bg-white/10 rounded-full overflow-hidden">
+          <div className={`h-full ${c.bar} rounded-full transition-all`} style={{ width: `${Math.min(score, 100)}%` }} />
+        </div>
+        <span className={`text-xs font-bold ${c.text}`}>{score}%</span>
+      </div>
+
+      {/* Human message */}
+      <p className="text-xs text-white/70 leading-relaxed mb-3">{friendlyMsg}</p>
+
+      {/* Flags — plain language */}
+      {flags.length > 0 && (
+        <div className="space-y-1.5">
+          {flags.map((flag, i) => (
+            <div key={i} className="flex items-center gap-2 text-xs text-white/50">
+              <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${c.bar}`} />
+              {flag}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+})()}
               <div className="bg-white/5 border border-white/10 rounded-xl p-4 text-center mt-4">
                 <p className="text-white/40 text-xs font-medium">Open the <strong className="text-white">Sentinnel Banking App</strong> to approve or reject this transaction.</p>
               </div>
