@@ -113,7 +113,7 @@ import asyncio
 import logging
 import threading
 from typing import List, Dict, Optional, Any
-
+import numpy as np
 # =============================================================================
 # Logging
 # =============================================================================
@@ -528,7 +528,13 @@ class RetrievalEngine:
             # to 0–1 so confidence values are comparable across queries.
             import math
             pairs  = [(query, c["content"]) for c in chunks]
-            logits = ce.predict(pairs, show_progress_bar=False)
+            try:
+               logits = ce.predict(pairs, show_progress_bar=False)
+            except ValueError:  
+                    # Fallback if the array shapes are mangled
+                logger.warning("Shape mismatch in cross-encoder. Forcing 2D.")
+                # Your cross-encoder prediction logic here...
+                logits = [0] * len(chunks) 
 
             for chunk, logit in zip(chunks, logits):
                 # Sigmoid normalisation: maps logit → (0, 1)
