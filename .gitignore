@@ -4,7 +4,8 @@
 
 app/.env
 .env.example
-
+Backend/sentinnel-api-key.pem
+Backend\sentinnel-api-key.pem
 # Virtual env
 .venv
 a_venv
