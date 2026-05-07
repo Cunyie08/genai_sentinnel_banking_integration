@@ -4,60 +4,390 @@ import { useSelector } from 'react-redux';
 import {
   ChevronLeft, Send, Bot, ChevronRight,
   AlertTriangle, CheckCircle,
-  HelpCircle, MessageSquareWarning, Loader2
+  HelpCircle, MessageSquareWarning, Loader2,
+  ShieldAlert, CreditCard, ArrowLeftRight, Landmark,
+  Phone, Mail, Info, AlertCircle, Banknote, Lock,
+  TrendingUp, Clock, Star, ExternalLink, Copy, CheckCheck
 } from 'lucide-react';
 import { api } from '../api/axiosConfig';
 
 const ESC_STEPS = { IDLE: 0, ACCOUNT: 1, SENDING: 2, DONE: 3, ERROR: 4 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// parseAnswer — converts raw AI text into formatted React elements.
-// Handles: bullet lines starting with - or •, numbered lists, **bold**, plain.
+// Detect content type for smart rendering
+// ─────────────────────────────────────────────────────────────────────────────
+const detectContentType = (text) => {
+  if (!text) return 'plain';
+  if (/step\s*\d+[:.]|^\d+\.\s/im.test(text)) return 'steps';
+  if (/tier\s*\d|₦[\d,]+\/day|limit/i.test(text)) return 'table';
+  if (/call\s+0700|email.*@|dial\s+\*/i.test(text)) return 'contact';
+  if (/\bwarn|never share|scam|block.*immediately|act immediately/i.test(text)) return 'alert';
+  if (/₦[\d,]+.*₦[\d,]+|fee.*free|charge.*₦/i.test(text)) return 'fees';
+  return 'standard';
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CopyButton — lets customers copy key info (account numbers, codes, refs)
+// ─────────────────────────────────────────────────────────────────────────────
+const CopyButton = ({ text }) => {
+  const [copied, setCopied] = useState(false);
+  const handleCopy = () => {
+    navigator.clipboard?.writeText(text).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
+  return (
+    <button
+      onClick={handleCopy}
+      className="ml-1.5 inline-flex items-center gap-1 px-1.5 py-0.5 bg-gray-100 dark:bg-white/10 rounded text-[10px] font-bold text-gray-500 dark:text-slate-400 hover:bg-cyan-50 dark:hover:bg-vault-cyan/15 hover:text-vault-cyan transition-all"
+    >
+      {copied ? <CheckCheck size={10} /> : <Copy size={10} />}
+      {copied ? 'Copied' : 'Copy'}
+    </button>
+  );
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// parseBold — inline **bold** and `code` rendering
+// ─────────────────────────────────────────────────────────────────────────────
+const parseBold = (str) => {
+  if (!str) return null;
+  // Handle both **bold** and `code` inline
+  const parts = str.split(/(\*\*.*?\*\*|`[^`]+`)/g);
+  return parts.map((part, i) => {
+    if (part.startsWith('**') && part.endsWith('**')) {
+      return <strong key={i} className="font-black text-gray-900 dark:text-white">{part.slice(2, -2)}</strong>;
+    }
+    if (part.startsWith('`') && part.endsWith('`')) {
+      return (
+        <code key={i} className="px-1.5 py-0.5 bg-gray-100 dark:bg-white/10 rounded text-[12px] font-mono text-vault-cyan">
+          {part.slice(1, -1)}
+        </code>
+      );
+    }
+    // Highlight phone numbers and emails
+    const phoneMatch = part.match(/(0700-SENTINEL|0700-\d+|\*\d+[#*]\S*)/g);
+    if (phoneMatch) {
+      const segments = part.split(/(0700-SENTINEL|0700-\d+|\*\d+[#*]\S*)/g);
+      return segments.map((seg, j) => {
+        if (/(0700-SENTINEL|0700-\d+|\*\d+[#*]\S*)/.test(seg)) {
+          return (
+            <span key={`${i}-${j}`} className="inline-flex items-center gap-0.5 font-mono font-bold text-vault-cyan">
+              {seg}
+            </span>
+          );
+        }
+        return seg;
+      });
+    }
+    return part;
+  });
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// StepCard — renders numbered steps with visual progression
+// ─────────────────────────────────────────────────────────────────────────────
+const StepCard = ({ number, text }) => (
+  <div className="flex gap-3 items-start">
+    <div className="shrink-0 w-7 h-7 rounded-full vault-gradient flex items-center justify-center shadow-sm">
+      <span className="text-[11px] font-black text-white">{number}</span>
+    </div>
+    <div className="flex-1 pt-0.5">
+      <p className="text-[13.5px] font-medium text-gray-800 dark:text-white leading-relaxed">
+        {parseBold(text)}
+      </p>
+    </div>
+  </div>
+);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TierTable — renders tiered limit tables beautifully
+// ─────────────────────────────────────────────────────────────────────────────
+const TierTable = ({ rows }) => (
+  <div className="mt-2 rounded-xl overflow-hidden border border-gray-100 dark:border-white/8">
+    {rows.map((row, i) => (
+      <div key={i} className={`flex items-center justify-between px-3 py-2.5 ${i % 2 === 0 ? 'bg-gray-50/80 dark:bg-white/3' : 'bg-white dark:bg-transparent'}`}>
+        <div className="flex items-center gap-2">
+          <div className={`w-2 h-2 rounded-full ${i === 0 ? 'bg-gray-400' : i === 1 ? 'bg-blue-400' : 'bg-green-500'}`} />
+          <span className="text-[12.5px] font-semibold text-gray-700 dark:text-slate-300">{row.label}</span>
+        </div>
+        <span className="text-[12.5px] font-black text-gray-900 dark:text-white">{row.value}</span>
+      </div>
+    ))}
+  </div>
+);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ContactCard — renders phone/email contact info as tappable cards
+// ─────────────────────────────────────────────────────────────────────────────
+const ContactCard = ({ type, value }) => {
+  const isPhone = type === 'phone';
+  return (
+    <a
+      href={isPhone ? `tel:${value.replace(/\D/g, '')}` : `mailto:${value}`}
+      className="flex items-center gap-2.5 p-2.5 bg-gray-50 dark:bg-white/5 rounded-xl border border-gray-100 dark:border-white/8 hover:bg-cyan-50 dark:hover:bg-vault-cyan/10 hover:border-cyan-200 dark:hover:border-vault-cyan/25 transition-all group"
+    >
+      <div className="w-7 h-7 vault-gradient rounded-lg flex items-center justify-center shrink-0">
+        {isPhone ? <Phone size={13} className="text-white" /> : <Mail size={13} className="text-white" />}
+      </div>
+      <span className="text-[13px] font-bold text-gray-800 dark:text-white group-hover:text-vault-cyan transition-colors">{value}</span>
+      <ExternalLink size={12} className="ml-auto text-gray-300 dark:text-slate-600 group-hover:text-vault-cyan" />
+    </a>
+  );
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AlertBanner — urgent/security warnings
+// ─────────────────────────────────────────────────────────────────────────────
+const AlertBanner = ({ text }) => (
+  <div className="flex gap-2.5 p-3 bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 rounded-xl">
+    <ShieldAlert size={16} className="text-red-500 shrink-0 mt-0.5" />
+    <p className="text-[13px] font-semibold text-red-700 dark:text-red-400 leading-relaxed">{parseBold(text)}</p>
+  </div>
+);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// InfoChip — inline metadata chips (fees, timelines, etc.)
+// ─────────────────────────────────────────────────────────────────────────────
+const InfoChip = ({ icon: Icon, label, value, color = 'blue' }) => {
+  const colors = {
+    blue: 'bg-blue-50 dark:bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-100 dark:border-blue-500/20',
+    green: 'bg-green-50 dark:bg-green-500/10 text-green-700 dark:text-green-400 border-green-100 dark:border-green-500/20',
+    amber: 'bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-100 dark:border-amber-500/20',
+    cyan: 'bg-cyan-50 dark:bg-cyan-500/10 text-vault-cyan border-cyan-100 dark:border-vault-cyan/25',
+  };
+  return (
+    <div className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-[12px] font-bold ${colors[color]}`}>
+      {Icon && <Icon size={11} />}
+      <span className="text-[10.5px] font-semibold opacity-75">{label}:</span>
+      <span>{value}</span>
+    </div>
+  );
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// NoteCard — highlighted notes / important callouts
+// ─────────────────────────────────────────────────────────────────────────────
+const NoteCard = ({ text }) => (
+  <div className="flex gap-2 p-2.5 bg-amber-50 dark:bg-amber-500/8 border border-amber-200 dark:border-amber-500/20 rounded-xl">
+    <Info size={14} className="text-amber-500 shrink-0 mt-0.5" />
+    <p className="text-[12.5px] font-medium text-amber-800 dark:text-amber-400 leading-relaxed">{parseBold(text)}</p>
+  </div>
+);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// BulletItem — enhanced bullet with left accent
+// ─────────────────────────────────────────────────────────────────────────────
+const BulletItem = ({ text }) => {
+  const isNote = /^note[:\s]/i.test(text);
+  const isWarning = /warning|never|do not|don't|important/i.test(text);
+
+  if (isNote) return <NoteCard text={text.replace(/^note[:\s]*/i, '')} />;
+  if (isWarning) return (
+    <div className="flex gap-2.5 items-start">
+      <AlertCircle size={14} className="text-amber-500 shrink-0 mt-1" />
+      <p className="text-[13.5px] font-medium text-amber-700 dark:text-amber-400 leading-relaxed">{parseBold(text)}</p>
+    </div>
+  );
+
+  return (
+    <div className="flex gap-2.5 items-start">
+      <div className="w-1.5 h-1.5 rounded-full bg-vault-cyan shrink-0 mt-2" />
+      <p className="text-[13.5px] font-medium text-gray-800 dark:text-white leading-relaxed flex-1">
+        {parseBold(text)}
+      </p>
+    </div>
+  );
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// extractTierRows — parse tier/limit lines into table rows
+// ─────────────────────────────────────────────────────────────────────────────
+const extractTierRows = (lines) => {
+  return lines
+    .filter(l => /tier\s*\d|basic|premium|standard|savings|current|solo/i.test(l))
+    .map(l => {
+      const [label, ...rest] = l.replace(/^[-•]\s*/, '').split(':');
+      return { label: label.trim(), value: rest.join(':').trim() };
+    })
+    .filter(r => r.label && r.value);
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// extractContacts — pull phone numbers and emails from text
+// ─────────────────────────────────────────────────────────────────────────────
+const extractContacts = (text) => {
+  const contacts = [];
+  const phoneMatches = text.match(/0700-SENTINEL|0700-[\d-]+|\+234-[\d-]+/gi) || [];
+  const emailMatches = text.match(/[\w.-]+@[\w.-]+\.\w+/gi) || [];
+  phoneMatches.forEach(p => contacts.push({ type: 'phone', value: p }));
+  emailMatches.forEach(e => contacts.push({ type: 'email', value: e }));
+  return [...new Map(contacts.map(c => [c.value, c])).values()]; // dedupe
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// parseAnswer — the ENHANCED version: smart, structured, beautiful
 // ─────────────────────────────────────────────────────────────────────────────
 const parseAnswer = (text) => {
   if (!text) return null;
 
-  const parseBold = (str) => {
-    const parts = str.split(/\*\*(.*?)\*\*/g);
-    return parts.map((part, i) =>
-      i % 2 === 1 ? <strong key={i} className="font-bold">{part}</strong> : part
-    );
-  };
-
   const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
   const elements = [];
+  let stepBuffer = [];
   let bulletBuffer = [];
+  let inFeeSection = false;
+
+  const flushSteps = (key) => {
+    if (!stepBuffer.length) return;
+    elements.push(
+      <div key={`steps-${key}`} className="space-y-3 my-2">
+        {stepBuffer.map((s, i) => <StepCard key={i} number={i + 1} text={s} />)}
+      </div>
+    );
+    stepBuffer = [];
+  };
 
   const flushBullets = (key) => {
-    if (bulletBuffer.length === 0) return;
+    if (!bulletBuffer.length) return;
+
+    // Check if these look like tier/limit rows → render as table
+    const tierRows = extractTierRows(bulletBuffer.map(b => b));
+    if (tierRows.length >= 2) {
+      elements.push(<TierTable key={`table-${key}`} rows={tierRows} />);
+      bulletBuffer = [];
+      return;
+    }
+
     elements.push(
-      <ul key={`ul-${key}`} className="list-disc list-outside pl-4 space-y-1.5 my-2">
-        {bulletBuffer.map((b, i) => (
-          <li key={i} className="text-[14px] font-medium text-gray-800 dark:text-white leading-relaxed">
-            {parseBold(b)}
-          </li>
-        ))}
-      </ul>
+      <div key={`bullets-${key}`} className="space-y-2 my-1.5">
+        {bulletBuffer.map((b, i) => <BulletItem key={i} text={b} />)}
+      </div>
     );
     bulletBuffer = [];
   };
 
   lines.forEach((line, idx) => {
-    const isBullet = /^[-•]\s+/.test(line) || /^\d+\.\s+/.test(line);
-    if (isBullet) {
-      bulletBuffer.push(line.replace(/^[-•]\s+/, '').replace(/^\d+\.\s+/, ''));
-    } else {
+    const isNumberedStep = /^(step\s*\d+[:.]|\d+\.\s+)/i.test(line);
+    const isBullet = /^[-•]\s+/.test(line);
+    const isNote = /^note[:\s]/i.test(line);
+    const isAlert = /^(warning|important|caution)[:\s!]/i.test(line);
+    const isFeeHeader = /fee|charge|cost|price/i.test(line) && !isBullet && !isNumberedStep;
+
+    if (isNumberedStep) {
       flushBullets(idx);
-      elements.push(
-        <p key={`p-${idx}`} className="text-[14px] font-medium text-gray-800 dark:text-white leading-relaxed">
-          {parseBold(line)}
-        </p>
-      );
+      const cleanStep = line.replace(/^(step\s*\d+[:.\s]+|\d+\.\s+)/i, '').trim();
+      stepBuffer.push(cleanStep);
+      return;
     }
+
+    if (isBullet) {
+      flushSteps(idx);
+      const cleanBullet = line.replace(/^[-•]\s+/, '').trim();
+      bulletBuffer.push(cleanBullet);
+      return;
+    }
+
+    // Flush any pending buffers before a paragraph
+    flushSteps(idx);
+    flushBullets(idx);
+
+    if (isNote) {
+      elements.push(<NoteCard key={`note-${idx}`} text={line.replace(/^note[:\s]*/i, '')} />);
+      return;
+    }
+
+    if (isAlert) {
+      elements.push(<AlertBanner key={`alert-${idx}`} text={line.replace(/^(warning|important|caution)[:\s!]*/i, '')} />);
+      return;
+    }
+
+    // Paragraph with potential inline highlights
+    elements.push(
+      <p key={`p-${idx}`} className="text-[14px] font-medium text-gray-800 dark:text-white leading-relaxed">
+        {parseBold(line)}
+      </p>
+    );
   });
+
+  flushSteps('end');
   flushBullets('end');
 
-  return <div className="space-y-1">{elements}</div>;
+  // Append extracted contact cards if present
+  const contacts = extractContacts(text);
+  if (contacts.length > 0) {
+    elements.push(
+      <div key="contacts" className="mt-3 space-y-2">
+        <p className="text-[10px] font-black text-gray-400 dark:text-slate-500 uppercase tracking-widest">Contact Support</p>
+        {contacts.map((c, i) => <ContactCard key={i} type={c.type} value={c.value} />)}
+      </div>
+    );
+  }
+
+  return <div className="space-y-2">{elements}</div>;
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// QuickInfoBar — shows at top of AI answer with relevant metadata chips
+// ─────────────────────────────────────────────────────────────────────────────
+const QuickInfoBar = ({ text, query }) => {
+  const chips = [];
+  const q = (query || '').toLowerCase();
+
+  // Resolution time — only show if not a limit/tier answer
+  const timeMatch = text.match(/(\d+[-–]\d+\s*(?:hours?|days?|business\s*days?|minutes?))/i);
+  if (timeMatch && !/limit|tier|daily/i.test(text.slice(0, 80))) {
+    chips.push({ icon: Clock, label: 'Resolution', value: timeMatch[1], color: 'blue' });
+  }
+
+  // Actual service fee — must match fee/charge/cost/flat context, NOT limit amounts like ₦500,000/day
+  // We specifically exclude patterns like ₦X/day or ₦X (Standard) which are limits, not fees
+  const feeMatch = text.match(/₦([\d,]+)\s*(?:flat fee|per letter|fee applies|replacement fee|card fee|per alert|per session|per withdrawal)/i);
+  if (feeMatch) {
+    chips.push({ icon: Banknote, label: 'Fee', value: `₦${feeMatch[1]}`, color: 'amber' });
+  }
+
+  // Free — only if answer explicitly says same-bank is free or service is free
+  const hasFreeService = /same.?bank.*free|free.*transfer|no.*fee|free of charge|completely free/i.test(text);
+  if (hasFreeService && !feeMatch) {
+    chips.push({ icon: Star, label: 'Cost', value: 'Free', color: 'green' });
+  }
+
+  // Instant — for loan disbursements, salary advance, own-account transfers
+  if (/\binstant(ly|ly disbursed|ly credited)?\b/i.test(text) && !/instant message|instantly replace/i.test(text)) {
+    chips.push({ icon: TrendingUp, label: 'Speed', value: 'Instant', color: 'cyan' });
+  }
+
+  // SLA / processing time — e.g. "3–5 business days"
+  const slaMatch = text.match(/(3[-–]5|5[-–]7|24[-–]48|1[-–]3)\s*business\s*days?/i);
+  if (slaMatch && !timeMatch) {
+    chips.push({ icon: Clock, label: 'Processing', value: slaMatch[0], color: 'blue' });
+  }
+
+  if (chips.length === 0) return null;
+
+  return (
+    <div className="flex flex-wrap gap-1.5 mb-3">
+      {chips.slice(0, 3).map((chip, i) => (
+        <InfoChip key={i} icon={chip.icon} label={chip.label} value={chip.value} color={chip.color} />
+      ))}
+    </div>
+  );
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TopicIcon — small icon that matches the topic of the message
+// ─────────────────────────────────────────────────────────────────────────────
+const getTopicIcon = (text) => {
+  if (!text) return null;
+  const t = text.toLowerCase();
+  if (/card|declin|pin|block|stolen|chip|atm/.test(t)) return CreditCard;
+  if (/transfer|send|money|reversal|wrong|beneficiary/.test(t)) return ArrowLeftRight;
+  if (/fraud|scam|unauthori|hack|security|phish/.test(t)) return ShieldAlert;
+  if (/account|kyc|tier|upgrade|bvn|nin/.test(t)) return Landmark;
+  if (/loan|credit|overdraft|salary/.test(t)) return Banknote;
+  if (/password|otp|lock|login|biometric/.test(t)) return Lock;
+  return null;
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -76,19 +406,15 @@ const CONVERSATIONAL_CLOSERS = [
 ];
 
 const isConversationalCloser = (text) => {
-  // Strip punctuation and normalise before matching
   const t = text
     .toLowerCase()
     .trim()
-    .replace(/[.!?,]+/g, ' ')   // commas, periods etc → space
-    .replace(/\s+/g, ' ')       // collapse multiple spaces
+    .replace(/[.!?,]+/g, ' ')
+    .replace(/\s+/g, ' ')
     .trim();
 
-  // Exact match or "starts/ends with a closer" after stripping
   if (CONVERSATIONAL_CLOSERS.some(c => t === c)) return true;
 
-  // Also catch compound phrases like "im done, thanks" or "ok thanks bye"
-  // by checking if ALL meaningful words are closer-words
   const closerWords = new Set([
     'thanks', 'thank', 'you', 'ok', 'okay', 'alright', 'bye', 'goodbye',
     'done', 'im', 'i\'m', 'fine', 'good', 'great', 'none', 'nothing',
@@ -110,21 +436,38 @@ const CLOSER_REPLIES = [
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Empathy openers — matched by keyword to the customer's query
+// Empathy openers — ordered most-specific FIRST to avoid wrong matches
 // ─────────────────────────────────────────────────────────────────────────────
 const EMPATHY_OPENERS = [
-  { keywords: ['card', 'declin', 'block', 'reject'], opener: "I understand how frustrating a declining card can be — let me help you sort this out." },
-  { keywords: ['transfer', 'wrong', 'reversal', 'recall', 'sent'], opener: "I'm sorry to hear about this — wrong transfers can be really stressful. Here's what you can do:" },
-  { keywords: ['atm', 'cash', 'dispense', 'withdraw', 'machine'], opener: "That's a dispense error, and we take it seriously. Here's how to handle it quickly:" },
-  { keywords: ['limit', 'daily', 'tier', 'kyc', 'upgrade'], opener: "Good question — your transfer limits are tied to your account tier. Here's a full breakdown:" },
-  { keywords: ['fraud', 'unauthori', 'scam', 'suspicious', 'hack', 'stolen'], opener: "Your security is our absolute priority. Please act on this quickly — here's exactly what to do:" },
-  { keywords: ['pin', 'password', 'lock', 'reset', 'forgot'], opener: "No worries at all — this is straightforward to resolve. Here's what you need to do:" },
-  { keywords: ['account', 'balance', 'statement', 'history'], opener: "Of course, I can help with your account. Here's what you need to know:" },
-  { keywords: ['loan', 'borrow', 'credit', 'interest'], opener: "I'd be happy to help with information on that. Here's what you need to know:" },
+  // Card lost/stolen/block — must come before generic 'card' match
+  { keywords: ['lost my card', 'card is lost', 'stolen card', 'card stolen', 'card missing', 'lost card', 'block my card', 'block card', 'card blocked', 'card theft', 'freeze my card'], opener: "I'm really sorry to hear that — here's exactly how to protect your account right away:" },
+  // Fraud / unauthorised — before generic 'card'
+  { keywords: ['fraud', 'unauthori', 'scam', 'suspicious', 'hacked', 'phish', 'someone used my card', 'unauthorised transaction'], opener: "Your security is our absolute priority. Please act on this quickly — here's exactly what to do:" },
+  // Card declining specifically
+  { keywords: ['card keeps declining', 'card declin', 'card rejected', 'card not working', 'card failed', 'keeps failing', 'card not accepted'], opener: "I understand how frustrating a declining card can be — let me help you sort this out." },
+  // Wrong / mistaken transfers
+  { keywords: ['wrong transfer', 'wrong account', 'mistaken transfer', 'sent to wrong', 'wrong person', 'reversal', 'recall transfer'], opener: "I'm sorry to hear about this — wrong transfers can be really stressful. Here's what you can do:" },
+  // ATM cash issues
+  { keywords: ['atm', 'cash not dispensed', 'no cash', 'dispense', 'machine debited', 'atm debit'], opener: "That's a dispense error, and we take it seriously. Here's how to handle it quickly:" },
+  // Transfer / daily limits
+  { keywords: ['transfer limit', 'daily limit', 'sending limit', 'limit exceeded', 'increase my limit', 'increase limit'], opener: "Your transfer limits are tied to your account tier. Here's the full breakdown:" },
+  // Account upgrade / KYC
+  { keywords: ['upgrade my account', 'upgrade account', 'upgrade tier', 'increase tier', 'kyc upgrade', 'tier upgrade'], opener: "Great — upgrading your account is straightforward. Here's exactly what you need to do:" },
+  // PIN / password / login
+  { keywords: ['pin', 'password', 'lock', 'reset', 'forgot', 'login', 'otp', 'biometric'], opener: "No worries at all — this is straightforward to resolve. Here's what you need to do:" },
+  // Transfer debited / pending / not received
+  { keywords: ['debited but', 'not received', 'transfer pending', 'pending transfer', 'transfer failed', 'money not sent', 'beneficiary not received'], opener: "I understand how worrying this can be. Let me walk you through exactly what to do:" },
+  // Loan / credit
+  { keywords: ['loan', 'borrow', 'credit', 'overdraft', 'salary advance', 'interest rate'], opener: "I'd be happy to help with that. Here's everything you need to know:" },
+  // Savings / investment
+  { keywords: ['savings', 'fixed deposit', 'investment', 'interest', 'solo account'], opener: "Great question on growing your money. Here's what Sentinel Bank offers:" },
+  // Account / balance / statement
+  { keywords: ['account', 'balance', 'statement', 'history', 'transaction history'], opener: "Of course, I can help with your account. Here's what you need to know:" },
 ];
 
 const getEmpathyOpener = (query) => {
   const q = query.toLowerCase();
+  // Use find — first match wins (most specific rules are listed first)
   const match = EMPATHY_OPENERS.find(e => e.keywords.some(k => q.includes(k)));
   return match?.opener || "Of course, I can help with that. Here's what you need to know:";
 };
@@ -148,8 +491,6 @@ const ChatScreen = () => {
   const [escResult, setEscResult] = useState(null);
   const [escError, setEscError] = useState('');
 
-  // Only the active unresolved escalation card shows action buttons.
-  // Prevents stale cards from earlier in the conversation staying interactive.
   const [activeEscMsgId, setActiveEscMsgId] = useState(null);
 
   const scrollRef = useRef(null);
@@ -178,13 +519,66 @@ const ChatScreen = () => {
       .replace(/channel\s*=\s*"atm"/gi, 'our ATM system')
       .replace(/failure_reason\s*=\s*"[^"]*"/gi, 'a daily limit')
       .replace(/transaction_status\s*=\s*"[^"]*"/gi, 'a temporary delay')
-      .replace(/Step\s\d:/gi, '•')
+      // IMPORTANT: Do NOT strip "Step N:" — the parseAnswer renderer uses it to build StepCards
       .trim();
     if (cleaned.includes('[HUMAN_RESPONSE]'))
       cleaned = cleaned.split('[HUMAN_RESPONSE]').pop().trim();
     else if (cleaned.includes('[CUSTOMER MESSAGE]'))
       cleaned = cleaned.split('[CUSTOMER MESSAGE]').pop().trim();
     return cleaned;
+  };
+
+  // ─── Normalize query before sending to FAQ API ──────────────────────────────
+  // Maps colloquial / shorthand phrasing to canonical questions the RAG expects,
+  // so queries like "I want to block my card" or "how do I upgrade" actually
+  // hit the right FAQ entry instead of returning no match.
+  const normalizeQuery = (raw) => {
+    const q = raw.toLowerCase().trim();
+
+    const QUERY_MAP = [
+      // Card lost / stolen / block
+      [/lost\s+my\s+card|my\s+card\s+(is\s+)?lost|card\s+missing/i,         'My card is lost. What should I do?'],
+      [/stolen\s+card|card\s+(got\s+)?stolen|someone\s+stole\s+my\s+card/i,  'My card got stolen. How do I block it immediately?'],
+      [/block\s+my\s+card|i\s+want\s+to\s+block|how\s+(do\s+i\s+)?block\s+(my\s+)?card/i, 'My card got stolen. How do I block it immediately?'],
+      [/freeze\s+my\s+card|temporarily\s+block/i,                             'How do I block my card temporarily?'],
+      // Card declining
+      [/card\s+(keeps?\s+)?declin|card\s+(keeps?\s+)?failing|card\s+rejected|card\s+not\s+working/i, 'Why was my card declined even though I have sufficient balance?'],
+      // ATM
+      [/atm\s+(debit|debited|charged)\s+(but\s+)?no\s+cash|no\s+cash\s+(from\s+)?atm|atm\s+dispense/i, 'The ATM did not dispense cash but my account was debited.'],
+      // Transfer issues
+      [/transfer\s+(was\s+)?debited\s+but|money\s+(sent\s+)?not\s+received|receiver\s+(did\s+not|didn.t)\s+get/i, 'My transfer was debited but the receiver did not get the money.'],
+      [/transfer\s+(is\s+)?pending|pending\s+transfer/i,                      'My transfer is showing as pending. What does that mean?'],
+      [/sent\s+(money\s+)?to\s+(the\s+)?wrong|wrong\s+(account|transfer)|mistaken\s+transfer/i, 'I sent money to the wrong account. Can it be reversed?'],
+      [/debited\s+twice|double\s+debit|charged\s+twice/i,                     'My account was debited twice for one transaction.'],
+      // Limits & upgrades
+      [/daily\s+transfer\s+limit|what.s\s+my\s+(daily\s+)?limit|what\s+is\s+my\s+(daily\s+)?limit|transfer\s+limit/i, 'What are my daily transfer limits?'],
+      [/increase\s+(my\s+)?(transfer\s+)?limit|how\s+(do\s+i\s+)?increase.*limit/i, 'How do I increase my transfer limit?'],
+      [/upgrade\s+my\s+account|how\s+(do\s+i\s+)?upgrade|account\s+upgrade|upgrade\s+tier/i, 'How do I upgrade my account tier?'],
+      // Scheduling
+      [/schedul(e|ing)\s+(a\s+)?transfer|future.dated|future\s+transfer/i,   'Can I schedule a future-dated transfer?'],
+      // PIN / password / login
+      [/change\s+(my\s+)?card\s+pin|how\s+(to|do\s+i)\s+change.*pin/i,       'How do I change my card PIN?'],
+      [/forgot\s+(my\s+)?(app\s+)?password|reset\s+(my\s+)?password|can.t\s+log\s+in/i, 'How do I reset my app password?'],
+      [/not\s+receiving\s+otp|otp\s+not\s+(coming|arriving)|no\s+otp/i,      'I am not receiving OTPs.'],
+      // Balance & statement
+      [/check\s+(my\s+)?balance|what.s\s+my\s+balance|how\s+(do\s+i\s+)?check.*balance/i, 'How do I check my account balance?'],
+      [/bank\s+statement|request\s+(a\s+)?statement|download\s+statement/i,   'How do I request a bank statement?'],
+      // New card
+      [/request\s+(a\s+)?(new\s+)?card|order\s+(a\s+)?card|get\s+(a\s+new\s+)?card/i, 'How do I request a new debit card?'],
+      // Fraud / unauthorised
+      [/unauthori[sz]ed\s+transaction|fraud(ulent)?\s+transaction|someone\s+used\s+my\s+account/i, 'I noticed an unauthorised transaction on my account.'],
+      [/account\s+(been\s+)?hacked|think\s+my\s+account.*hacked|account\s+compromised/i, 'I think my account has been hacked.'],
+      // Loan / salary
+      [/apply\s+for\s+(a\s+)?loan|get\s+(a\s+)?loan|loan\s+application/i,    'What loan products does Sentinel Bank offer?'],
+      [/salary\s+advance|advance\s+(on\s+)?salary/i,                          'How do I apply for an instant salary advance?'],
+      // Complaints
+      [/file\s+(a\s+)?complaint|make\s+(a\s+)?complaint|how\s+(do\s+i\s+)?complain/i, 'How do I file a formal complaint?'],
+    ];
+
+    for (const [pattern, canonical] of QUERY_MAP) {
+      if (pattern.test(q)) return canonical;
+    }
+    return raw; // return original if no mapping matched
   };
 
   // ─── Warm reply for conversational closers ──────────────────────────────────
@@ -205,13 +599,11 @@ const ChatScreen = () => {
     if (!q) return;
     setFaqQuery('');
 
-    // Gate 1: conversational closers never reach the API
     if (isConversationalCloser(q)) {
       handleConversationalClose(q);
       return;
     }
 
-    // Reset escalation state for each new question
     setEscStep(ESC_STEPS.IDLE);
     setEscQuery('');
     setEscResult(null);
@@ -232,12 +624,11 @@ const ChatScreen = () => {
       const cleaned = cleanAnswer(rawAnswer);
 
       if (matchFound) {
-        // Prepend a warm empathy opener before the FAQ answer
         const opener = getEmpathyOpener(q);
         const fullText = `${opener}\n\n${cleaned}`;
-        addMsg({ id: Date.now(), sender: 'ai', type: 'text', text: fullText, time: now() });
+        // Pass topic for icon rendering
+        addMsg({ id: Date.now(), sender: 'ai', type: 'text', text: fullText, topic: q, time: now() });
 
-        // Follow-up "did this help?" after a short natural delay
         setTimeout(() => {
           addMsg({
             id: Date.now() + 1, sender: 'ai', type: 'resolution-check',
@@ -245,8 +636,6 @@ const ChatScreen = () => {
           });
         }, 600);
       } else {
-        // Gate 2: short topic labels (no verb, ≤4 words) ask for more detail
-        // instead of jumping straight to escalation
         const wordCount = q.trim().split(/\s+/).length;
         const hasVerb = /\b(is|are|was|were|have|has|had|do|does|did|can|could|keep|keeps|want|need|help|fix|check|update|change|why|how|what|when|where|getting|showing|failed|failing|blocked|declined|missing|sent|charged|deducted|reversed|locked|stolen|lost)\b/i.test(q);
         const hasSupportIntent = /\b(card|transfer|atm|account|limit|fraud|pin|balance|loan|statement|charge|debit|credit|transaction|payment|bank|money|fund|wallet|complaint)\b/i.test(q);
@@ -254,29 +643,26 @@ const ChatScreen = () => {
         const isMeaningless = wordCount <= 3 && !hasSupportIntent;
 
         if (isMeaningless) {
-          // Catches "none", "idk", "hmm", random short non-support text
           addMsg({
             id: Date.now(), sender: 'ai', type: 'text',
             text: "I'm here whenever you're ready! Feel free to describe your issue and I'll do my best to help.",
             time: now(),
           });
-    } else if (isTopicLabel) {
-      addMsg({
-        id: Date.now(), sender: 'ai', type: 'text',
-        text: `I'd be happy to help with that. Could you describe what's happening in a little more detail? For example — which transaction, what error message you're seeing, or what you've already tried. The more you share, the better I can assist.`,
-        time: now(),
-      });
-    } else {
-      // Real descriptive query with no match — offer warm escalation
-      const escMsgId = Date.now();
-      const warmEscText = `I wasn't able to find a specific answer for your concern about "${q}" in our knowledge base. Let me connect you with the right support team — they'll review this personally and follow up with you directly.`;
-      addMsg({
-        id: escMsgId, sender: 'ai', type: 'escalation',
-        text: warmEscText, time: now(),
-      });
-      setEscQuery(q);
-      setActiveEscMsgId(escMsgId);
-
+        } else if (isTopicLabel) {
+          addMsg({
+            id: Date.now(), sender: 'ai', type: 'text',
+            text: `I'd be happy to help with that. Could you describe what's happening in a little more detail? For example — which transaction, what error message you're seeing, or what you've already tried. The more you share, the better I can assist.`,
+            time: now(),
+          });
+        } else {
+          const escMsgId = Date.now();
+          const warmEscText = `I wasn't able to find a specific answer for your concern about "${q}" in our knowledge base. Let me connect you with the right support team — they'll review this personally and follow up with you directly.`;
+          addMsg({
+            id: escMsgId, sender: 'ai', type: 'escalation',
+            text: warmEscText, time: now(),
+          });
+          setEscQuery(q);
+          setActiveEscMsgId(escMsgId);
         }
       }
     } catch (err) {
@@ -291,7 +677,7 @@ const ChatScreen = () => {
     }
   };
 
-  // ─── Customer says "need more help" after an AI answer ─────────────────────
+  // ─── Customer says "need more help" ─────────────────────────────────────────
   const handleNotResolved = (originalQuery) => {
     setEscQuery(originalQuery);
     const escMsgId = Date.now();
@@ -346,7 +732,6 @@ const ChatScreen = () => {
         text: warmConfirmation, result: res.data, time: now(),
       });
 
-      // Natural follow-up after the confirmation lands
       setTimeout(() => {
         addMsg({
           id: Date.now() + 1, sender: 'ai', type: 'text',
@@ -439,7 +824,7 @@ const ChatScreen = () => {
       );
     }
 
-    // "Did this help?" — appears only after a successful FAQ match
+    // "Did this help?"
     if (msg.type === 'resolution-check') {
       return (
         <div key={msg.id} className="flex flex-col">
@@ -473,7 +858,7 @@ const ChatScreen = () => {
       );
     }
 
-    // Escalation card — action buttons visible only on the active unresolved card
+    // Escalation card
     if (msg.type === 'escalation') {
       const isActive = msg.id === activeEscMsgId;
       return (
@@ -519,7 +904,7 @@ const ChatScreen = () => {
       );
     }
 
-    // Routing result — dispatcher confirmation with reference number and timeline
+    // Routing result
     if (msg.type === 'routing-result' && msg.result) {
       return (
         <div key={msg.id} className="flex flex-col">
@@ -543,7 +928,10 @@ const ChatScreen = () => {
       );
     }
 
-    // Default AI text bubble — parseAnswer handles bullets, numbered lists, bold
+    // ── DEFAULT AI TEXT BUBBLE — enhanced FAQ rendering ──────────────────────
+    const TopicIcon = getTopicIcon(msg.topic || msg.text);
+    const isRichAnswer = msg.text && msg.text.length > 200;
+
     return (
       <div key={msg.id} className="flex flex-col">
         <div className="flex items-center gap-2 mb-1">
@@ -551,9 +939,27 @@ const ChatScreen = () => {
             <Bot size={12} />
           </div>
           <span className="text-xs font-bold text-gray-400 dark:text-slate-500">AI Assistant</span>
+          {TopicIcon && isRichAnswer && (
+            <div className="flex items-center gap-1 px-2 py-0.5 bg-gray-100 dark:bg-white/8 rounded-full">
+              <TopicIcon size={10} className="text-vault-cyan" />
+            </div>
+          )}
         </div>
-        <div className="bg-white dark:bg-vault-dark-card p-4 rounded-[20px] rounded-tl-none shadow-sm border border-gray-100 dark:border-white/5 max-w-[90%]">
-          {parseAnswer(msg.text)}
+        <div className="bg-white dark:bg-vault-dark-card rounded-[20px] rounded-tl-none shadow-sm border border-gray-100 dark:border-white/5 max-w-[90%] overflow-hidden">
+          {/* Topic header stripe for rich answers */}
+          {isRichAnswer && TopicIcon && (
+            <div className="flex items-center gap-2 px-4 pt-3.5 pb-2 border-b border-gray-50 dark:border-white/5">
+              <div className="w-6 h-6 vault-gradient rounded-lg flex items-center justify-center shrink-0">
+                <TopicIcon size={13} className="text-white" />
+              </div>
+              <span className="text-[11px] font-black text-gray-400 dark:text-slate-500 uppercase tracking-widest">Support Answer</span>
+            </div>
+          )}
+          <div className={`p-4 space-y-2 ${isRichAnswer && TopicIcon ? 'pt-3' : ''}`}>
+            {/* Quick metadata chips for rich answers */}
+            {isRichAnswer && <QuickInfoBar text={msg.text} />}
+            {parseAnswer(msg.text)}
+          </div>
         </div>
         <span className="text-[10px] text-gray-400 dark:text-slate-500 mt-1">{msg.time}</span>
       </div>

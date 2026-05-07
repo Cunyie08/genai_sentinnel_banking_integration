@@ -1413,179 +1413,1107 @@ END OF DOCUMENT TSU-POL-002
     # DOCUMENT 4: CUSTOMER SERVICE FAQ (FAQ-001)
     # =========================================================================
 
-# =========================================================================
-    # DOCUMENT 4: CUSTOMER SERVICE FAQ (FAQ-001) - FULL PRODUCTION VERSION
-    # =========================================================================
-
     def generate_faq_document(self) -> Dict:
         """
         Generate the complete, expanded customer-facing FAQ document.
-        NO TRUNCATION: All original NIBSS, TSU, AOD, and DCS logic is preserved.
-        ENRICHED: Added Trajectory Agent triggers and deeper banking products.
+        200 Q&A pairs across 12 sections. All original NIBSS, TSU, AOD,
+        DCS logic preserved. Enriched with card security, loans, KYC,
+        investments, USSD, complaints, and agent trajectory triggers.
         """
         faq = f"""
-=========================================================================
-{self.bank_name} - ULTIMATE CUSTOMER SERVICE FAQ
-=========================================================================
+    =========================================================================
+    {self.bank_name} - ULTIMATE CUSTOMER SERVICE FAQ
+    =========================================================================
 
-Document ID     : FAQ-001
-Version         : 5.0
-Last Updated    : {self.display_date}
-Classification  : Public — Customer-Facing & Agent Reference
-
-
-=========================================================================
-SECTION 1: TRANSFER & PAYMENT ISSUES
-=========================================================================
-
-Q1: My transfer was debited but the receiver did not get the money.
-─────────────────────────────────────────────────────────────────────────
-[TECHNICAL]: transaction_status=["failed", "timeout"], channel="NIBSS", codes=["network_error", "system_timeout", "issuer_unavailable"]
-[HUMAN_RESPONSE]: This usually indicates a temporary NIBSS network delay or a failed interbank transaction.
-1. Wait 2 hours: Most delays self-resolve via auto-reversal.
-2. Check History: Look for your reference number (Format: TXN + 12 digits).
-3. Confirm Details: Double-check the beneficiary account and bank.
-4. Contact Us: If unresolved after 2 hours, provide your reference number so we can trace it via NIBSS.
-5. Auto-Reversal: If not received within 24 hours, a reversal is triggered with an SMS confirmation.
-
-Q2: I sent money to the wrong account. Can it be reversed?
-─────────────────────────────────────────────────────────────────────────
-[TECHNICAL]: automatic_reversal=False, unit="TSU", sla="2-14 days", validation="Name Enquiry"
-[HUMAN_RESPONSE]: Reversal is NOT automatic for wrong-account transfers.
-- Step 1: Contact the recipient directly and request a voluntary refund.
-- Step 2: If unsuccessful, contact our Transaction Services Unit (TSU) with a screenshot of the intended vs. actual account number.
-- Step 3: TSU will formally request a recall from the beneficiary's bank.
-- Step 4: Recovery takes 2–14 days depending on beneficiary cooperation. 
-Note: Reversal is NOT possible if the recipient has already withdrawn the funds. Always use the "Name Enquiry" feature before sending.
-
-Q3: What are my daily transfer limits?
-─────────────────────────────────────────────────────────────────────────
-[TECHNICAL]: code="daily_transaction_limit_exceeded", failure_reason="daily_transaction_limit_exceeded"
-[HUMAN_RESPONSE]: Your limits depend on your KYC tier:
-- Tier 1 (Basic Savings, phone + name only): ₦50,000/day
-- Tier 2 (Savings/Solo, BVN + NIN linked): ₦200,000/day
-- Tier 3 (Current Account, full KYC): ₦5,000,000/day
-If you exceed these, you'll see a "daily_transaction_limit_exceeded" error. To upgrade, visit a branch with a valid photo ID and utility bill.
+    Document ID     : FAQ-001
+    Version         : 6.0
+    Last Updated    : {self.display_date}
+    Classification  : Public — Customer-Facing & Agent Reference
 
 
-=========================================================================
-SECTION 2: CARD ISSUES
-=========================================================================
+    =========================================================================
+    SECTION 1: TRANSFER & PAYMENT ISSUES
+    =========================================================================
 
-Q4: Why was my card declined even though I have sufficient balance?
-─────────────────────────────────────────────────────────────────────────
-[TECHNICAL]: failure_reason="suspected_fraud", lock_duration="24 hours", codes=["POS_LIMIT", "ATM_LIMIT"]
-[HUMAN_RESPONSE]: Common reasons include:
-1. International Transactions Disabled: Enable this in App > Cards > Manage Card.
-2. Daily Limit Exceeded: POS limit is ₦500,000/day; ATM limit is ₦100,000 (Standard) or ₦200,000 (Premium).
-3. Incorrect PIN: 3 wrong attempts will lock the card for 24 hours.
-4. Blocked Category: Betting, gambling, and crypto are blocked by default.
-5. Security Hold: Our fraud engine may have applied a risk block. Contact us to verify identity.
+    Q1: My transfer was debited but the receiver did not get the money.
+    ─────────────────────────────────────────────────────────────────────────
+    [TECHNICAL]: transaction_status=["failed", "timeout"], channel="NIBSS", codes=["network_error", "system_timeout"]
+    [HUMAN_RESPONSE]: This usually indicates a temporary NIBSS network delay or a failed interbank transaction.
+    - Wait 2 hours: Most delays self-resolve via auto-reversal.
+    - Check History: Look for your reference number (Format: TXN + 12 digits).
+    - Confirm Details: Double-check the beneficiary account and bank.
+    - Contact Us: If unresolved after 2 hours, provide your reference number so we can trace it via NIBSS.
+    - Auto-Reversal: If not received within 24 hours, a reversal is triggered with an SMS confirmation.
 
-Q5: The ATM did not dispense cash but my account was debited.
-─────────────────────────────────────────────────────────────────────────
-[TECHNICAL]: channel="atm", resolution="24-48 hours", success_rate="99.8%"
-[HUMAN_RESPONSE]: This is a dispense error.
-- Immediate: Note the ATM location, time, amount, and get a receipt. Do not retry that machine.
-- Report: Contact us within 24 hours with these details.
-- Resolution: We will reconcile the terminal, and an auto-reversal usually occurs within 24–48 hours.
+    Q2: I sent money to the wrong account. Can it be reversed?
+    ─────────────────────────────────────────────────────────────────────────
+    [TECHNICAL]: automatic_reversal=False, unit="TSU", sla="2-14 days"
+    [HUMAN_RESPONSE]: Reversal is NOT automatic for wrong-account transfers.
+    - Step 1: Contact the recipient directly and request a voluntary refund.
+    - Step 2: Contact our Transaction Services Unit (TSU) with a screenshot of the intended vs. actual account number.
+    - Step 3: TSU will formally request a recall from the beneficiary's bank.
+    - Step 4: Recovery takes 2–14 days depending on beneficiary cooperation.
+    Note: Reversal is NOT possible if the recipient has already withdrawn the funds. Always use Name Enquiry before sending.
+
+    Q3: What are my daily transfer limits?
+    ─────────────────────────────────────────────────────────────────────────
+    [TECHNICAL]: code="daily_transaction_limit_exceeded"
+    [HUMAN_RESPONSE]: Your limits depend on your KYC tier:
+    - Tier 1 (Basic Savings, phone + name only): ₦50,000/day
+    - Tier 2 (Savings/Solo, BVN + NIN linked): ₦200,000/day
+    - Tier 3 (Current Account, full KYC): ₦5,000,000/day
+    To upgrade, visit a branch with a valid photo ID and utility bill.
+
+    Q4: How do I increase my transfer limit?
+    ─────────────────────────────────────────────────────────────────────────
+    [TECHNICAL]: unit="KYC", required_docs=["BVN", "NIN", "photo_ID", "utility_bill"]
+    [HUMAN_RESPONSE]: To increase your transfer limit, you need to upgrade your KYC tier:
+    - Tier 1 to Tier 2: Link your BVN and NIN via the app under Settings > Profile > Upgrade Account.
+    - Tier 2 to Tier 3: Visit any Sentinel Bank branch with a valid photo ID and a recent utility bill.
+    Upgrades are typically processed within 24 hours.
+
+    Q5: My transfer is showing as pending. What does that mean?
+    ─────────────────────────────────────────────────────────────────────────
+    [TECHNICAL]: transaction_status="pending", channel="NIBSS"
+    [HUMAN_RESPONSE]: A pending transfer means your payment is being processed by the interbank network (NIBSS).
+    - Standard interbank transfers: 10 minutes to 2 hours.
+    - Same-bank transfers: Usually instant.
+    - If still pending after 3 hours, contact us with your transaction reference number.
+    Do not re-send the payment — this could result in a duplicate charge.
+
+    Q6: Can I schedule a future-dated transfer?
+    ─────────────────────────────────────────────────────────────────────────
+    [HUMAN_RESPONSE]: Yes. In the Sentinel Bank app:
+    - Go to Transfer > Enter details > Select Date.
+    - Choose any future date up to 90 days ahead.
+    - Scheduled transfers can be cancelled up to 1 hour before the scheduled time.
+    - You will receive an SMS reminder the day before execution.
+
+    Q7: What is Name Enquiry and why should I use it?
+    ─────────────────────────────────────────────────────────────────────────
+    [HUMAN_RESPONSE]: Name Enquiry is a verification step that displays the account holder's name before you complete a transfer.
+    - It prevents wrong transfers by confirming you are sending to the right person.
+    - It is available on the app, USSD (*737#), and internet banking.
+    - Always confirm the name matches your intended recipient before sending.
+
+    Q8: My beneficiary says they haven't received payment after 24 hours.
+    ─────────────────────────────────────────────────────────────────────────
+    [TECHNICAL]: unit="TSU", channel="NIBSS"
+    [HUMAN_RESPONSE]: If 24 hours have passed and funds have not been received:
+    - Share your transaction reference number with us.
+    - We will raise a formal query with NIBSS on your behalf.
+    - Resolution typically occurs within 48–72 business hours.
+    - Contact us at 0700-SENTINEL or complaints@sentinelbank.ng.
+
+    Q9: Why was my transfer returned/reversed?
+    ─────────────────────────────────────────────────────────────────────────
+    [HUMAN_RESPONSE]: Transfers are reversed for several reasons:
+    - Invalid or closed beneficiary account.
+    - Beneficiary bank system downtime.
+    - Daily limit exceeded on the beneficiary's account.
+    - Compliance hold on either account.
+    Reversed funds typically return within 24–48 hours. Check your transaction history for a reversal credit.
+
+    Q10: Can I transfer money to someone abroad?
+    ─────────────────────────────────────────────────────────────────────────
+    [HUMAN_RESPONSE]: Yes. Sentinel Bank supports international wire transfers:
+    - Available for Tier 3 (Current Account) holders only.
+    - Minimum: $100 or equivalent.
+    - Required: Beneficiary IBAN/account number, bank SWIFT code, purpose of transfer.
+    - Processing time: 1–3 business days.
+    - Fees: ₦5,000 flat fee + applicable CBN exchange rate.
+    Initiate via the app under Transfer > International Transfer or visit any branch.
+
+    Q11: What happens if I exceed my daily limit?
+    ─────────────────────────────────────────────────────────────────────────
+    [HUMAN_RESPONSE]: If you exceed your daily transfer limit:
+    - The transaction will be declined with a "daily_transaction_limit_exceeded" message.
+    - Your limit resets at midnight (12:00 AM WAT) every day.
+    - You cannot exceed the limit by splitting into multiple transactions — the system tracks cumulative daily totals.
+    - To increase your limit permanently, upgrade your KYC tier.
+
+    Q12: How do I add a new beneficiary?
+    ─────────────────────────────────────────────────────────────────────────
+    [HUMAN_RESPONSE]: To save a new beneficiary:
+    - Go to Transfer > New Transfer > Enter account details > complete transfer.
+    - Tick "Save Beneficiary" before confirming.
+    - Saved beneficiaries appear under Transfer > Saved Beneficiaries for faster future payments.
+    - You can edit or delete saved beneficiaries at any time.
+
+    Q13: Is there a charge for transfers?
+    ─────────────────────────────────────────────────────────────────────────
+    [TECHNICAL]: fee_same_bank="Free", fee_interbank="₦10 (≤₦5,000), ₦25 (₦5,001–₦50,000), ₦50 (>₦50,000)"
+    [HUMAN_RESPONSE]: Transfer fees are as follows:
+    - Same bank (Sentinel to Sentinel): Free.
+    - Interbank (to other Nigerian banks): ₦10 for amounts up to ₦5,000; ₦25 for ₦5,001–₦50,000; ₦50 for amounts above ₦50,000.
+    - International wire transfers: ₦5,000 flat fee.
+    Charges are deducted from your account at the time of the transaction.
+
+    Q14: What is NIBSS and how does it affect my transfer?
+    ─────────────────────────────────────────────────────────────────────────
+    [HUMAN_RESPONSE]: NIBSS (Nigeria Inter-Bank Settlement System) is the infrastructure that processes all interbank transfers in Nigeria.
+    - Most transfers complete in under 10 minutes.
+    - During NIBSS maintenance windows (usually 12:00 AM–2:00 AM), transfers may be delayed.
+    - We have no direct control over NIBSS delays, but we monitor all transactions and trigger reversals if needed.
+
+    Q15: My account was debited twice for one transaction.
+    ─────────────────────────────────────────────────────────────────────────
+    [TECHNICAL]: unit="TSU", resolution="24-48 hours"
+    [HUMAN_RESPONSE]: A double debit can occur due to a network timeout causing a retry.
+    - Check your transaction history to confirm both debits.
+    - Contact us immediately with both transaction reference numbers.
+    - Our Transaction Services Unit (TSU) will investigate and reverse the duplicate charge within 24–48 hours.
+    - Do not re-initiate the transfer while the investigation is open.
 
 
-=========================================================================
-SECTION 3: PRODUCT RECOMMENDATIONS (TRAJECTORY AGENT)
-=========================================================================
+    =========================================================================
+    SECTION 2: CARD ISSUES
+    =========================================================================
 
-Q6: I have a high balance sitting in my savings. How can I make it grow?
-─────────────────────────────────────────────────────────────────────────
-[TRAJECTORY]: trigger="High Savings Balance", product="Fixed Deposit", benefit="Compounded Interest"
-[HUMAN_RESPONSE]: Since you're maintaining a healthy balance, our Fixed Deposit account might be a great fit. You can lock funds for 30, 90, or 365 days at much higher interest rates than standard savings. You can start this right now in the 'Investments' section of the app.
+    Q16: Why was my card declined even though I have sufficient balance?
+    ─────────────────────────────────────────────────────────────────────────
+    [TECHNICAL]: failure_reason="suspected_fraud", lock_duration="24 hours"
+    [HUMAN_RESPONSE]: Common reasons your card may be declined despite having funds:
+    1. International Transactions Disabled: Enable in App > Cards > Manage Card.
+    2. Daily Limit Exceeded: POS ₦500,000/day; ATM ₦100,000 (Standard) or ₦200,000 (Premium).
+    3. Incorrect PIN: 3 wrong attempts locks the card for 24 hours.
+    4. Blocked Category: Betting, gambling, and crypto are blocked by default.
+    5. Security Hold: Our fraud engine may have applied a risk block.
 
-Q7: I need extra funds for a personal project or emergency.
-─────────────────────────────────────────────────────────────────────────
-[TRAJECTORY]: trigger="Salary Inflow", product="Instant Salary Advance", benefit="No Documentation"
-[HUMAN_RESPONSE]: If you receive your salary through Sentinel Bank, you may qualify for our Instant Salary Advance. You can get up to 50% of your net monthly income credited to your account immediately via the 'Loans' tab—no paperwork required.
+    Q17: My card got stolen. How do I block it immediately?
+    ─────────────────────────────────────────────────────────────────────────
+    [TECHNICAL]: unit="DCS", action="card_block", channel=["app", "ussd", "phone"]
+    [HUMAN_RESPONSE]: Block your stolen card immediately through any of these channels:
+    - App (Fastest): Go to Cards > Select Card > Block Card. Takes effect instantly.
+    - USSD: Dial *737*20# and follow the prompts.
+    - Phone: Call 0700-SENTINEL (available 24/7) and request an emergency block.
+    - Email: fraud-desk@sentinelbank.ng (include your account number).
+    Once blocked, request a card replacement in the app under Cards > Request New Card. Replacement takes 3–5 business days.
 
-Q8: I do a lot of shopping on international websites (Amazon, Netflix).
-─────────────────────────────────────────────────────────────────────────
-[TRAJECTORY]: trigger="Web/International Spend", product="Sentinel Virtual Dollar Card"
-[HUMAN_RESPONSE]: To avoid fluctuating exchange rates and card declines on global sites, we recommend our Virtual Dollar Card. You can fund it directly from your Naira account and use it for seamless international payments.
+    Q18: I lost my card. What should I do?
+    ─────────────────────────────────────────────────────────────────────────
+    [HUMAN_RESPONSE]: If your card is lost:
+    - Block it immediately via the app (Cards > Block Card) or call 0700-SENTINEL.
+    - Check your recent transaction history for any unauthorised charges.
+    - Report any fraud to fraud-desk@sentinelbank.ng.
+    - Request a replacement card via the app under Cards > Request New Card.
+    Your replacement card will arrive within 3–5 business days. A card replacement fee of ₦1,500 applies.
+
+    Q19: How do I block my card temporarily?
+    ─────────────────────────────────────────────────────────────────────────
+    [HUMAN_RESPONSE]: To temporarily freeze your card without blocking it permanently:
+    - Open the app > Cards > Select your card > Toggle "Freeze Card".
+    - All transactions will be declined while the card is frozen.
+    - Unfreeze at any time by toggling it back on.
+    - This is useful if you misplace your card and want to protect it while you search.
+
+    Q20: The ATM did not dispense cash but my account was debited.
+    ─────────────────────────────────────────────────────────────────────────
+    [TECHNICAL]: channel="atm", resolution="24-48 hours"
+    [HUMAN_RESPONSE]: This is a dispense error.
+    - Immediate: Note the ATM location, date, time, and amount. Keep your receipt if issued.
+    - Do not retry on that machine.
+    - Report to us within 24 hours with these details.
+    - We will reconcile the terminal and an auto-reversal typically occurs within 24–48 hours.
+
+    Q21: How do I request a new debit card?
+    ─────────────────────────────────────────────────────────────────────────
+    [TECHNICAL]: fee="₦1,500", delivery="3-5 business days"
+    [HUMAN_RESPONSE]: To request a new debit card:
+    - App: Go to Cards > Request New Card. Select delivery to your registered address or pick up at a branch.
+    - Branch: Visit any Sentinel Bank branch with a valid ID.
+    - Fee: ₦1,500 for standard card; ₦3,500 for premium card.
+    - Delivery: 3–5 business days for home delivery; same-day for branch pick-up.
+
+    Q22: How do I change my card PIN?
+    ─────────────────────────────────────────────────────────────────────────
+    [HUMAN_RESPONSE]: To change your card PIN:
+    - App: Go to Cards > Manage Card > Change PIN. You will need to verify with your current PIN.
+    - ATM: Insert card > Select "PIN Change" > Follow prompts.
+    - Branch: Visit with a valid ID and your card.
+    Your new PIN takes effect immediately. Never share your PIN with anyone, including bank staff.
+
+    Q23: My card is expiring soon. What should I do?
+    ─────────────────────────────────────────────────────────────────────────
+    [HUMAN_RESPONSE]: Sentinel Bank automatically issues a replacement card 30 days before your card expires.
+    - If you have not received your new card within 2 weeks of expiry, contact us.
+    - Your card number, CVV, and expiry date will change — update any saved payment methods.
+    - Your PIN remains the same on the new card.
+
+    Q24: Can I use my Sentinel Bank card abroad?
+    ─────────────────────────────────────────────────────────────────────────
+    [HUMAN_RESPONSE]: Yes, subject to the following:
+    - Enable international transactions: App > Cards > Manage Card > International Transactions.
+    - Ensure your account has sufficient balance in Naira — charges are converted at the CBN rate.
+    - Notify us before travelling to prevent fraud blocks: App > Cards > Travel Notification.
+    - Daily limit for international POS: ₦500,000 equivalent.
+    - ATM withdrawals abroad: ₦65 per withdrawal plus foreign bank charges.
+
+    Q25: What is a virtual card and how do I get one?
+    ─────────────────────────────────────────────────────────────────────────
+    [HUMAN_RESPONSE]: A virtual card is a digital card for online and international payments — no physical card required.
+    - Request via: App > Cards > Create Virtual Card.
+    - Available in Naira (for local online payments) and Dollar (for international sites like Amazon, Netflix).
+    - Dollar Virtual Card: Funded directly from your Naira balance at the prevailing exchange rate.
+    - Useful for subscription services — set a spending limit and delete when done.
+
+    Q26: Why is my card not working on international websites?
+    ─────────────────────────────────────────────────────────────────────────
+    [HUMAN_RESPONSE]: If your card is declining on international websites:
+    - Enable international transactions in the app: Cards > Manage Card > International Transactions.
+    - Ensure your billing address in the app matches the address entered on the website.
+    - Some international sites do not accept Nigerian cards — use our Virtual Dollar Card instead.
+    - Check that your card has not expired.
 
 
-=========================================================================
-SECTION 4: MOBILE APP & DIGITAL BANKING
-=========================================================================
+    =========================================================================
+    SECTION 3: ACCOUNT MANAGEMENT & KYC
+    =========================================================================
 
-Q9: I cannot log into the mobile app.
-─────────────────────────────────────────────────────────────────────────
-[TECHNICAL]: unit="DCS", lockout="30 minutes"
-[HUMAN_RESPONSE]: Troubleshoot in this order:
-- Forgot Password: Use the reset link sent to your email.
-- Update App: Ensure you're on the latest version from the Play/App Store.
-- Network: Toggle airplane mode or switch between WiFi and mobile data.
-- Account Locked: 3 wrong attempts lock the app for 30 minutes. Contact Customer Care (DCS) for an immediate unlock.
+    Q27: How do I open a Sentinel Bank account?
+    ─────────────────────────────────────────────────────────────────────────
+    [HUMAN_RESPONSE]: Open an account in minutes:
+    - App: Download the Sentinel Bank app > Tap "Open Account" > Provide your BVN, NIN, phone number, and take a selfie.
+    - Branch: Visit any branch with BVN, NIN, valid photo ID, and utility bill.
+    - Account types: Basic Savings (instant), Premium Savings, Current Account, Solo Account.
+    Your account number is issued immediately for Tier 1. Full activation with debit card takes 3–5 business days.
 
-Q10: I am not receiving OTPs.
-─────────────────────────────────────────────────────────────────────────
-[TECHNICAL]: sender_id=["SENTINEL", "SBNK"]
-[HUMAN_RESPONSE]: 1. Verify your registered phone number. 2. Check signal strength. 3. Look in your SMS spam/blocked folder. 4. Restart your phone. 5. For iPhone: Disable "Filter Unknown Senders" in Settings > Messages.
+    Q28: How do I upgrade my account tier?
+    ─────────────────────────────────────────────────────────────────────────
+    [HUMAN_RESPONSE]: Account tier upgrades:
+    - Tier 1 to Tier 2: Link BVN and NIN via App > Settings > Profile > Upgrade Account.
+    - Tier 2 to Tier 3: Visit a branch with valid photo ID (National ID, International Passport, or Driver's Licence) and a recent utility bill.
+    Processing time: 24 hours for Tier 2; up to 48 hours for Tier 3.
+
+    Q29: How do I link my BVN to my account?
+    ─────────────────────────────────────────────────────────────────────────
+    [HUMAN_RESPONSE]: To link your BVN:
+    - App: Go to Settings > Profile > Link BVN > Enter your 11-digit BVN.
+    - USSD: Dial *737*20*BVN# where BVN is your 11-digit number.
+    - Branch: Visit with your BVN and a valid ID.
+    Your BVN details must match the name on your Sentinel Bank account. Mismatches require a branch visit.
+
+    Q30: How do I update my phone number on my account?
+    ─────────────────────────────────────────────────────────────────────────
+    [TECHNICAL]: unit="DCS", security="OTP verification"
+    [HUMAN_RESPONSE]: To update your registered phone number:
+    - App: Settings > Profile > Update Phone Number. An OTP will be sent to your old number to confirm.
+    - If you no longer have access to your old number: Visit a branch with valid photo ID. A staff-assisted update takes 24–48 hours.
+    Your phone number is critical for receiving OTPs — always keep it current.
+
+    Q31: How do I update my email address?
+    ─────────────────────────────────────────────────────────────────────────
+    [HUMAN_RESPONSE]: To update your email address:
+    - App: Settings > Profile > Update Email. An OTP will be sent to your current registered email.
+    - If you no longer have access to your old email: Visit a branch with valid photo ID.
+    Email is used for statements, transaction alerts, and account notifications.
+
+    Q32: How do I change my account name?
+    ─────────────────────────────────────────────────────────────────────────
+    [HUMAN_RESPONSE]: Name changes require a branch visit. Bring:
+    - A valid government-issued photo ID with the new name.
+    - For married women: Marriage certificate.
+    - For deed poll/court-ordered name changes: Certified court order.
+    Processing takes 3–5 business days. Your BVN must also be updated to reflect the new name.
+
+    Q33: How do I close my Sentinel Bank account?
+    ─────────────────────────────────────────────────────────────────────────
+    [HUMAN_RESPONSE]: To close your account:
+    - Ensure your balance is zero or withdraw all funds first.
+    - Visit any Sentinel Bank branch with valid photo ID.
+    - Submit a written account closure request.
+    - All linked cards and beneficiaries will be deactivated.
+    - Processing takes 5–7 business days.
+    Note: Accounts with active loans, standing orders, or disputes cannot be closed until resolved.
+
+    Q34: Can I have more than one account?
+    ─────────────────────────────────────────────────────────────────────────
+    [HUMAN_RESPONSE]: Yes. You can hold multiple account types simultaneously:
+    - One Savings Account, one Current Account, and one Solo Account.
+    - Each account has its own account number.
+    - All accounts are visible and manageable within the same app login.
+    - You can transfer between your own accounts instantly and for free.
+
+    Q35: What is a Solo account?
+    ─────────────────────────────────────────────────────────────────────────
+    [HUMAN_RESPONSE]: A Solo Account is a goal-based savings account designed for personal financial targets.
+    - Set a target amount and a target date.
+    - Funds can be locked (no withdrawals until target date) or flexible.
+    - Earns interest at 8% p.a. on locked balances.
+    - Create up to 5 Solo accounts for different goals (rent, vacation, emergency fund, etc.).
+    - Open in the app under Accounts > New Account > Solo Account.
+
+    Q36: How long does it take to verify my account?
+    ─────────────────────────────────────────────────────────────────────────
+    [HUMAN_RESPONSE]: Verification timelines:
+    - Tier 1 (Basic): Instant — account number issued immediately on app sign-up.
+    - Tier 2 (BVN + NIN linked): Up to 24 hours.
+    - Tier 3 (Full KYC with branch visit): 24–48 hours after branch submission.
+    You will receive an SMS and email confirmation once your account is fully activated.
+
+    Q37: I forgot my account number. How do I find it?
+    ─────────────────────────────────────────────────────────────────────────
+    [HUMAN_RESPONSE]: To find your account number:
+    - App: It is displayed on the home screen under your account balance.
+    - USSD: Dial *737*0# to retrieve your account details.
+    - Debit card: Your account number is not printed on the card, but it is linked to it.
+    - SMS: Your account number is included in all transaction alert messages.
 
 
-=========================================================================
-SECTION 5: ACCOUNT SERVICES & CHARGES
-=========================================================================
+    =========================================================================
+    SECTION 4: MOBILE APP & DIGITAL BANKING
+    =========================================================================
 
-Q11: How do I request a bank statement?
-─────────────────────────────────────────────────────────────────────────
-[TECHNICAL]: fee_app="Free", fee_email="₦50/month", fee_branch="₦100/month"
-[HUMAN_RESPONSE]: 
-- Mobile App: Free for the last 90 days.
-- Email: Email statements@sentinelbank.ng (Include name, account number, and range). Fee: ₦50/month.
-- USSD (*737*7#): Free for the last 5 transactions.
-- Branch: ₦100/month for any historical period.
+    Q38: I cannot log into the mobile app.
+    ─────────────────────────────────────────────────────────────────────────
+    [TECHNICAL]: unit="DCS", lockout="30 minutes"
+    [HUMAN_RESPONSE]: Troubleshoot in this order:
+    - Forgot Password: Tap "Forgot Password" on the login screen — a reset link is sent to your email.
+    - Update App: Ensure you are on the latest version (Play Store / App Store).
+    - Network: Toggle airplane mode or switch between WiFi and mobile data.
+    - Account Locked: 3 wrong attempts locks the app for 30 minutes. Contact DCS for an immediate unlock.
 
-Q12: Why am I being charged monthly fees?
-─────────────────────────────────────────────────────────────────────────
-[TECHNICAL]: unit="AOD", maintenance_savings="₦50", maintenance_current="₦300", sms="₦4", ussd="₦6.98", other_atm="₦65"
-[HUMAN_RESPONSE]: Standard monthly charges include:
-- Savings Maintenance: ₦50 (Waived if balance ≥ ₦100,000).
-- Current Account Maintenance: ₦300.
-- SMS Alerts: ₦4 per alert (Mandatory).
-- USSD Sessions (*737#): ₦6.98 per session.
-- ATM (Other Banks/Own Bank >3 times): ₦65.
-If you see an unknown charge, report it to the Account Operations Department (AOD).
+    Q39: I am not receiving OTPs.
+    ─────────────────────────────────────────────────────────────────────────
+    [TECHNICAL]: sender_id=["SENTINEL", "SBNK"]
+    [HUMAN_RESPONSE]: If OTPs are not arriving:
+    1. Confirm your registered phone number is correct in Settings.
+    2. Check signal strength — OTPs require a network connection.
+    3. Check your SMS spam or blocked messages folder.
+    4. Restart your phone.
+    5. iPhone users: Disable "Filter Unknown Senders" in Settings > Messages.
+    6. If still not receiving: Call 0700-SENTINEL to request a voice OTP.
+
+    Q40: How do I reset my app password?
+    ─────────────────────────────────────────────────────────────────────────
+    [HUMAN_RESPONSE]: To reset your password:
+    - On the login screen, tap "Forgot Password".
+    - Enter your registered email or phone number.
+    - An OTP is sent to verify your identity.
+    - Set a new password (must be 8+ characters with uppercase, number, and symbol).
+    If you cannot access your registered email or phone, visit a branch with valid ID.
+
+    Q41: How do I set up biometric login (fingerprint/face ID)?
+    ─────────────────────────────────────────────────────────────────────────
+    [HUMAN_RESPONSE]: To enable biometric login:
+    - App: Settings > Security > Biometric Login > Enable.
+    - Your device must have biometric hardware (fingerprint sensor or Face ID).
+    - You will be asked to verify with your current password once.
+    - After enabling, you can log in using your fingerprint or face at the login screen.
+
+    Q42: The app keeps crashing. What should I do?
+    ─────────────────────────────────────────────────────────────────────────
+    [TECHNICAL]: unit="DCS"
+    [HUMAN_RESPONSE]: If the Sentinel Bank app crashes:
+    1. Force-close and reopen the app.
+    2. Check for updates in the Play Store or App Store.
+    3. Clear the app cache: Phone Settings > Apps > Sentinel Bank > Clear Cache.
+    4. Ensure your device has sufficient storage (at least 500MB free).
+    5. Reinstall the app if the issue persists.
+    If problems continue, contact our Digital Customer Service (DCS) team at 0700-SENTINEL.
+
+    Q43: How do I enable transaction notifications?
+    ─────────────────────────────────────────────────────────────────────────
+    [HUMAN_RESPONSE]: To manage transaction alerts:
+    - App: Settings > Notifications > Transaction Alerts > Toggle SMS/Push notifications.
+    - SMS alerts: ₦4 per alert (mandatory for debit transactions per CBN policy).
+    - Push notifications: Free, delivered via the app.
+    - Email alerts: Free, enable under Settings > Notifications > Email Alerts.
+
+    Q44: I accidentally deleted the app. Will I lose my data?
+    ─────────────────────────────────────────────────────────────────────────
+    [HUMAN_RESPONSE]: No. Your account data is stored securely on Sentinel Bank servers, not on your device.
+    - Reinstall the app from the Play Store or App Store.
+    - Log in with your registered phone number or email and password.
+    - All your accounts, transaction history, and beneficiaries will be restored.
+
+    Q45: How do I use USSD banking?
+    ─────────────────────────────────────────────────────────────────────────
+    [HUMAN_RESPONSE]: Sentinel Bank USSD code is *737#. Key commands:
+    - *737*1# — Check balance
+    - *737*2*Amount*AccountNumber# — Transfer money
+    - *737*5# — Buy airtime
+    - *737*7# — Mini statement (last 5 transactions)
+    - *737*20# — Block card
+    - *737*0# — Account number enquiry
+    USSD works on any phone, even without internet. Each session costs ₦6.98.
+
+    Q46: Is internet banking available?
+    ─────────────────────────────────────────────────────────────────────────
+    [HUMAN_RESPONSE]: Yes. Sentinel Bank internet banking is available at app.sentinelbank.ng.
+    - Supports all features: transfers, bill payments, statements, card management.
+    - Secure login with your app credentials (email/phone + password + OTP).
+    - Best for large-screen transactions like bulk payments and detailed statement downloads.
+
+    Q47: How do I transfer between my own Sentinel accounts?
+    ─────────────────────────────────────────────────────────────────────────
+    [HUMAN_RESPONSE]: To transfer between your own accounts:
+    - App: Transfer > Own Account Transfer > Select source and destination accounts > Enter amount.
+    - These transfers are instant and completely free.
+    - No OTP is required for own-account transfers below ₦100,000.
 
 
-=========================================================================
-SECTION 6: FRAUD & SECURITY
-=========================================================================
+    =========================================================================
+    SECTION 5: ACCOUNT SERVICES & CHARGES
+    =========================================================================
 
-Q13: Someone is asking for my PIN/OTP via phone.
-─────────────────────────────────────────────────────────────────────────
-[HUMAN_RESPONSE]: THIS IS A SCAM. Sentinel Bank will NEVER ask for your PIN, OTP, or password. 
-If you shared details: 
-1. Change your password in Settings. 
-2. Block your card in the app. 
-3. Call 0700-SENTINEL. 
-4. Email fraud-desk@sentinelbank.ng.
+    Q48: How do I request a bank statement?
+    ─────────────────────────────────────────────────────────────────────────
+    [TECHNICAL]: fee_app="Free", fee_email="₦50/month", fee_branch="₦100/month"
+    [HUMAN_RESPONSE]: Ways to get your bank statement:
+    - Mobile App: Free for the last 90 days. App > Accounts > Statement > Select date range > Download PDF.
+    - Email: Send a request to statements@sentinelbank.ng with your name, account number, and date range. Fee: ₦50/month.
+    - USSD (*737*7#): Free for the last 5 transactions only.
+    - Branch: ₦100/month for any historical period.
+
+    Q49: Why am I being charged monthly fees?
+    ─────────────────────────────────────────────────────────────────────────
+    [TECHNICAL]: unit="AOD"
+    [HUMAN_RESPONSE]: Standard monthly charges include:
+    - Savings Maintenance: ₦50 (Waived if balance ≥ ₦100,000).
+    - Current Account Maintenance: ₦300.
+    - SMS Alerts: ₦4 per alert (mandatory per CBN policy).
+    - USSD Sessions (*737#): ₦6.98 per session.
+    - ATM withdrawals at other banks or more than 3 times at Sentinel ATMs: ₦65.
+    Report unknown charges to the Account Operations Department (AOD) at complaints@sentinelbank.ng.
+
+    Q50: What is the VAT on banking transactions?
+    ─────────────────────────────────────────────────────────────────────────
+    [HUMAN_RESPONSE]: 7.5% VAT applies to all bank charges and fees in compliance with Nigerian tax regulations.
+    - VAT is automatically calculated and shown as a separate line item on your statement.
+    - It does not apply to transfer amounts, only to service fees.
+
+    Q51: How do I dispute an unknown charge on my account?
+    ─────────────────────────────────────────────────────────────────────────
+    [TECHNICAL]: unit="AOD", sla="5-7 business days"
+    [HUMAN_RESPONSE]: To dispute a charge:
+    - Identify the exact date, amount, and description from your statement.
+    - Contact us at complaints@sentinelbank.ng or call 0700-SENTINEL.
+    - Our Account Operations Department (AOD) will investigate within 5–7 business days.
+    - If the charge is confirmed as erroneous, a reversal credit will be applied.
+
+    Q52: What is the minimum balance for my account?
+    ─────────────────────────────────────────────────────────────────────────
+    [HUMAN_RESPONSE]: Minimum balance requirements:
+    - Basic Savings: ₦0 (No minimum balance required).
+    - Premium Savings: ₦5,000.
+    - Current Account: ₦10,000.
+    - Solo Account: ₦0 (goal-based, you set your own target).
+    Falling below the minimum balance on Premium Savings or Current Account attracts a ₦100 penalty per month.
+
+    Q53: How do I set up a standing order (recurring transfer)?
+    ─────────────────────────────────────────────────────────────────────────
+    [HUMAN_RESPONSE]: To set up a recurring transfer:
+    - App: Transfer > Schedule Transfer > Enable "Recurring" > Set frequency (daily, weekly, monthly).
+    - Select start date, end date, and amount.
+    - Standing orders are processed at 8:00 AM on the scheduled date.
+    - Ensure your account has sufficient funds to avoid failed standing orders.
+    - Cancel or modify any time via Transfer > Scheduled Transfers.
+
+    Q54: How do I get a reference letter from my bank?
+    ─────────────────────────────────────────────────────────────────────────
+    [HUMAN_RESPONSE]: To request a bank reference or confirmation letter:
+    - Visit any Sentinel Bank branch with valid photo ID.
+    - Submit a written request stating the purpose.
+    - Standard processing: 3–5 business days.
+    - Fee: ₦2,000 per letter.
+    - Letters can be collected at the branch or sent to your registered email.
+
+    Q55: Can I receive salary into my Sentinel Bank account?
+    ─────────────────────────────────────────────────────────────────────────
+    [HUMAN_RESPONSE]: Yes. Provide your employer with:
+    - Account Name: Your registered account name.
+    - Account Number: Your 10-digit account number.
+    - Bank Name: Sentinel Bank Nigeria.
+    - Sort Code: 033 (Sentinel Bank).
+    Salary receipts are typically processed by NIBSS and credited same-day.
 
 
-=========================================================================
-SECTION 7: CONTACT INFORMATION
-=========================================================================
-24/7 Customer Care     : 0700-SENTINEL (0700-736-8463)
-Fraud Emergency        : fraud-desk@sentinelbank.ng
-Complaints             : complaints@sentinelbank.ng
-Statement Requests     : statements@sentinelbank.ng
-Banking Hours          : Mon–Fri 8:00 AM – 4:00 PM; Sat 9:00 AM – 1:00 PM
-=========================================================================
-END OF DOCUMENT FAQ-001
-=========================================================================
-"""
+    =========================================================================
+    SECTION 6: LOANS & CREDIT
+    =========================================================================
+
+    Q56: What loan products does Sentinel Bank offer?
+    ─────────────────────────────────────────────────────────────────────────
+    [TRAJECTORY]: trigger="Loan Enquiry", products=["Salary Advance", "Personal Loan", "Asset Finance", "Overdraft"]
+    [HUMAN_RESPONSE]: Sentinel Bank offers the following loan products:
+    - Instant Salary Advance: Up to 50% of net monthly salary. No documentation needed. For salary account holders.
+    - Personal Loan: ₦50,000 to ₦5,000,000. Tenors from 3–24 months. Requires 3 months salary history.
+    - Asset Finance Loan: For purchasing vehicles or equipment. Up to ₦10,000,000.
+    - Overdraft Facility: For Current Account holders. Up to ₦2,000,000. Interest charged only on amount used.
+    All loans are accessible via App > Loans or at any branch.
+
+    Q57: How do I apply for an instant salary advance?
+    ─────────────────────────────────────────────────────────────────────────
+    [TRAJECTORY]: trigger="Salary Inflow", product="Instant Salary Advance"
+    [HUMAN_RESPONSE]: To apply for a salary advance:
+    - Open the app > Loans > Salary Advance.
+    - You must have received at least 2 months of salary into your Sentinel Bank account.
+    - Maximum: 50% of your net monthly salary.
+    - Repayment: Automatically deducted from your next salary credit.
+    - Interest rate: 2.5% flat per month.
+    - No documents required — eligibility is determined automatically.
+
+    Q58: What is the interest rate on Sentinel Bank loans?
+    ─────────────────────────────────────────────────────────────────────────
+    [HUMAN_RESPONSE]: Current interest rates:
+    - Salary Advance: 2.5% per month (flat).
+    - Personal Loan: 2.0%–3.5% per month depending on credit score and tenor.
+    - Asset Finance: 1.8% per month.
+    - Overdraft: 1.5% per month on outstanding balance.
+    Rates are subject to change in line with CBN monetary policy. Confirm the current rate before applying.
+
+    Q59: How do I check my loan repayment schedule?
+    ─────────────────────────────────────────────────────────────────────────
+    [HUMAN_RESPONSE]: To view your repayment schedule:
+    - App: Loans > Active Loans > Select loan > View Schedule.
+    - A full amortisation breakdown showing principal, interest, and outstanding balance per installment is displayed.
+    - SMS reminders are sent 3 days before each repayment date.
+
+    Q60: What happens if I miss a loan repayment?
+    ─────────────────────────────────────────────────────────────────────────
+    [HUMAN_RESPONSE]: If you miss a repayment:
+    - A penalty of 1% of the outstanding amount is charged per week of default.
+    - Your credit bureau record may be negatively affected after 30 days.
+    - Contact us immediately if you anticipate difficulty — we can discuss a restructuring plan.
+    - Repeated defaults may result in account restriction and legal action.
+
+    Q61: Can I pay off my loan early?
+    ─────────────────────────────────────────────────────────────────────────
+    [HUMAN_RESPONSE]: Yes. Early repayment is allowed with no penalty:
+    - App: Loans > Active Loans > Early Repayment > Enter amount.
+    - You will only pay interest up to the date of repayment, not for the full original tenor.
+    - Confirm the settlement figure in the app before making payment.
+
+    Q62: How long does loan approval take?
+    ─────────────────────────────────────────────────────────────────────────
+    [HUMAN_RESPONSE]: Loan approval timelines:
+    - Salary Advance: Instant (automated decision, disbursed within seconds).
+    - Personal Loan (in-app): 24–48 hours.
+    - Asset Finance / Business Loans: 3–5 business days (requires documentation review).
+    - Overdraft Facility: 24 hours for existing Current Account holders.
+
+
+    =========================================================================
+    SECTION 7: SAVINGS & INVESTMENTS
+    =========================================================================
+
+    Q63: What savings accounts does Sentinel Bank offer?
+    ─────────────────────────────────────────────────────────────────────────
+    [HUMAN_RESPONSE]: Sentinel Bank savings products:
+    - Basic Savings: No minimum balance. 3% p.a. interest. Daily interest accrual.
+    - Premium Savings: Minimum ₦5,000. 5% p.a. interest. Waived maintenance fee if balance ≥ ₦100,000.
+    - Solo Account: Goal-based savings. Up to 8% p.a. if locked until target date.
+    - Fixed Deposit: 9%–13% p.a. depending on tenor. Minimum ₦50,000. Terms: 30, 90, 180, 365 days.
+
+    Q64: How does interest work on my savings account?
+    ─────────────────────────────────────────────────────────────────────────
+    [HUMAN_RESPONSE]: Interest on savings accounts:
+    - Interest is calculated daily on your end-of-day balance.
+    - It is credited to your account monthly, on the last business day of each month.
+    - Rates: Basic Savings 3% p.a., Premium Savings 5% p.a.
+    - Interest is subject to 10% withholding tax per FIRS regulations.
+
+    Q65: How do I open a fixed deposit?
+    ─────────────────────────────────────────────────────────────────────────
+    [TRAJECTORY]: trigger="High Savings Balance", product="Fixed Deposit"
+    [HUMAN_RESPONSE]: To open a Fixed Deposit:
+    - App: Investments > Fixed Deposit > Enter amount and select tenor (30, 90, 180, or 365 days).
+    - Minimum: ₦50,000.
+    - Rates: 30 days (9%), 90 days (10%), 180 days (11.5%), 365 days (13%).
+    - Interest can be paid upfront or at maturity.
+    - Early liquidation is possible but attracts a 1.5% penalty on earned interest.
+
+    Q66: What happens to my fixed deposit at maturity?
+    ─────────────────────────────────────────────────────────────────────────
+    [HUMAN_RESPONSE]: At maturity, your fixed deposit:
+    - Auto-renews for the same tenor at the prevailing rate (default setting).
+    - Or credits principal + interest to your linked savings account if auto-renewal is disabled.
+    - Manage auto-renewal preference: App > Investments > Fixed Deposit > Auto-Renew Toggle.
+    - You receive an SMS and email notification 7 days before maturity.
+
+    Q67: Can I withdraw from my Solo account before the target date?
+    ─────────────────────────────────────────────────────────────────────────
+    [HUMAN_RESPONSE]: It depends on your Solo account settings:
+    - Flexible Solo: Withdrawals allowed anytime. Interest rate: 5% p.a.
+    - Locked Solo: No withdrawals until target date. Interest rate: 8% p.a. Breaking lock attracts a 2% penalty.
+    You can switch from Locked to Flexible in the app, but this will reduce your interest rate retroactively.
+
+    Q68: What is the Virtual Dollar Card and how do I use it?
+    ─────────────────────────────────────────────────────────────────────────
+    [TRAJECTORY]: trigger="International Payments", product="Virtual Dollar Card"
+    [HUMAN_RESPONSE]: The Sentinel Bank Virtual Dollar Card lets you pay on international websites (Amazon, Netflix, Spotify, etc.):
+    - Create instantly: App > Cards > Virtual Dollar Card > Fund with your Naira balance.
+    - No physical card needed.
+    - Funds are converted at the prevailing CBN rate.
+    - Set a spending limit to control costs.
+    - Delete and recreate anytime — great for one-time purchases.
+
+
+    =========================================================================
+    SECTION 8: FRAUD & SECURITY
+    =========================================================================
+
+    Q69: Someone called asking for my PIN and OTP. What should I do?
+    ─────────────────────────────────────────────────────────────────────────
+    [HUMAN_RESPONSE]: THIS IS A SCAM. Sentinel Bank will NEVER ask for your PIN, OTP, or password.
+    If you have already shared your details:
+    1. Change your password immediately: App > Settings > Security > Change Password.
+    2. Block your card: App > Cards > Block Card.
+    3. Call 0700-SENTINEL immediately (24/7).
+    4. Email fraud-desk@sentinelbank.ng with a description of what happened.
+    5. File a report with the Nigerian Police Force cybercrime unit.
+
+    Q70: I noticed an unauthorised transaction on my account.
+    ─────────────────────────────────────────────────────────────────────────
+    [TECHNICAL]: unit="DCS", action="card_block", sla="24-48 hours"
+    [HUMAN_RESPONSE]: Act immediately:
+    1. Block your card via App > Cards > Block Card (instant protection).
+    2. Change your app password: Settings > Security > Change Password.
+    3. Screenshot the unauthorised transaction from your history.
+    4. Report to fraud-desk@sentinelbank.ng with the transaction details.
+    5. Call 0700-SENTINEL for immediate case escalation.
+    Our fraud team will investigate and if confirmed, your funds will be reversed within 24–48 hours.
+
+    Q71: What is phishing and how do I protect myself?
+    ─────────────────────────────────────────────────────────────────────────
+    [HUMAN_RESPONSE]: Phishing is when fraudsters impersonate Sentinel Bank to steal your credentials via fake emails, SMS, or websites.
+    - Check the URL — our official website is sentinelbank.ng (not sentinelbank.com.ng or similar variations).
+    - We will never send you links to "verify" or "unblock" your account via SMS.
+    - Never click on unsolicited links claiming to be from us.
+    - If in doubt, type our URL directly into your browser or call 0700-SENTINEL.
+
+    Q72: How do I secure my Sentinel Bank account?
+    ─────────────────────────────────────────────────────────────────────────
+    [HUMAN_RESPONSE]: Best practices for account security:
+    - Use a strong, unique password with uppercase, numbers, and symbols.
+    - Enable biometric login (Face ID/fingerprint).
+    - Never share your PIN, OTP, or password — not even with bank staff.
+    - Enable transaction alerts so you know about every debit instantly.
+    - Review your transaction history regularly for suspicious activity.
+    - Log out of internet banking after every session.
+
+    Q73: I think my account has been hacked.
+    ─────────────────────────────────────────────────────────────────────────
+    [TECHNICAL]: unit="DCS", priority="HIGH"
+    [HUMAN_RESPONSE]: If you suspect your account has been compromised:
+    1. Call 0700-SENTINEL IMMEDIATELY — our fraud line is available 24/7.
+    2. Change your password right away if you still have app access.
+    3. Block all your cards via App > Cards > Block Card.
+    4. Do not make any transactions until our team confirms the account is secure.
+    5. Email fraud-desk@sentinelbank.ng with all details.
+    We take fraud very seriously and will prioritise your case.
+
+    Q74: What is two-factor authentication (2FA) and how do I enable it?
+    ─────────────────────────────────────────────────────────────────────────
+    [HUMAN_RESPONSE]: Two-factor authentication adds an extra layer of security — after entering your password, you must verify with an OTP sent to your phone.
+    - 2FA is enabled by default for all transactions above ₦10,000.
+    - To require 2FA for ALL transactions: App > Settings > Security > 2FA > Enable for All Transactions.
+    - This is highly recommended for added protection.
+
+
+    =========================================================================
+    SECTION 9: BILL PAYMENTS & AIRTIME
+    =========================================================================
+
+    Q75: How do I pay bills (electricity, DSTV, water) on the app?
+    ─────────────────────────────────────────────────────────────────────────
+    [HUMAN_RESPONSE]: To pay bills:
+    - App: Payments > Bills > Select biller category (Electricity, TV, Water, Internet).
+    - Enter your meter number, smart card number, or account reference.
+    - Select amount > Confirm.
+    - Payment is processed instantly with an on-screen receipt.
+    - You can save your billers for one-tap payment next time.
+
+    Q76: How do I buy airtime or data on the app?
+    ─────────────────────────────────────────────────────────────────────────
+    [HUMAN_RESPONSE]: To buy airtime or data:
+    - App: Payments > Airtime/Data > Select network (MTN, Airtel, Glo, 9mobile).
+    - Enter phone number (or select from saved numbers) > Enter amount.
+    - Airtime: Instant delivery.
+    - Data: Select data bundle from the available options.
+    - USSD alternative: Dial *737*5*Amount*PhoneNumber# for airtime top-up.
+
+    Q77: How do I pay school fees through the app?
+    ─────────────────────────────────────────────────────────────────────────
+    [HUMAN_RESPONSE]: To pay school fees:
+    - App: Payments > Education > Search for your school > Enter your student ID or invoice number.
+    - For schools not listed: Use the standard transfer feature with the school's bank account details.
+    - You can request an official receipt from the school directly — Sentinel Bank provides proof of payment in your transaction history.
+
+    Q78: Can I pay taxes using Sentinel Bank?
+    ─────────────────────────────────────────────────────────────────────────
+    [HUMAN_RESPONSE]: Yes. Sentinel Bank supports government and tax payments:
+    - App: Payments > Government > Select agency (FIRS, LIRS, LASG, CAC, etc.).
+    - Enter your TIN, assessment number, or payment reference.
+    - Federal tax payments via REMITA are supported.
+    Receipts are generated automatically and saved to your transaction history.
+
+
+    =========================================================================
+    SECTION 10: COMPLAINTS & ESCALATIONS
+    =========================================================================
+
+    Q79: How do I file a formal complaint?
+    ─────────────────────────────────────────────────────────────────────────
+    [HUMAN_RESPONSE]: To file a formal complaint:
+    - App: Support > Complaints > New Complaint > Describe your issue.
+    - Email: complaints@sentinelbank.ng with your account number and full description.
+    - Phone: 0700-SENTINEL (available 24/7).
+    - Branch: Request a complaint form at any Sentinel Bank branch.
+    All complaints receive a reference number and are resolved within 72 business hours.
+
+    Q80: What is the complaint resolution timeline?
+    ─────────────────────────────────────────────────────────────────────────
+    [HUMAN_RESPONSE]: Our complaint resolution timelines:
+    - Simple enquiries (balance, statement): Resolved immediately.
+    - Transaction disputes: 24–48 hours.
+    - Card fraud investigations: 48–72 hours.
+    - Loan-related complaints: 3–5 business days.
+    - Complex disputes (wrong transfers, double debits): Up to 14 business days.
+    You will receive SMS/email updates on the status of your complaint.
+
+    Q81: Can I escalate to the CBN if Sentinel Bank does not resolve my complaint?
+    ─────────────────────────────────────────────────────────────────────────
+    [HUMAN_RESPONSE]: Yes. If your complaint is not resolved within 14 business days, you can escalate to:
+    - CBN Consumer Protection Department: cpd@cbn.gov.ng
+    - CBN Toll-Free Line: 0800 225 5226
+    - You will need your complaint reference number from Sentinel Bank and evidence of your prior complaint.
+    We are committed to resolving all issues before escalation is needed.
+
+    Q82: How do I get a complaint reference number?
+    ─────────────────────────────────────────────────────────────────────────
+    [HUMAN_RESPONSE]: A complaint reference number is automatically generated when you:
+    - Submit a complaint via the app (visible on-screen and sent via SMS).
+    - Email complaints@sentinelbank.ng (included in our auto-reply).
+    - Call 0700-SENTINEL (the agent will provide it verbally and via SMS).
+    Use this number to track your complaint status or escalate to CBN if needed.
+
+
+    =========================================================================
+    SECTION 11: CONTACT & BRANCH INFORMATION
+    =========================================================================
+
+    Q83: What are Sentinel Bank's contact details?
+    ─────────────────────────────────────────────────────────────────────────
+    [HUMAN_RESPONSE]: Official Sentinel Bank contact information:
+    - Customer Care (24/7): 0700-SENTINEL (0700-736-8463)
+    - Fraud Emergency: fraud-desk@sentinelbank.ng
+    - Complaints: complaints@sentinelbank.ng
+    - Statement Requests: statements@sentinelbank.ng
+    - Internet Banking: app.sentinelbank.ng
+    - Banking Hours: Monday–Friday 8:00 AM–4:00 PM; Saturday 9:00 AM–1:00 PM
+
+    Q84: How do I find the nearest Sentinel Bank branch or ATM?
+    ─────────────────────────────────────────────────────────────────────────
+    [HUMAN_RESPONSE]: To find branches and ATMs:
+    - App: Home > More > Branch/ATM Locator > Allow location access.
+    - Website: sentinelbank.ng/locations.
+    - The locator shows real-time ATM availability status.
+    - Some ATMs are available 24/7; branch ATMs follow banking hours.
+
+    Q85: How do I contact Sentinel Bank on social media?
+    ─────────────────────────────────────────────────────────────────────────
+    [HUMAN_RESPONSE]: Official Sentinel Bank social media channels:
+    - Twitter/X: @SentinelBankNG
+    - Instagram: @sentinelbankng
+    - Facebook: Sentinel Bank Nigeria
+    - LinkedIn: Sentinel Bank Nigeria
+    Note: Never share account details, PINs, or OTPs on social media — even in DMs.
+    For sensitive issues, always use official phone/email channels.
+
+    Q86: What do I do if I have an emergency outside banking hours?
+    ─────────────────────────────────────────────────────────────────────────
+    [HUMAN_RESPONSE]: For emergencies outside banking hours:
+    - Card blocking/fraud: Available 24/7 via app, USSD (*737*20#), or calling 0700-SENTINEL.
+    - OTP issues: Call 0700-SENTINEL (24/7).
+    - Unauthorised transactions: Email fraud-desk@sentinelbank.ng immediately and block your card in the app.
+    Our Customer Care line (0700-SENTINEL) operates 24 hours, 7 days a week, 365 days a year.
+
+
+    =========================================================================
+    SECTION 12: MISCELLANEOUS & PRODUCT RECOMMENDATIONS
+    =========================================================================
+
+    Q87: How do I refer a friend to Sentinel Bank?
+    ─────────────────────────────────────────────────────────────────────────
+    [HUMAN_RESPONSE]: To refer a friend:
+    - App: More > Refer a Friend > Share your unique referral link or code.
+    - When your friend opens an account and makes their first transaction, you both earn a ₦500 bonus.
+    - Referral bonuses are credited within 24 hours of the qualifying transaction.
+    - No limit on the number of referrals.
+
+    Q88: Does Sentinel Bank offer business accounts?
+    ─────────────────────────────────────────────────────────────────────────
+    [HUMAN_RESPONSE]: Yes. Sentinel Bank offers dedicated business banking solutions:
+    - Business Current Account: For registered businesses (CAC certificate required).
+    - SME Loan: Up to ₦50,000,000 for registered small businesses.
+    - Payroll Services: Manage staff salaries directly from your business account.
+    - POS Terminal: Apply for a Sentinel Bank POS device for your business.
+    Contact our Business Banking team: business@sentinelbank.ng.
+
+    Q89: How do I apply for a POS terminal for my business?
+    ─────────────────────────────────────────────────────────────────────────
+    [HUMAN_RESPONSE]: To apply for a POS terminal:
+    - You must have a Sentinel Bank business or current account.
+    - Apply via: App > Business > POS Application, or visit any branch.
+    - Required: CAC certificate, business address, bank account details.
+    - Processing time: 5–7 business days.
+    - POS transaction fee: 0.5% capped at ₦2,000 per transaction (charged to merchant).
+
+    Q90: What is Sentinel Bank's privacy policy on my data?
+    ─────────────────────────────────────────────────────────────────────────
+    [HUMAN_RESPONSE]: Sentinel Bank is committed to protecting your personal data in compliance with the Nigeria Data Protection Regulation (NDPR):
+    - Your data is never sold to third parties.
+    - It is used solely for banking operations, compliance, and improving our services.
+    - You can request a copy of your data or request deletion (subject to regulatory requirements) at privacy@sentinelbank.ng.
+    - Full privacy policy available at sentinelbank.ng/privacy.
+
+    Q91: I have a high balance sitting in my savings. How can I make it grow?
+    ─────────────────────────────────────────────────────────────────────────
+    [TRAJECTORY]: trigger="High Savings Balance", product="Fixed Deposit"
+    [HUMAN_RESPONSE]: Since you are maintaining a healthy balance, our Fixed Deposit account could help it grow faster. You can lock funds for 30, 90, or 365 days at rates of up to 13% p.a. — significantly higher than standard savings. Open one right now in App > Investments > Fixed Deposit.
+
+    Q92: I need extra funds for a personal project or emergency.
+    ─────────────────────────────────────────────────────────────────────────
+    [TRAJECTORY]: trigger="Fund Request", product="Salary Advance or Personal Loan"
+    [HUMAN_RESPONSE]: If you receive your salary through Sentinel Bank, you may qualify for an Instant Salary Advance — up to 50% of your net monthly income, disbursed instantly via App > Loans > Salary Advance. If you need a larger amount, our Personal Loan product offers up to ₦5,000,000 over 3–24 months. No paperwork for salary account holders.
+
+    Q93: I do a lot of shopping on international websites.
+    ─────────────────────────────────────────────────────────────────────────
+    [TRAJECTORY]: trigger="International Spend", product="Virtual Dollar Card"
+    [HUMAN_RESPONSE]: To avoid card declines and unfavourable exchange rates on global sites like Amazon, Netflix, or Spotify, use our Virtual Dollar Card. Fund it directly from your Naira balance and use it anywhere Mastercard is accepted online. Create yours instantly in App > Cards > Virtual Dollar Card.
+
+    Q94: How do I check my account balance?
+    ─────────────────────────────────────────────────────────────────────────
+    [HUMAN_RESPONSE]: Check your balance through any of these channels:
+    - App: Displayed immediately on the home screen.
+    - USSD: Dial *737*1# — balance is returned as a text message.
+    - SMS: Your balance is included in every transaction alert.
+    - ATM: Insert card > Balance Enquiry (free at Sentinel ATMs; ₦35 at other banks).
+
+    Q95: Can I operate my account via WhatsApp?
+    ─────────────────────────────────────────────────────────────────────────
+    [HUMAN_RESPONSE]: Yes. Sentinel Bank WhatsApp Banking is available on +234-700-SENTINEL.
+    Save the number and send "Hi" to get started.
+    Available features: Balance enquiry, mini statement, airtime purchase, and account information.
+    Note: Never share your PIN or OTP on WhatsApp, even to our official number. Transactions require app verification.
+
+    Q96: What is BVN and why do I need it?
+    ─────────────────────────────────────────────────────────────────────────
+    [HUMAN_RESPONSE]: BVN (Bank Verification Number) is an 11-digit biometric identity number issued by the CBN that links all your bank accounts in Nigeria.
+    - It is mandatory for all bank accounts above Tier 1.
+    - Required for loans, high-value transfers, and full KYC upgrade.
+    - To check your BVN: Dial *565*0# on your registered phone number.
+    - To link your BVN to your Sentinel account: App > Settings > Profile > Link BVN.
+
+    Q97: What is NIN and why do I need it for banking?
+    ─────────────────────────────────────────────────────────────────────────
+    [HUMAN_RESPONSE]: NIN (National Identification Number) is an 11-digit number from the National Identity Management Commission (NIMC).
+    - Required by CBN for Tier 2 account upgrades and SIM-linked banking.
+    - To get your NIN: Visit any NIMC office or check at *346# (NIN enquiry USSD).
+    - To link your NIN to your Sentinel account: App > Settings > Profile > Link NIN.
+
+    Q98: How do I report a Sentinel Bank staff for misconduct?
+    ─────────────────────────────────────────────────────────────────────────
+    [HUMAN_RESPONSE]: To report staff misconduct:
+    - Email: ethics@sentinelbank.ng (confidential channel monitored by senior management).
+    - Phone: 0700-SENTINEL — request escalation to the Compliance Department.
+    - All reports are treated with strict confidentiality and investigated independently.
+
+    Q99: What is NUBAN and why does it matter?
+    ─────────────────────────────────────────────────────────────────────────
+    [HUMAN_RESPONSE]: NUBAN (Nigeria Uniform Bank Account Number) is the standardised 10-digit account number format used by all Nigerian banks.
+    - Your Sentinel Bank account number follows this format.
+    - It is what you share with anyone sending you money.
+    - All NUBAN numbers are unique and tied to a specific bank — this is why you also need to provide the bank name when receiving transfers.
+
+    Q100: How do I enable or disable transaction alerts?
+    ─────────────────────────────────────────────────────────────────────────
+    [HUMAN_RESPONSE]: To manage transaction alerts:
+    - App: Settings > Notifications > Transaction Alerts.
+    - SMS alerts: Mandatory per CBN policy for debit transactions (₦4 per alert). Cannot be fully disabled.
+    - Push notifications: Can be toggled freely.
+    - Email alerts: Optional, enable under Settings > Notifications > Email Alerts.
+    We recommend keeping all alerts enabled for your security.
+
+    =========================================================================
+    SECTION 13: ADDITIONAL COMMON QUERIES
+    =========================================================================
+
+    Q101: How do I print my account details?
+    ─────────────────────────────────────────────────────────────────────────
+    [HUMAN_RESPONSE]: To get a printout of your account details:
+    - App: Accounts > Account Details > Share/Download — saves a PDF you can print.
+    - Branch: Request a printed account summary at any Sentinel Bank branch (free of charge).
+    This document includes your account name, number, bank name, and sort code — useful for giving to employers or counterparties.
+
+    Q102: Is my money safe with Sentinel Bank?
+    ─────────────────────────────────────────────────────────────────────────
+    [HUMAN_RESPONSE]: Yes. Sentinel Bank is:
+    - Licensed and regulated by the Central Bank of Nigeria (CBN).
+    - A member of the Nigeria Deposit Insurance Corporation (NDIC), which insures deposits up to ₦500,000 per depositor.
+    - Compliant with all CBN prudential guidelines.
+    Your money is safe and your deposits are insured.
+
+    Q103: How do I reactivate a dormant account?
+    ─────────────────────────────────────────────────────────────────────────
+    [HUMAN_RESPONSE]: An account becomes dormant after 6 months of no transactions.
+    To reactivate:
+    - App: Log in and initiate any transaction (even a ₦1 transfer to your own account).
+    - Branch: Visit with valid ID and submit a reactivation request form.
+    Dormant accounts are protected — no withdrawals are permitted until the account is reactivated.
+
+    Q104: How do I get a Sentinel Bank debit card for the first time?
+    ─────────────────────────────────────────────────────────────────────────
+    [HUMAN_RESPONSE]: Your debit card is automatically issued when you upgrade to Tier 2 or Tier 3.
+    - App users: App > Cards > Request Card > Choose delivery or branch pickup.
+    - New account holders: Card is issued within 3–5 business days of account activation.
+    - Fee: ₦1,500 for standard card.
+    Your card will be sent to your registered address or available at your preferred branch.
+
+    Q105: What should I do if my card is about to expire?
+    ─────────────────────────────────────────────────────────────────────────
+    [HUMAN_RESPONSE]: Sentinel Bank automatically sends a replacement card 30 days before your card expiry date.
+    - Delivery: To your registered address.
+    - Your new card has a different card number and CVV — update any saved payment methods (e.g. Netflix, Uber).
+    - Your PIN stays the same.
+    - If you have not received your card 7 days before expiry, contact us at 0700-SENTINEL.
+
+    Q106: Can I have a joint account with Sentinel Bank?
+    ─────────────────────────────────────────────────────────────────────────
+    [HUMAN_RESPONSE]: Yes. Joint accounts are available for Current Account holders.
+    - Both parties must complete full KYC (Tier 3 requirements).
+    - Visit any branch together with valid IDs for both parties.
+    - Mandate options: "Either to sign" or "Both to sign" — your choice.
+    - Joint accounts are not available via the app — branch visit required.
+
+    Q107: How do I set a transaction PIN for the app?
+    ─────────────────────────────────────────────────────────────────────────
+    [HUMAN_RESPONSE]: Your app transaction PIN is a 4-digit PIN used to authorise in-app payments.
+    - Set during first-time app setup after account activation.
+    - To change it: App > Settings > Security > Change Transaction PIN.
+    - You will need to verify with an OTP sent to your registered phone.
+    - This PIN is separate from your card PIN.
+
+    Q108: How do I view my full transaction history?
+    ─────────────────────────────────────────────────────────────────────────
+    [HUMAN_RESPONSE]: To view transaction history:
+    - App: Accounts > Select Account > Transaction History.
+    - Filter by date range, transaction type (debit/credit), or amount.
+    - Export as PDF or CSV for your records.
+    - History is available for the last 24 months on the app.
+    - For older records: Request a printed statement at any branch.
+
+    Q109: What is a chargeback and how do I request one?
+    ─────────────────────────────────────────────────────────────────────────
+    [TECHNICAL]: unit="TSU", sla="30-45 days"
+    [HUMAN_RESPONSE]: A chargeback is a reversal of a card transaction where you did not receive the goods or services paid for, or where your card was used without your authorisation.
+    To request a chargeback:
+    - Contact us within 90 days of the transaction date.
+    - Provide: transaction reference, merchant name, date, amount, and reason for dispute.
+    - Email: complaints@sentinelbank.ng with supporting evidence (e.g. screenshots, receipts).
+    Processing time: 30–45 business days (per card scheme rules).
+
+    Q110: How do I apply for overdraft protection?
+    ─────────────────────────────────────────────────────────────────────────
+    [HUMAN_RESPONSE]: Overdraft is available for Current Account holders with a minimum of 6 months activity.
+    - Apply via: App > Loans > Overdraft Facility or visit any branch.
+    - Limit: Up to ₦2,000,000 based on your average balance and income.
+    - Interest: 1.5% per month on the utilised amount only.
+    - No interest if you do not use the overdraft.
+    - Approval time: 24–48 hours for existing customers.
+
+    Q111: My salary was not credited on the expected date.
+    ─────────────────────────────────────────────────────────────────────────
+    [HUMAN_RESPONSE]: If your salary has not been credited:
+    - Confirm with your employer that the payment was initiated.
+    - Check your transaction history for the specific date.
+    - Salaries processed via NIBSS may take up to 4 business hours after initiation.
+    - If your employer confirms payment was made more than 24 hours ago, contact us with the payment reference from your employer.
+
+    Q112: What currencies can I hold in my Sentinel Bank account?
+    ─────────────────────────────────────────────────────────────────────────
+    [HUMAN_RESPONSE]: Sentinel Bank primarily operates in Nigerian Naira (NGN).
+    - Domiciliary accounts (USD, EUR, GBP) are available for Tier 3 Current Account holders.
+    - To open a domiciliary account: Visit any branch with BVN, NIN, valid ID, and a utility bill.
+    - Minimum opening deposit: $100, €100, or £100.
+    - Domiciliary accounts earn no interest but allow you to hold and transact in foreign currency.
+
+    Q113: How do I open a domiciliary account?
+    ─────────────────────────────────────────────────────────────────────────
+    [HUMAN_RESPONSE]: To open a domiciliary account:
+    - You must be a Tier 3 (full KYC) Current Account holder.
+    - Visit any Sentinel Bank branch with: valid photo ID, BVN, NIN, utility bill.
+    - Minimum opening balance: $100 or equivalent.
+    - Processing time: 24–48 hours.
+    - Available currencies: USD, EUR, GBP.
+    Domiciliary accounts can receive international wire transfers directly.
+
+    Q114: Can I send money to a domiciliary account from Naira?
+    ─────────────────────────────────────────────────────────────────────────
+    [HUMAN_RESPONSE]: Yes. You can fund your domiciliary account from your Naira account:
+    - App: Transfer > Own Account Transfer > Select Naira source and domiciliary destination.
+    - Funds are converted at the prevailing CBN exchange rate.
+    - Minimum transfer: ₦50,000 equivalent.
+    - Processing time: Same business day if initiated before 2:00 PM.
+
+    Q115: How do I apply for a Sentinel Bank mortgage?
+    ─────────────────────────────────────────────────────────────────────────
+    [HUMAN_RESPONSE]: Sentinel Bank does not currently offer retail mortgage products directly.
+    However, we partner with certified National Housing Fund (NHF) mortgage institutions.
+    - Our Mortgage Advisory desk can guide you: mortgage@sentinelbank.ng.
+    - Alternatively, our Asset Finance Loan covers property-linked assets up to ₦10,000,000.
+
+    Q116: What is the CBN and how does it relate to Sentinel Bank?
+    ─────────────────────────────────────────────────────────────────────────
+    [HUMAN_RESPONSE]: The Central Bank of Nigeria (CBN) is Nigeria's apex banking regulator.
+    - All Sentinel Bank operations, interest rates, and fees are guided by CBN regulations.
+    - The CBN sets transfer limits, KYC requirements, and consumer protection standards.
+    - If we fail to resolve your complaint, you may escalate to CBN at cpd@cbn.gov.ng or call 0800 225 5226.
+
+    Q117: How does the fraud detection system work?
+    ─────────────────────────────────────────────────────────────────────────
+    [HUMAN_RESPONSE]: Sentinel Bank uses an automated real-time fraud detection engine that:
+    - Monitors every transaction for unusual patterns (unusual location, unusual amount, unusual time).
+    - Temporarily blocks transactions flagged as suspicious until you verify them via OTP.
+    - Sends you an SMS/push notification for unusual activity.
+    If your card is blocked by fraud detection and you are the one transacting, simply verify with the OTP sent to your phone, or call 0700-SENTINEL for immediate clearance.
+
+    Q118: How do I earn more interest on my savings?
+    ─────────────────────────────────────────────────────────────────────────
+    [TRAJECTORY]: trigger="Interest Enquiry", products=["Fixed Deposit", "Solo Account", "Premium Savings"]
+    [HUMAN_RESPONSE]: To maximise interest on your savings:
+    - Switch to Premium Savings: 5% p.a. vs 3% p.a. on Basic Savings.
+    - Open a Locked Solo Account: 8% p.a. for goal-based savings.
+    - Open a Fixed Deposit: Up to 13% p.a. for 365-day lock-in.
+    All of these are available instantly in the app under Investments.
+
+    Q119: Is Sentinel Bank available outside Nigeria?
+    ─────────────────────────────────────────────────────────────────────────
+    [HUMAN_RESPONSE]: Sentinel Bank is a Nigerian bank regulated by the CBN.
+    - The app and internet banking are accessible globally — you can manage your account from anywhere.
+    - International card usage is supported (enable in Cards > Manage Card).
+    - International wire transfers are supported for Tier 3 accounts.
+    - Physical branch presence is currently limited to Nigeria.
+
+    Q120: How do I opt out of marketing communications?
+    ─────────────────────────────────────────────────────────────────────────
+    [HUMAN_RESPONSE]: To opt out of marketing messages:
+    - App: Settings > Notifications > Marketing Communications > Disable.
+    - Email: Send "UNSUBSCRIBE" to marketing@sentinelbank.ng from your registered email.
+    - SMS: Reply "STOP" to any marketing SMS from SENTINEL.
+    Note: Transaction alerts and security notifications cannot be disabled as they are mandatory per CBN policy.
+
+    =========================================================================
+    END OF DOCUMENT FAQ-001
+    =========================================================================
+    """
         return self._package_for_rag(
             "FAQ-001",
             "Customer Service Frequently Asked Questions",
             "knowledge_base",
-            "5.0",
+            "6.0",
             faq
         )
 

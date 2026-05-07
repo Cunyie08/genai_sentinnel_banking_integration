@@ -1,297 +1,472 @@
 =========================================================================
-Sentinel Bank Nigeria - MERCHANT RISK PROFILES
-=========================================================================
-
-Document Code       : FRM-002
-Classification      : CONFIDENTIAL — Sentinel Agent Operational Reference
-Version             : 1.0
-Effective Date      : January 2026
-Review Frequency    : Monthly
-
-Document Owner      : Chief Risk Officer (CRO)
-Companion Document  : FRM-001 (Fraud Detection & Prevention Guidelines)
-
-USAGE BY SENTINEL AGENT:
-  This document provides merchant_category risk weights that are ADDED
-  to the base risk score calculated from fraud_explainability_trace flags
-  in FRM-001. The Sentinel Agent queries this document using the
-  merchant_category field from transactions.csv and adds the returned
-  risk weight to the total risk score.
-
-QUERY PATTERN:
-  Input  : transaction['merchant_category']  →  e.g., "fintech"
-  Output : merchant risk weight (points)     →  e.g., +25
-  Action : Add to base score from FRM-001 flags, cap total at 100.
-
-
-=========================================================================
-SECTION 1: MERCHANT CATEGORY RISK TIERS
-=========================================================================
-
-──────────────────────────────────────────────────────────────────────────
-TIER 1 — HIGH RISK MERCHANT CATEGORIES  (+25 points)
-──────────────────────────────────────────────────────────────────────────
-
-CATEGORY: fintech
-Risk Weight       : +25 points
-Known Merchants   : Paystack, Flutterwave, Interswitch, Remita, Monnify
-Risk Rationale    :
-  Fintech payment gateways are the PRIMARY channel for moving stolen funds
-  out of compromised accounts. Fraudsters use victim accounts to fund
-  merchant accounts or P2P wallets on fintech platforms, making tracing
-  difficult. High-value fintech transactions from accounts with no prior
-  fintech history are the strongest single fraud signal in this dataset.
-Heightened Alert Conditions (add additional +10 points):
-  - First-ever fintech transaction for this account
-  - Amount > ₦200,000 to a fintech gateway
-  - Transaction at hours between midnight and 5:00 AM WAT
-  - Customer segment = "elderly" (age > 60 in customers.csv)
-Sentinel Agent Rule:
-  IF merchant_category = "fintech" AND is_fraud_score = 1:
-    Add +25 points to risk score.
-  IF merchant_category = "fintech" AND amount > 200000 AND
-     no prior fintech transactions:
-    Treat as if multiple_failures flag present (+20 additional).
-Note on Salary Signals:
-  Regular fintech credits (Paystack, Remita, Flutterwave) where
-  amount > N200,000 are interpreted as salary/payroll credits.
-  These are BEHAVIORAL CONTEXT signals recorded in salary_detected
-  and do NOT trigger fraud flags when the account holder is the
-  recipient (credit transactions).    
-Recommended Escalation:
-  Combined score ≥ 61 (fintech + any one FRM-001 flag) → HIGH risk.
-  Mandatory push-to-app challenge for ALL fintech transactions > ₦100,000
-  regardless of fraud score, as a blanket protective control.
-
-──────────────────────────────────────────────────────────────────────────
-TIER 2 — MEDIUM-HIGH RISK MERCHANT CATEGORIES  (+15 points)
-──────────────────────────────────────────────────────────────────────────
-
-CATEGORY: transport
-Risk Weight       : +15 points
-Known Merchants   : Uber, Bolt, LagRide, ABC Transport, Peace Mass Transit
-Risk Rationale    :
-  Transport platforms (especially ride-hailing apps) are used as
-  money-testing venues. Fraudsters initiate small Uber or Bolt transactions
-  to test whether a stolen card or account access is active before
-  attempting larger withdrawals. Multiple transport transactions within
-  a short window is a card-testing indicator.
-Heightened Alert Conditions (add additional +10 points):
-  - 3+ transport transactions within 30 minutes to same platform
-  - Transport transaction outside customer's residential_state
-    (customers.csv: residential_state field)
-  - Transport transaction at 12:00 AM – 5:00 AM WAT
-Positive Contextual Signal:
-  - Uber/Bolt transactions ≥ 6 in last 90 days on this account
-    → REDUCES suspicion (regular commuter behavior)
-  - This is the car_loan_signal_score trigger in transactions.csv
-    (uber_tracker ≥ 6 adds +0.4 to car_loan_signal_score)
-Note on Uber Tracker:
-  Uber/Bolt/LagRide transactions are counted in uber_tracker. This
-  counter is a BEHAVIORAL CONTEXT signal stored for explainability.
-  Frequent ride-hailing (>= 6 in 90 days) indicates regular commuter
-  behaviour, not fraud.    
-Sentinel Agent Rule:
-  IF merchant_category = "transport" AND is_fraud_score = 1:
-    Add +15 points.
-  IF uber_tracker < 6 AND 3+ transport txns in 30 minutes:
-    Treat as card-testing pattern. Add +15 points.
-
-CATEGORY: education
-Risk Weight       : +15 points
-Known Merchants   : University Tuition, WAEC, JAMB, Private School Fees
-Risk Rationale    :
-  Education payments are legitimate but frequently used in social
-  engineering scams. Fraudsters convince victims to make urgent "school
-  fee" payments under false pretenses. Large, round-number education
-  payments from accounts with no prior education payment history are
-  suspicious.
-Heightened Alert Conditions (add additional +10 points):
-  - Payment > ₦500,000 (unusually large for typical fees)
-  - No prior education transactions on this account (ever)
-  - Payment destination is international (outside Nigeria)
-Sentinel Agent Rule:
-  IF merchant_category = "education" AND is_fraud_score = 1:
-    Add +15 points.
-
-CATEGORY: healthcare
-Risk Weight       : +15 points
-Known Merchants   : Teaching Hospital, Private Hospital, Medplus, HealthPlus
-Risk Rationale    :
-  Healthcare payments are generally legitimate but are occasionally
-  used as cover for scam payments ("my mother needs surgery money").
-  Large pharmacy or hospital payments from accounts with unusual
-  activity patterns require secondary review.
-Heightened Alert Conditions (add additional +10 points):
-  - Payment > ₦1,000,000 (significantly above average healthcare spend)
-  - First-ever healthcare merchant on this account
-Sentinel Agent Rule:
-  IF merchant_category = "healthcare" AND is_fraud_score = 1:
-    Add +15 points.
-
-──────────────────────────────────────────────────────────────────────────
-TIER 3 — LOW RISK MERCHANT CATEGORIES  (+5 points)
-──────────────────────────────────────────────────────────────────────────
-
-CATEGORY: telecoms
-Risk Weight       : +5 points
-Known Merchants   : MTN, Airtel, Glo, 9mobile
-Risk Rationale    :
-  Telecom payments (airtime, data bundles) are generally low-risk but
-  can indicate money-laundering via airtime resale at very high volumes.
-  Standard individual top-ups are benign.
-Heightened Alert Conditions (add additional +10 points):
-  - Airtime purchase > ₦50,000 in single transaction (resale indicator)
-  - 5+ telecom transactions in one day (bulk resale pattern)
-Sentinel Agent Rule:
-  IF merchant_category = "telecoms" AND is_fraud_score = 1:
-    Add +5 points.
-
-──────────────────────────────────────────────────────────────────────────
-TIER 4 — ZERO-RISK MERCHANT CATEGORIES  (0 points)
-──────────────────────────────────────────────────────────────────────────
-These categories are established, everyday spending patterns. No additional
-risk weight is added to the fraud score for transactions in these categories.
-
-CATEGORY: supermarket
-Risk Weight       : 0 points
-Known Merchants   : Shoprite, SPAR, Justrite, Ebeano, Market Square
-Rationale         : Essential grocery spending. Highly predictable pattern.
-                    Shoprite and SPAR have robust transaction security.
-Exception         : IF amount > ₦500,000 at a supermarket → flag as anomaly
-                    (+15 points). Supermarkets rarely process amounts this high.
-
-CATEGORY: restaurants
-Risk Weight       : 0 points
-Known Merchants   : Chicken Republic, Kilimanjaro, Mr Biggs, Dominos,
-                    Cold Stone, Bukka Hut
-Rationale         : Everyday food spending. Very low fraud incidence.
-Exception         : IF amount > ₦200,000 at a single restaurant
-                    → flag as anomaly (+15 points).
-
-CATEGORY: fuel
-Risk Weight       : 0 points
-Known Merchants   : NNPC Mega Station, TotalEnergies, Mobil, Oando,
-                    Conoil, MRS
-Rationale         : Routine fuel purchases. Extremely predictable.
-                    Amount per transaction is naturally bounded by tank size.
-Exception         : IF amount > ₦100,000 at fuel station
-                    → flag as anomaly (+10 points).
-
-CATEGORY: utilities
-Risk Weight       : 0 points
-Known Merchants   : Ikeja Electric, EKEDC, IBEDC, AEDC, DSTV, GOtv, StarTimes
-Rationale         : Utility bill payments are scheduled, predictable, and
-                    directly verifiable. DSTV, GOtv, and StarTimes are
-                    subscription services with fixed recurring amounts.
-Exception         : IF amount > ₦500,000 for a single utility bill
-                    → flag as anomaly (+10 points).
-
-
-=========================================================================
-SECTION 2: MERCHANT VELOCITY RULES (ADDITIONAL RISK WEIGHTS)
-=========================================================================
-
-These rules apply ON TOP OF the category risk weights above.
-They are based on transaction frequency patterns, not merchant type.
-
-First Transaction with New Merchant (on this account)
-  Condition     : No prior transaction with this merchant_name on record
-  Risk Weight   : +10 points
-  Rationale     : New merchant relationships carry inherent uncertainty.
-  Rule          : Apply to ALL categories including Tier 4 (zero-risk).
-
-Repeated Transactions to Same Merchant in Short Window
-  Condition     : 3+ transactions to same merchant within 60 minutes
-  Risk Weight   : +20 points
-  Rationale     : Velocity to same merchant indicates card testing,
-                  session hijacking, or retry fraud pattern.
-
-Large Single Transaction with New Merchant
-  Condition     : Amount > ₦100,000 AND merchant is new to this account
-  Risk Weight   : +25 points (replaces +10 new merchant weight — use higher)
-  Rationale     : High-value first transaction with unknown merchant is
-                  the highest-risk combination outside fintech.
-
-
-=========================================================================
-SECTION 3: COMPOSITE RISK SCORE EXAMPLES
-=========================================================================
-
-EXAMPLE 1 — FINTECH HIGH RISK:
-  Flags from FRM-001:
-    mobile_channel_risk  : +15
-    high_amount_spike    : +25
-  Merchant (FRM-002):
-    fintech              : +25
-  Velocity (Section 2):
-    First fintech txn    : +10 (new merchant)
-  ─────────────────────
-  Total                  : 75 → HIGH → Mandatory push-to-app challenge
-
-EXAMPLE 2 — TRANSPORT CARD TESTING:
-  Flags from FRM-001:
-    multiple_failures    : +20
-  Merchant (FRM-002):
-    transport            : +15
-  Velocity (Section 2):
-    3 txns in 30 min     : +20
-  ─────────────────────
-  Total                  : 55 → MEDIUM → Step-up OTP authentication
-
-EXAMPLE 3 — SUPERMARKET NORMAL PURCHASE:
-  Flags from FRM-001:
-    normal_pattern       : +0
-  Merchant (FRM-002):
-    supermarket          : +0
-  Velocity (Section 2):
-    Regular merchant     : +0
-  ─────────────────────
-  Total                  : 0 → LOW → Process without friction
-
-EXAMPLE 4 — FINTECH CRITICAL BLOCK:
-  Flags from FRM-001:
-    mobile_channel_risk  : +15
-    high_amount_spike    : +25
-    multiple_failures    : +20
-  Merchant (FRM-002):
-    fintech              : +25
-  ─────────────────────
-  Total                  : 85 → HIGH (capped at 85 — borderline Critical)
-  Note: Add +10 for new merchant → 95 → CRITICAL → Block immediately
-
-
-=========================================================================
-SECTION 4: MERCHANT CATEGORY TO DEPARTMENT ROUTING
-=========================================================================
-
-If a merchant-related complaint is raised, use this table to determine
-which department should handle it alongside the Sentinel fraud assessment:
-
-  Merchant Category  → Primary Department  → Escalate to if Fraud Detected
-  ─────────────────────────────────────────────────────────────────────────
-  fintech            → TSU (disputed txn)  → FRM (if is_fraud_score = 1)
-  transport          → COC (if card used)  → FRM (if is_fraud_score = 1)
-  supermarket        → COC (if POS issue)  → TSU (if transfer issue)
-  restaurants        → COC (if POS issue)  → TSU (if transfer issue)
-  fuel               → COC (if POS issue)  → TSU (if transfer issue)
-  utilities          → TSU (bill payment)  → AOD (if charge disputed)
-  telecoms           → TSU (airtime/data)  → DCS (if USSD channel)
-  education          → TSU (bank transfer) → FRM (if scam suspected)
-  healthcare         → TSU (bank transfer) → FRM (if scam suspected)
-
-
-=========================================================================
-DOCUMENT CONTROL
-=========================================================================
-
-Owner           : Chief Risk Officer (CRO)
-Review Freq     : Monthly (aligned with FRM-001 review cycle)
-Last Updated    : May 2026
-Companion       : FRM-001 (Fraud Detection & Prevention Guidelines)
-Emergency       : fraud-desk@sentinelbank.ng | +234-1-FRAUD-24 (24/7)
-
-
-=========================================================================
-END OF DOCUMENT FRM-002
-=========================================================================
+    Sentinel Bank Nigeria - MERCHANT RISK PROFILES
+    =========================================================================
+    
+    Document Code       : FRM-002
+    Classification      : CONFIDENTIAL — Sentinel Agent Operational Reference
+    Version             : 1.1
+    Effective Date      : January 2026
+    Last Amended        : May 2026 (v1.1 — Betting category added)
+    Review Frequency    : Monthly
+    
+    Document Owner      : Chief Risk Officer (CRO)
+    Companion Document  : FRM-001 (Fraud Detection & Prevention Guidelines)
+    
+    CHANGELOG v1.1:
+      - Added merchant_category "betting" as Tier 1 HIGH RISK (+25 points).
+      - MERCHANT_RISK constant updated in policy_generator.py and rag_query.py.
+      - FRM-002 Section 1, 3, and 4 updated to include betting routing rules.
+      - BettingScreen.jsx and MerchantCheckout.jsx updated to pass
+        merchant_category="betting" on all betting platform transactions.
+    
+    USAGE BY SENTINEL AGENT:
+      This document provides merchant_category risk weights that are ADDED
+      to the base risk score calculated from fraud_explainability_trace flags
+      in FRM-001. The Sentinel Agent queries this document using the
+      merchant_category field from transactions.csv and adds the returned
+      risk weight to the total risk score.
+    
+    QUERY PATTERN:
+      Input  : transaction['merchant_category']  →  e.g., "betting"
+      Output : merchant risk weight (points)     →  e.g., +25
+      Action : Add to base score from FRM-001 flags, cap total at 100.
+    
+    
+    =========================================================================
+    SECTION 1: MERCHANT CATEGORY RISK TIERS
+    =========================================================================
+    
+    ──────────────────────────────────────────────────────────────────────────
+    TIER 1 — HIGH RISK MERCHANT CATEGORIES  (+25 points)
+    ──────────────────────────────────────────────────────────────────────────
+    
+    CATEGORY: fintech
+    Risk Weight       : +25 points
+    Known Merchants   : Paystack, Flutterwave, Interswitch, Remita, Monnify
+    Risk Rationale    :
+      Fintech payment gateways are the PRIMARY channel for moving stolen funds
+      out of compromised accounts. Fraudsters use victim accounts to fund
+      merchant accounts or P2P wallets on fintech platforms, making tracing
+      difficult. High-value fintech transactions from accounts with no prior
+      fintech history are the strongest single fraud signal in this dataset.
+    Heightened Alert Conditions (add additional +10 points):
+      - First-ever fintech transaction for this account
+      - Amount > ₦200,000 to a fintech gateway
+      - Transaction at hours between midnight and 5:00 AM WAT
+      - Customer segment = "elderly" (age > 60 in customers.csv)
+    Sentinel Agent Rule:
+      IF merchant_category = "fintech" AND is_fraud_score = 1:
+        Add +25 points to risk score.
+      IF merchant_category = "fintech" AND amount > 200000 AND
+        no prior fintech transactions:
+        Treat as if multiple_failures flag present (+20 additional).
+    Note on Salary Signals:
+      Regular fintech credits (Paystack, Remita, Flutterwave) where
+      amount > N200,000 are interpreted as salary/payroll credits.
+      These are BEHAVIORAL CONTEXT signals recorded in salary_detected
+      and do NOT trigger fraud flags when the account holder is the
+      recipient (credit transactions).
+    Recommended Escalation:
+      Combined score >= 61 (fintech + any one FRM-001 flag) → HIGH risk.
+      Mandatory push-to-app challenge for ALL fintech transactions > ₦100,000
+      regardless of fraud score, as a blanket protective control.
+    
+    ──────────────────────────────────────────────────────────────────────────
+    
+    CATEGORY: betting
+    Risk Weight       : +25 points
+    Known Merchants   : Bet9ja, SportyBet, 1xBet, Betway, BangBet, NairaBet,
+                        BetKing, Parimatch, BetWinner, MSport
+    Risk Rationale    :
+      Betting and sports gambling platforms share the same risk profile as
+      fintech gateways: they are a HIGH-VELOCITY, HIGH-CHARGEBACK category
+      where stolen funds are deposited, wagered minimally, and then withdrawn
+      to a different account or mobile wallet — a pattern known as "wash-
+      betting" money laundering. In Nigeria, licensed operators (Bet9ja,
+      SportyBet, BetKing) are regulated by the National Lottery Regulatory
+      Commission (NLRC), but this does NOT reduce fraud risk at the
+      transaction level. Unlicensed or grey-market operators (1xBet,
+      Parimatch, BetWinner) carry additional regulatory and AML risk.
+    
+      Key fraud vectors specific to betting platforms:
+      1. Account Drain via Betting Wallet: Fraudster funds a betting wallet
+        using a victim's card or account, then withdraws winnings or
+        balance to a separate account.
+      2. Chargeback Fraud: Customer funds betting wallet, loses funds, then
+        disputes the original transaction as "unauthorized."
+      3. Money Laundering via Small Bets: Depositing stolen funds in large
+        amounts, placing minimal bets to establish a transaction history,
+        then withdrawing as "winnings."
+      4. Bonus Abuse / Multi-Account Fraud: Using stolen account credentials
+        to claim new-user bonuses across multiple platforms simultaneously.
+      5. Compulsive Gambling Risk: High-frequency betting top-ups from the
+        same account within a short window signal problem gambling behavior
+        that may lead to dispute escalation.
+    
+    Regulatory Context:
+      - Betting is age-restricted (18+). Transactions from accounts with
+        customer age < 18 (customers.csv: age field) MUST be blocked
+        automatically and routed to FRM.
+      - CBN AML/CFT framework flags betting platforms as a reporting
+        category. Cumulative monthly betting spend > ₦500,000 triggers
+        a Suspicious Transaction Report (STR) filing obligation.
+      - Web channel betting is blocked by default. Customer must opt-in
+        via Settings > Card Controls > Betting Platforms to enable.
+    
+    Heightened Alert Conditions (add additional +10 points each):
+      - First-ever betting platform transaction for this account
+      - Amount > ₦100,000 to a single betting platform in one transaction
+      - 3+ betting transactions across any platforms within 60 minutes
+        (multi-platform funding — strong fraud or money-laundering signal)
+      - Transaction at hours between 12:00 AM and 5:00 AM WAT
+      - Customer age < 25 (elevated impulsive spending and chargeback risk)
+      - Customer segment = "elderly" (age > 60) funding a betting platform
+        (elder financial abuse indicator — refer to FRM immediately)
+      - Unlicensed/grey-market operator (1xBet, Parimatch, BetWinner):
+        add +10 points on top of base +25
+      - Cumulative betting spend this month > ₦500,000 (STR trigger)
+    
+    Sentinel Agent Rule:
+      IF merchant_category = "betting" AND is_fraud_score = 1:
+        Add +25 points to risk score.
+      IF merchant_category = "betting" AND customer.age < 18:
+        BLOCK immediately. Route to FRM. Priority: Critical.
+      IF merchant_category = "betting" AND amount > 100000:
+        Mandatory push-to-app challenge regardless of fraud score.
+      IF merchant_category = "betting" AND 3+ betting txns in 60 minutes
+        across any platforms:
+        Add +10 points (multi-platform velocity flag).
+      IF merchant_category = "betting" AND merchant_name in
+        ["1xBet", "Parimatch", "BetWinner"]:
+        Add +10 points (unlicensed operator surcharge).
+    
+    Chargeback Protocol:
+      Betting platform chargebacks are NON-RECOVERABLE in most cases.
+      Once funds are deposited into a betting wallet and a bet is placed,
+      the operator is legally not obligated to refund. Agents must inform
+      customers of this limitation immediately and escalate to FRM if
+      fraud is suspected, rather than raising a TSU reversal request.
+      Exception: If the betting platform confirms the account was accessed
+      fraudulently and the balance has not been wagered, a recall request
+      via NIBSS may succeed within 24 hours of the transaction.
+    
+    Responsible Gambling Flag:
+      IF a single customer account generates > 10 betting transactions
+      in any 7-day window regardless of is_fraud_score:
+        - Tag account with responsible_gambling_flag = True
+        - Route a soft alert to AOD for relationship manager review
+        - Do NOT block transactions solely on this basis
+        - Do NOT notify FRM unless fraud signals are also present
+    
+    Recommended Escalation:
+      Combined score >= 61 (betting + any one FRM-001 flag) → HIGH risk.
+      Combined score >= 86 → CRITICAL → Block and freeze.
+      All betting transactions from unrecognized devices → push-to-app
+      challenge mandatory (mobile_channel_risk already contributes +15).
+    
+    ──────────────────────────────────────────────────────────────────────────
+    TIER 2 — MEDIUM-HIGH RISK MERCHANT CATEGORIES  (+15 points)
+    ──────────────────────────────────────────────────────────────────────────
+    
+    CATEGORY: transport
+    Risk Weight       : +15 points
+    Known Merchants   : Uber, Bolt, LagRide, ABC Transport, Peace Mass Transit
+    Risk Rationale    :
+      Transport platforms (especially ride-hailing apps) are used as
+      money-testing venues. Fraudsters initiate small Uber or Bolt transactions
+      to test whether a stolen card or account access is active before
+      attempting larger withdrawals. Multiple transport transactions within
+      a short window is a card-testing indicator.
+    Heightened Alert Conditions (add additional +10 points):
+      - 3+ transport transactions within 30 minutes to same platform
+      - Transport transaction outside customer's residential_state
+        (customers.csv: residential_state field)
+      - Transport transaction at 12:00 AM - 5:00 AM WAT
+    Positive Contextual Signal:
+      - Uber/Bolt transactions >= 6 in last 90 days on this account
+        → REDUCES suspicion (regular commuter behavior)
+      - This is the car_loan_signal_score trigger in transactions.csv
+        (uber_tracker >= 6 adds +0.4 to car_loan_signal_score)
+    Note on Uber Tracker:
+      Uber/Bolt/LagRide transactions are counted in uber_tracker. This
+      counter is a BEHAVIORAL CONTEXT signal stored for explainability.
+      Frequent ride-hailing (>= 6 in 90 days) indicates regular commuter
+      behaviour, not fraud.
+    Sentinel Agent Rule:
+      IF merchant_category = "transport" AND is_fraud_score = 1:
+        Add +15 points.
+      IF uber_tracker < 6 AND 3+ transport txns in 30 minutes:
+        Treat as card-testing pattern. Add +15 points.
+    
+    CATEGORY: education
+    Risk Weight       : +15 points
+    Known Merchants   : University Tuition, WAEC, JAMB, Private School Fees
+    Risk Rationale    :
+      Education payments are legitimate but frequently used in social
+      engineering scams. Fraudsters convince victims to make urgent "school
+      fee" payments under false pretenses. Large, round-number education
+      payments from accounts with no prior education payment history are
+      suspicious.
+    Heightened Alert Conditions (add additional +10 points):
+      - Payment > ₦500,000 (unusually large for typical fees)
+      - No prior education transactions on this account (ever)
+      - Payment destination is international (outside Nigeria)
+    Sentinel Agent Rule:
+      IF merchant_category = "education" AND is_fraud_score = 1:
+        Add +15 points.
+    
+    CATEGORY: healthcare
+    Risk Weight       : +15 points
+    Known Merchants   : Teaching Hospital, Private Hospital, Medplus, HealthPlus
+    Risk Rationale    :
+      Healthcare payments are generally legitimate but are occasionally
+      used as cover for scam payments ("my mother needs surgery money").
+      Large pharmacy or hospital payments from accounts with unusual
+      activity patterns require secondary review.
+    Heightened Alert Conditions (add additional +10 points):
+      - Payment > ₦1,000,000 (significantly above average healthcare spend)
+      - First-ever healthcare merchant on this account
+    Sentinel Agent Rule:
+      IF merchant_category = "healthcare" AND is_fraud_score = 1:
+        Add +15 points.
+    
+    ──────────────────────────────────────────────────────────────────────────
+    TIER 3 — LOW RISK MERCHANT CATEGORIES  (+5 points)
+    ──────────────────────────────────────────────────────────────────────────
+    
+    CATEGORY: telecoms
+    Risk Weight       : +5 points
+    Known Merchants   : MTN, Airtel, Glo, 9mobile
+    Risk Rationale    :
+      Telecom payments (airtime, data bundles) are generally low-risk but
+      can indicate money-laundering via airtime resale at very high volumes.
+      Standard individual top-ups are benign.
+    Heightened Alert Conditions (add additional +10 points):
+      - Airtime purchase > ₦50,000 in single transaction (resale indicator)
+      - 5+ telecom transactions in one day (bulk resale pattern)
+    Sentinel Agent Rule:
+      IF merchant_category = "telecoms" AND is_fraud_score = 1:
+        Add +5 points.
+    
+    ──────────────────────────────────────────────────────────────────────────
+    TIER 4 — ZERO-RISK MERCHANT CATEGORIES  (0 points)
+    ──────────────────────────────────────────────────────────────────────────
+    These categories are established, everyday spending patterns. No additional
+    risk weight is added to the fraud score for transactions in these categories.
+    
+    CATEGORY: supermarket
+    Risk Weight       : 0 points
+    Known Merchants   : Shoprite, SPAR, Justrite, Ebeano, Market Square
+    Rationale         : Essential grocery spending. Highly predictable pattern.
+                        Shoprite and SPAR have robust transaction security.
+    Exception         : IF amount > ₦500,000 at a supermarket → flag as anomaly
+                        (+15 points). Supermarkets rarely process amounts this high.
+    
+    CATEGORY: restaurants
+    Risk Weight       : 0 points
+    Known Merchants   : Chicken Republic, Kilimanjaro, Mr Biggs, Dominos,
+                        Cold Stone, Bukka Hut
+    Rationale         : Everyday food spending. Very low fraud incidence.
+    Exception         : IF amount > ₦200,000 at a single restaurant
+                        → flag as anomaly (+15 points).
+    
+    CATEGORY: fuel
+    Risk Weight       : 0 points
+    Known Merchants   : NNPC Mega Station, TotalEnergies, Mobil, Oando,
+                        Conoil, MRS
+    Rationale         : Routine fuel purchases. Extremely predictable.
+                        Amount per transaction is naturally bounded by tank size.
+    Exception         : IF amount > ₦100,000 at fuel station
+                        → flag as anomaly (+10 points).
+    
+    CATEGORY: utilities
+    Risk Weight       : 0 points
+    Known Merchants   : Ikeja Electric, EKEDC, IBEDC, AEDC, DSTV, GOtv, StarTimes
+    Rationale         : Utility bill payments are scheduled, predictable, and
+                        directly verifiable. DSTV, GOtv, and StarTimes are
+                        subscription services with fixed recurring amounts.
+    Exception         : IF amount > ₦500,000 for a single utility bill
+                        → flag as anomaly (+10 points).
+    
+    
+    =========================================================================
+    SECTION 2: MERCHANT VELOCITY RULES (ADDITIONAL RISK WEIGHTS)
+    =========================================================================
+    
+    These rules apply ON TOP OF the category risk weights above.
+    They are based on transaction frequency patterns, not merchant type.
+    
+    First Transaction with New Merchant (on this account)
+      Condition     : No prior transaction with this merchant_name on record
+      Risk Weight   : +10 points
+      Rationale     : New merchant relationships carry inherent uncertainty.
+      Rule          : Apply to ALL categories including Tier 4 (zero-risk).
+    
+    Repeated Transactions to Same Merchant in Short Window
+      Condition     : 3+ transactions to same merchant within 60 minutes
+      Risk Weight   : +20 points
+      Rationale     : Velocity to same merchant indicates card testing,
+                      session hijacking, or retry fraud pattern.
+    
+    Large Single Transaction with New Merchant
+      Condition     : Amount > ₦100,000 AND merchant is new to this account
+      Risk Weight   : +25 points (replaces +10 new merchant weight — use higher)
+      Rationale     : High-value first transaction with unknown merchant is
+                      the highest-risk combination outside fintech/betting.
+    
+    Multi-Platform Betting Velocity
+      Condition     : Transactions to 2+ DIFFERENT betting platforms within
+                      60 minutes from the same account
+      Risk Weight   : +20 points
+      Rationale     : Funding multiple betting wallets simultaneously is a
+                      strong money-laundering or stolen-credentials signal.
+                      Legitimate users rarely fund multiple platforms in a
+                      single session.
+      Rule          : Apply IN ADDITION to the base +25 betting risk weight.
+                      Cap composite score at 100.
+    
+    
+    =========================================================================
+    SECTION 3: COMPOSITE RISK SCORE EXAMPLES
+    =========================================================================
+    
+    EXAMPLE 1 — FINTECH HIGH RISK:
+      Flags from FRM-001:
+        mobile_channel_risk  : +15
+        high_amount_spike    : +25
+      Merchant (FRM-002):
+        fintech              : +25
+      Velocity (Section 2):
+        First fintech txn    : +10 (new merchant)
+      ─────────────────────
+      Total                  : 75 → HIGH → Mandatory push-to-app challenge
+    
+    EXAMPLE 2 — BETTING MEDIUM RISK (Regular User, Small Amount):
+      Flags from FRM-001:
+        normal_pattern       : +0
+      Merchant (FRM-002):
+        betting (Bet9ja)     : +25
+      Velocity (Section 2):
+        Known merchant       : +0
+      ─────────────────────
+      Total                  : 25 → LOW → Process with standard SMS alert
+      Note: Bet9ja is known to the account and amount is within normal range.
+            No fraud flags. Standard confirmation sent.
+    
+    EXAMPLE 3 — BETTING HIGH RISK (BetKing, Late Night, New Merchant):
+      Flags from FRM-001:
+        mobile_channel_risk  : +15
+        high_amount_spike    : +25
+      Merchant (FRM-002):
+        betting (BetKing)    : +25
+      Velocity (Section 2):
+        First betting txn    : +10 (amount > ₦100,000, use +25 not +10)
+      ─────────────────────
+      Total (uncapped)       : 90 → CRITICAL → Block immediately
+      Note: ₦250,000 to BetKing at 2:14 AM on a mobile device that hasn't
+            been seen before. All four risk vectors fire simultaneously.
+            Account frozen, FRM alerted, email security notice sent.
+    
+    EXAMPLE 4 — MULTI-PLATFORM BETTING VELOCITY (Money Laundering Signal):
+      Flags from FRM-001:
+        multiple_failures    : +20
+      Merchant (FRM-002):
+        betting (1xBet)      : +25
+        unlicensed operator  : +10
+      Velocity (Section 2):
+        Multi-platform (60m) : +20
+      ─────────────────────
+      Total (uncapped)       : 75 → HIGH → Push-to-app challenge
+      Escalation             : STR filing review if monthly spend > ₦500,000
+    
+    EXAMPLE 5 — TRANSPORT CARD TESTING:
+      Flags from FRM-001:
+        multiple_failures    : +20
+      Merchant (FRM-002):
+        transport            : +15
+      Velocity (Section 2):
+        3 txns in 30 min     : +20
+      ─────────────────────
+      Total                  : 55 → MEDIUM → Step-up OTP authentication
+    
+    EXAMPLE 6 — SUPERMARKET NORMAL PURCHASE:
+      Flags from FRM-001:
+        normal_pattern       : +0
+      Merchant (FRM-002):
+        supermarket          : +0
+      Velocity (Section 2):
+        Regular merchant     : +0
+      ─────────────────────
+      Total                  : 0 → LOW → Process without friction
+    
+    EXAMPLE 7 — FINTECH CRITICAL BLOCK:
+      Flags from FRM-001:
+        mobile_channel_risk  : +15
+        high_amount_spike    : +25
+        multiple_failures    : +20
+      Merchant (FRM-002):
+        fintech              : +25
+      ─────────────────────
+      Total                  : 85 → HIGH (capped at 85 — borderline Critical)
+      Note: Add +10 for new merchant → 95 → CRITICAL → Block immediately
+    
+    
+    =========================================================================
+    SECTION 4: MERCHANT CATEGORY TO DEPARTMENT ROUTING
+    =========================================================================
+    
+    If a merchant-related complaint is raised, use this table to determine
+    which department should handle it alongside the Sentinel fraud assessment:
+    
+      Merchant Category  → Primary Department  → Escalate to if Fraud Detected
+      ─────────────────────────────────────────────────────────────────────────
+      fintech            → TSU (disputed txn)  → FRM (if is_fraud_score = 1)
+      betting            → TSU (disputed txn)  → FRM (if is_fraud_score = 1)
+                          NOTE: Betting chargebacks are NON-RECOVERABLE once
+                          funds are wagered. TSU must inform customer before
+                          opening a reversal ticket. If the betting platform
+                          confirms no bet was placed and balance is intact,
+                          TSU initiates an emergency NIBSS recall within 24h.
+                          Age-verification failures → FRM (Critical, always).
+      transport          → COC (if card used)  → FRM (if is_fraud_score = 1)
+      supermarket        → COC (if POS issue)  → TSU (if transfer issue)
+      restaurants        → COC (if POS issue)  → TSU (if transfer issue)
+      fuel               → COC (if POS issue)  → TSU (if transfer issue)
+      utilities          → TSU (bill payment)  → AOD (if charge disputed)
+      telecoms           → TSU (airtime/data)  → DCS (if USSD channel)
+      education          → TSU (bank transfer) → FRM (if scam suspected)
+      healthcare         → TSU (bank transfer) → FRM (if scam suspected)
+    
+    BETTING-SPECIFIC COMPLAINT HANDLING RULES:
+      1. Customer claims they did not initiate a betting transaction:
+          → Route to FRM immediately (treat as account compromise).
+      2. Customer claims they initiated the transaction but wants a refund
+        because they lost the bet:
+          → Route to TSU. Inform customer that resolved bets are not
+            refundable. Close ticket with policy explanation.
+      3. Customer claims they initiated the transaction but the betting
+        platform did not credit their wallet (technical failure):
+          → Route to TSU. TSU contacts the betting platform's B2B
+            reconciliation team and files an interbank dispute.
+      4. Customer is a minor (age < 18 confirmed from customers.csv):
+          → Route to FRM immediately. Block all future betting transactions
+            on the account. File regulatory report to NLRC within 48 hours.
+      5. Cumulative monthly betting spend reported to exceed ₦500,000:
+          → Route to FRM for STR assessment. Do NOT notify customer.
+    
+    
+    =========================================================================
+    DOCUMENT CONTROL
+    =========================================================================
+    
+    Owner           : Chief Risk Officer (CRO)
+    Review Freq     : Monthly (aligned with FRM-001 review cycle)
+    Last Updated    : May 2026
+    Version         : 1.1
+    Companion       : FRM-001 (Fraud Detection & Prevention Guidelines)
+    Emergency       : fraud-desk@sentinelbank.ng | +234-1-FRAUD-24 (24/7)
+    
+    
+    =========================================================================
+    END OF DOCUMENT FRM-002
+    =========================================================================
