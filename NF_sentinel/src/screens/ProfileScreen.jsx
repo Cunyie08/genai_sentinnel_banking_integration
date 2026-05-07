@@ -22,7 +22,8 @@ const ProfileScreen = () => {
   const navigate = useNavigate();
 
   const dispatch = useDispatch();
-  const user = useSelector(s => s.auth.user);
+  const user    = useSelector(s => s.auth.user);
+  const account = useSelector(s => s.account?.details);
   const [notifs,      setNotifs]      = useState(true);
   const [biometrics,  setBiometrics]  = useState(true);
   const [darkMode,    setDarkMode]    = useState(() => {
@@ -95,9 +96,9 @@ const ProfileScreen = () => {
           </div>
           <div className="grid grid-cols-3 gap-3 mt-5 pt-5 border-t border-white/15 relative z-10">
             {[
-              { label: 'Account',  value: user?.account || '0123456789' },
-              { label: 'Balance',  value: '₦400,850'                    },
-              { label: 'Tier',     value: 'Tier 3'                      },
+              { label: 'Account', value: account?.number  || user?.account || '—'      },
+              { label: 'Balance', value: account?.balance != null ? `₦${Number(account.balance).toLocaleString(undefined, { minimumFractionDigits: 2 })}` : '—' },
+              { label: 'Tier',    value: account?.tier    ? `Tier ${account.tier}` : 'Tier 3' },
             ].map(s => (
               <div key={s.label} className="text-center">
                 <p className="text-white font-extrabold text-sm">{s.value}</p>

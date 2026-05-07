@@ -7,7 +7,8 @@ import { api } from "../api/axiosConfig";
 import {
   Bell, Eye, EyeOff, Copy, QrCode, Send, Plus, Clock, FileText,
   Smartphone, Wifi, Gamepad2, Zap, Sparkles, X, Settings,
-  ShieldAlert, Fingerprint, XCircle, CheckCircle, Loader2, Lock
+  ShieldAlert, Fingerprint, XCircle, CheckCircle, Loader2, Lock,
+  BadgeCheck, ArrowRight, Calendar, TrendingUp
 } from "lucide-react";
 
 const bufferToBase64url = (buffer) => {
@@ -27,9 +28,9 @@ const base64urlToBuffer = (base64url) => {
 };
 
 const FALLBACK_CARDS = [
-  { id: 'fb1', label: 'Education First', labelColor: '#22d3ee', title: 'Student Loan', subtitle: 'Up to ₦500k', gradient: ['#0B0C10', '#1A1B23'], cta: 'APPLY NOW', ctaRoute: 'loans', reasoning: 'Zero interest for the first 3 months. Apply instantly to secure your tuition fees.' },
-  { id: 'fb2', label: 'High Yield', labelColor: '#6EE7B7', title: 'Fixed Deposit', subtitle: '15% Interest', gradient: ['#0f766e', '#0d5e56'], cta: 'START SAVING', ctaRoute: 'savings', reasoning: 'Lock in your funds and earn 15% annual returns.' },
-  { id: 'fb3', label: 'Flexible', labelColor: '#a78bfa', title: 'Credit Card', subtitle: 'Pre-approved', gradient: ['#7c3aed', '#4c1d95'], cta: 'GET CARD', ctaRoute: '#', reasoning: 'Based on your spending patterns, you qualify for our premium credit card.' },
+  { id: 'fb1', label: 'Education First', labelColor: '#22d3ee', title: 'Student Loan', subtitle: 'Up to ₦500k', gradient: ['#0B0C10', '#1A1B23'], cta: 'APPLY NOW', ctaRoute: 'loans', reasoning: null },
+  { id: 'fb2', label: 'High Yield', labelColor: '#6EE7B7', title: 'Fixed Deposit', subtitle: '15% Interest', gradient: ['#0f766e', '#0d5e56'], cta: 'START SAVING', ctaRoute: 'savings', reasoning: null },
+  { id: 'fb3', label: 'Flexible', labelColor: '#a78bfa', title: 'Credit Card', subtitle: 'Pre-approved', gradient: ['#7c3aed', '#4c1d95'], cta: 'GET CARD', ctaRoute: '#', reasoning: null },
 ];
 
 const styleMap = {
@@ -43,6 +44,117 @@ const styleMap = {
   'Savings Plan':    { grad: ['#0f766e', '#064e3b'], label: 'Save Smart',           labelColor: '#6ee7b7' },
   'Mortgage':        { grad: ['#1e40af', '#1e3a5f'], label: 'Home Ownership',       labelColor: '#7dd3fc' },
   'Insurance':       { grad: ['#6d28d9', '#4c1d95'], label: 'Stay Protected',       labelColor: '#ddd6fe' },
+};
+
+// Repayment / tenure metadata per product
+const repaymentMap = {
+  'Student Loan':    { min: 12, max: 36,  note: 'No repayment for the first 3 months' },
+  'Car Loan':        { min: 12, max: 60,  note: 'Flexible monthly instalments, no penalties for early payment' },
+  'Personal Loan':   { min: 3,  max: 24,  note: 'No collateral required, disbursed within 24 hours' },
+  'Mortgage':        { min: 60, max: 240, note: 'Up to 20-year tenure with fixed monthly payments' },
+  'Credit Card':     { min: 1,  max: 12,  note: 'Pay as little as the monthly minimum, interest-free on full payment' },
+  'Fixed Deposit':   { min: 3,  max: 24,  note: 'Full principal + interest paid at maturity' },
+  'Investment Plan': { min: 6,  max: 60,  note: 'Auto-renews at maturity — withdraw anytime with 48hr notice' },
+  'Savings Plan':    { min: 1,  max: 36,  note: 'Flexible contribution schedule, no lock-in' },
+  'Trust Fund':      { min: 12, max: 120, note: 'Managed by certified fund managers, quarterly statements' },
+  'Insurance':       { min: 12, max: 12,  note: 'Renews annually — cancel before renewal date at no cost' },
+};
+
+// Human-readable eligibility lines per product, built from real RAG numbers
+// rawRec = the full recommendations object from the API
+const buildEligibilityLine = (product, rawRec) => {
+  const inflow  = rawRec?.monthly_inflow  ? Number(rawRec.monthly_inflow)  : null;
+  const balance = rawRec?.balance         ? Number(rawRec.balance)         : null;
+  const emi     = rawRec?.monthly_emi     ? Number(rawRec.monthly_emi)     : null;
+  const score   = rawRec?.credit_score    ? Number(rawRec.credit_score)    : null;
+
+  // Format helpers
+  const fmt = (n) => `₦${Number(n).toLocaleString('en-NG')}`;
+
+  switch (product) {
+    case 'Investment Plan':
+      if (inflow) return `Your monthly inflow of ${fmt(inflow)} shows you have strong financial headroom — enough to grow your money instead of just saving it. An Investment Plan puts that surplus to work.`;
+      if (balance) return `With a balance of ${fmt(balance)}, you have idle funds that could be earning returns instead of sitting still. This plan is built for people at your level.`;
+      return `Your account activity shows consistent surplus income — exactly the profile our Investment Plan is designed for. Put your money to work.`;
+
+    case 'Fixed Deposit':
+      if (balance) return `You have ${fmt(balance)} sitting in your account. Locking even a portion into a Fixed Deposit earns you up to 15% annually — far more than a regular savings balance.`;
+      if (inflow) return `With your income pattern, setting aside a fixed amount each month and locking it in can earn you guaranteed returns of up to 15% per year.`;
+      return `Your savings pattern makes you a strong candidate for a Fixed Deposit — earn guaranteed returns without any market risk.`;
+
+    case 'Student Loan':
+      if (emi) return `Based on your account, you qualify for up to ${fmt(emi * 10)} — repayable at ${fmt(emi)}/month with zero interest for the first 3 months.`;
+      return `Your account history qualifies you for a Student Loan with zero interest for the first 3 months. Cover your tuition now and start repaying when you're ready.`;
+
+    case 'Personal Loan':
+      if (emi) return `You qualify for quick cash — up to ${fmt(emi * 10)} disbursed within 24 hours, repayable at just ${fmt(emi)}/month. No collateral, no stress.`;
+      if (inflow) return `Your consistent income of ${fmt(inflow)}/month makes you eligible for a Personal Loan — fast approval, no collateral, funds in your account within 24 hours.`;
+      return `Your account qualifies you for a Personal Loan with same-day disbursement. No paperwork, no collateral — just fast cash when you need it.`;
+
+    case 'Car Loan':
+      if (emi) return `Your income supports a repayment of ${fmt(emi)}/month — enough to comfortably finance a car without stretching your budget. Get on the road sooner.`;
+      if (inflow) return `With a monthly inflow of ${fmt(inflow)}, you're in a great position to finance a car. Our Car Loan offers competitive rates with flexible repayment up to 5 years.`;
+      return `Your financial profile qualifies you for a Car Loan with flexible repayment up to 60 months — own your car without draining your savings.`;
+
+    case 'Mortgage':
+      if (balance && inflow) return `Your balance of ${fmt(balance)} combined with a monthly inflow of ${fmt(inflow)} puts homeownership within reach. Lock in your rate now before they rise.`;
+      if (inflow) return `Your monthly income of ${fmt(inflow)} qualifies you for a Mortgage with affordable fixed monthly payments spread over up to 20 years.`;
+      return `Your profile qualifies you for a Mortgage. Stop paying rent and start building equity — affordable monthly payments, up to 20-year tenure.`;
+
+    case 'Credit Card':
+      if (balance) return `Based on your balance of ${fmt(balance)} and account activity, you've been pre-approved for our Credit Card. Shop now, pay later — interest-free on full monthly payment.`;
+      return `Your spending and savings pattern earns you a pre-approved Credit Card. Use it anywhere, pay in full monthly and pay zero interest.`;
+
+    case 'Savings Plan':
+      if (inflow) return `You earn ${fmt(inflow)}/month but your savings rate could be higher. A structured Savings Plan lets you automate the habit and build a cushion without thinking about it.`;
+      return `Your account activity shows you're ready to build a more consistent savings habit. Set a target, automate contributions, and watch your balance grow.`;
+
+    case 'Trust Fund':
+      if (balance) return `With ${fmt(balance)} in your account, you're at a level where wealth preservation matters. A Trust Fund protects and grows your assets for the long term.`;
+      return `Your financial profile puts you in the bracket where a Trust Fund makes sense — protect your wealth and leave a legacy.`;
+
+    case 'Insurance':
+      return `Protecting what you've built is just as important as growing it. Your profile qualifies you for comprehensive coverage tailored to your lifestyle and assets.`;
+
+    default:
+      if (inflow) return `Your monthly activity of ${fmt(inflow)} qualifies you for this offer — designed specifically for customers with your financial profile.`;
+      if (balance) return `Your balance of ${fmt(balance)} and account history make you eligible for this personalized offer.`;
+      return `Your account activity and financial profile qualify you for this offer. It's been matched specifically to your spending and savings pattern.`;
+  }
+};
+
+// Popup teaser — short, punchy, no policy language
+const buildPopupTeaser = (product, rawRec) => {
+  const inflow  = rawRec?.monthly_inflow ? Number(rawRec.monthly_inflow) : null;
+  const balance = rawRec?.balance        ? Number(rawRec.balance)        : null;
+  const fmt     = (n) => `₦${Number(n).toLocaleString('en-NG')}`;
+
+  switch (product) {
+    case 'Investment Plan':
+      if (inflow) return `Your ₦${(inflow / 1000000).toFixed(1)}M monthly inflow qualifies you to invest, not just save. Grow your surplus with up to 18% annual returns.`;
+      return `Your income puts you in the top tier of earners. Time to make that money work harder — invest it.`;
+    case 'Fixed Deposit':
+      if (balance) return `${fmt(balance)} in your account could be earning 15% annually. Lock it in and let it grow.`;
+      return `Earn guaranteed returns of up to 15% per year. Zero risk, maximum growth.`;
+    case 'Student Loan':
+      return `Zero interest for 3 months. Get your tuition funded today — instant approval.`;
+    case 'Personal Loan':
+      return `Quick cash, no collateral. Get up to ₦5M in your account within 24 hours.`;
+    case 'Car Loan':
+      return `Finance your car with flexible repayment up to 5 years. Get on the road sooner.`;
+    case 'Credit Card':
+      return `You've been pre-approved. Shop now, pay later — zero interest on full monthly payment.`;
+    case 'Mortgage':
+      return `Stop paying rent. Own your home with affordable monthly payments over up to 20 years.`;
+    case 'Savings Plan':
+      return `Automate your savings and build a financial cushion without the hassle.`;
+    case 'Trust Fund':
+      return `Preserve and grow your wealth. Managed by certified fund managers.`;
+    case 'Insurance':
+      return `Protect everything you've built — comprehensive coverage tailored to your lifestyle.`;
+    default:
+      return `We've matched a product to your financial profile. See why you qualify.`;
+  }
 };
 
 const getSubtitle = (product, emi) => {
@@ -96,12 +208,14 @@ const InjectStyles = () => (
   `}</style>
 );
 
-let _cachedFeedCards = null;
+let _cachedFeedCards    = null;
+let _cachedRagPopupCard = null;
+let _cachedRawRec       = null; // store the full recommendations object for copy-building
 
 const HomeScreen = () => {
   const navigate = useNavigate();
   const dispatch = useDispatch();
-  const user = useSelector((state) => state.auth.user);
+  const user    = useSelector((state) => state.auth.user);
   const account = useSelector((state) => state.account?.details);
   const showPopup = useSelector((state) => state.ui.showWelcome);
 
@@ -109,62 +223,83 @@ const HomeScreen = () => {
   const [feedCards, setFeedCards] = useState(_cachedFeedCards || []);
   const [loadingFeed, setLoadingFeed] = useState(!_cachedFeedCards);
 
-  const [sentinelAlert, setSentinelAlert] = useState(null);
-  const [confirmStep, setConfirmStep] = useState('idle');
-  const [password, setPassword] = useState('');
-  const [confirmError, setConfirmError] = useState('');
+  // RAG popup card held separately — never populated from fallback
+  const [ragPopupCard, setRagPopupCard]   = useState(_cachedRagPopupCard || null);
+  const [rawRec, setRawRec]               = useState(_cachedRawRec       || null);
+  const [ragPopupReady, setRagPopupReady] = useState(!!_cachedRagPopupCard);
 
-  // ── Application modal state ──────────────────────────────────────────────
+  const [sentinelAlert, setSentinelAlert] = useState(null);
+  const [confirmStep, setConfirmStep]     = useState('idle');
+  const [password, setPassword]           = useState('');
+  const [confirmError, setConfirmError]   = useState('');
+
+  // Apply modal
   const [appliedProduct, setAppliedProduct] = useState(null);
+  const [notifOpen, setNotifOpen]           = useState(false);
+  const [hasUnreadNotif, setHasUnreadNotif] = useState(true);
+  const [confirmApply, setConfirmApply]     = useState(false);
+  // Keep the rawRec that was live when Apply was tapped
+  const [applyRawRec, setApplyRawRec]       = useState(null);
 
   const displayCards = feedCards.length > 0 ? feedCards : FALLBACK_CARDS;
-  const popupCard = displayCards[0];
 
-  // ── Handler: fires when any CTA / Apply button is tapped ─────────────────
-  const handleApply = (card) => {
+  const handleApply = (card, rec) => {
+    setConfirmApply(false);
     setAppliedProduct(card);
+    setApplyRawRec(rec || rawRec || null);
   };
 
   useEffect(() => {
     dispatch(fetchDashboard());
 
-    if (_cachedFeedCards) {
+    if (_cachedFeedCards && _cachedRagPopupCard) {
       setFeedCards(_cachedFeedCards);
+      setRagPopupCard(_cachedRagPopupCard);
+      setRawRec(_cachedRawRec);
+      setRagPopupReady(true);
       setLoadingFeed(false);
       return;
     }
 
     const loadFeed = async () => {
       try {
-        const res = await api.getSmartFeed();
+        const res  = await api.getSmartFeed();
         const data = res?.data || {};
         console.log('[SmartFeed] Raw response:', JSON.stringify(data, null, 2));
         let cards = data.cards || [];
 
         if (cards.length > 0) {
+          const rec = data.recommendations || {};
           cards = cards.map(card => {
             const style = styleMap[card.title];
             return {
               ...card,
-              gradient:   style?.grad      || card.gradient || ['#1d4ed8', '#1e3a8a'],
-              label:      card.label       || style?.label  || card.title,
+              gradient:   style?.grad       || card.gradient   || ['#1d4ed8', '#1e3a8a'],
+              label:      card.label        || style?.label    || card.title,
               labelColor: style?.labelColor || card.labelColor || '#ffffff',
               subtitle:   card.subtitle?.includes('₦0')
                 ? getSubtitle(card.title, 0)
                 : card.subtitle || getSubtitle(card.title, 0),
+              // Store the raw rec blob on every card for copy-building
+              _rawRec: rec,
             };
           });
-          _cachedFeedCards = cards;
+          _cachedFeedCards    = cards;
+          _cachedRagPopupCard = cards[0];
+          _cachedRawRec       = rec;
           setFeedCards(cards);
+          setRagPopupCard(cards[0]);
+          setRawRec(rec);
+          setRagPopupReady(true);
           return;
         }
 
         if (data.recommendations?.primary_product) {
-          const rec = data.recommendations;
+          const rec     = data.recommendations;
           const product = rec.primary_product;
-          const style = styleMap[product] || { grad: ['#1d4ed8', '#1e3a8a'], label: 'Special Offer', labelColor: '#93c5fd' };
-          const builtCard = [{
-            id: `rec-${Date.now()}`,
+          const style   = styleMap[product] || { grad: ['#1d4ed8', '#1e3a8a'], label: 'Special Offer', labelColor: '#93c5fd' };
+          const builtCard = {
+            id:         `rec-${Date.now()}`,
             label:      style.label,
             labelColor: style.labelColor,
             title:      product,
@@ -172,15 +307,24 @@ const HomeScreen = () => {
             cta:        'APPLY NOW',
             ctaRoute:   'loans',
             gradient:   style.grad,
-            reasoning:  rec.reasoning || 'Based on your financial profile, we think this is a great fit for you.',
-          }];
+            _rawRec:    rec,
+          };
           console.log('[SmartFeed] Built card from recommendations:', product);
-          _cachedFeedCards = builtCard;
-          setFeedCards(builtCard);
+          _cachedFeedCards    = [builtCard];
+          _cachedRagPopupCard = builtCard;
+          _cachedRawRec       = rec;
+          setFeedCards([builtCard]);
+          setRagPopupCard(builtCard);
+          setRawRec(rec);
+          setRagPopupReady(true);
+        } else {
+          // No RAG product — marquee will use fallback, but popup stays hidden
+          setRagPopupReady(false);
         }
 
       } catch (err) {
         console.warn('Smart feed unavailable, using fallback cards:', err?.message || err);
+        setRagPopupReady(false);
       } finally {
         setLoadingFeed(false);
       }
@@ -211,18 +355,18 @@ const HomeScreen = () => {
   }, []);
 
   useEffect(() => {
-    if (showPopup && popupCard) {
-      const timer = setTimeout(() => dispatch(dismissWelcome()), 7000);
+    if (showPopup && ragPopupReady && ragPopupCard) {
+      const timer = setTimeout(() => dispatch(dismissWelcome()), 9000);
       return () => clearTimeout(timer);
     }
-  }, [showPopup, popupCard, dispatch]);
+  }, [showPopup, ragPopupReady, ragPopupCard, dispatch]);
 
   const quickItems = [
-    { icon: Smartphone, label: "Airtime",     route: "airtime" },
-    { icon: Wifi,       label: "Data",        route: "data" },
-    { icon: Gamepad2,   label: "Betting",     route: "betting" },
-    { icon: Zap,        label: "Electricity", route: "bills" },
-  ];
+      { icon: Smartphone, label: "Airtime",     route: "/airtime" },
+      { icon: Wifi,       label: "Data",        route: "/data"    },
+      { icon: Gamepad2,   label: "Betting",     route: "/betting" },
+      { icon: Zap,        label: "Electricity", route: "/bills"   },
+    ];
 
   const approveTransaction = async (method, pwd) => {
     try {
@@ -314,9 +458,75 @@ const HomeScreen = () => {
     setTimeout(() => { setSentinelAlert(null); setConfirmStep('idle'); }, 2500);
   };
 
+  // ── Build apply modal display data from RAG numbers ───────────────────────
+  const buildApplyMeta = (card, rec) => {
+    if (!card) return {};
+    const r        = repaymentMap[card.title] || { min: 6, max: 24, note: 'Flexible repayment available' };
+    const emi      = rec?.monthly_emi      ? Number(rec.monthly_emi)      : null;
+    const months   = rec?.repayment_months ? Number(rec.repayment_months) : r.max;
+    const rate     = rec?.interest_rate    ? Number(rec.interest_rate)    : null;
+    const maxAmt   = emi ? emi * 10 : null;
+    const fmt      = (n) => `₦${Number(n).toLocaleString('en-NG')}`;
+
+    const amountText    = maxAmt ? `Up to ${fmt(maxAmt)}` : card.subtitle || 'See offer details';
+    const repaymentText = emi && months
+      ? `${fmt(emi)} / month × ${months} months`
+      : months
+        ? `Up to ${months} months`
+        : `${r.min}–${r.max} months`;
+    const rateText      = rate ? `${rate}% per annum` : null;
+    const tenureNote    = r.note;
+    const eligLine      = buildEligibilityLine(card.title, rec);
+
+    return { amountText, repaymentText, rateText, tenureNote, eligLine, months, emi };
+  };
+
   return (
     <div className="min-h-full w-full bg-vault-light-bg dark:bg-vault-dark-bg font-sans relative vault-transition">
       <InjectStyles />
+
+    {/* ── Notification Drawer ──────────────────────────────────────────── */}
+      {notifOpen && (
+        <div
+          className="fixed inset-0 z-[9998] flex items-start justify-end pt-16 pr-4"
+          onClick={() => setNotifOpen(false)}
+        >
+          <div
+            className="w-[min(92vw,340px)] bg-white dark:bg-vault-dark-card rounded-[24px] shadow-2xl border border-gray-100 dark:border-white/5 overflow-hidden scale-in"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="px-5 py-4 border-b border-gray-100 dark:border-white/5 flex items-center justify-between">
+              <h3 className="text-sm font-black text-gray-900 dark:text-white">Notifications</h3>
+              <button
+                onClick={() => { setNotifOpen(false); setHasUnreadNotif(false); }}
+                className="text-[10px] font-bold text-vault-cyan hover:underline"
+              >
+                Mark all read
+              </button>
+            </div>
+            <div className="divide-y divide-gray-100 dark:divide-white/5 max-h-[60dvh] overflow-y-auto">
+              {[
+                { icon: ShieldAlert, color: 'text-amber-500', bg: 'bg-amber-50 dark:bg-amber-500/10', title: 'Suspicious transaction flagged', sub: 'A payment to BetKing was flagged by Sentinel AI.', time: '2 min ago', unread: true },
+                { icon: CheckCircle, color: 'text-emerald-500', bg: 'bg-emerald-50 dark:bg-emerald-500/10', title: 'Transfer successful', sub: `₦${(5000).toLocaleString('en-NG')} sent successfully.`, time: '1 hr ago', unread: true },
+                { icon: Sparkles,    color: 'text-vault-cyan',  bg: 'bg-cyan-50 dark:bg-cyan-500/10',       title: 'New offer available', sub: 'You\'ve been pre-approved for an Investment Plan.', time: '3 hrs ago', unread: false },
+                { icon: Bell,        color: 'text-vault-purple',bg: 'bg-purple-50 dark:bg-purple-500/10',   title: 'Account funded',      sub: 'Your account has been credited.', time: 'Yesterday', unread: false },
+              ].map((n, i) => (
+                <div key={i} className={`flex items-start gap-3 px-5 py-4 ${n.unread ? 'bg-blue-50/40 dark:bg-white/[0.02]' : ''}`}>
+                  <div className={`w-9 h-9 rounded-xl ${n.bg} flex items-center justify-center shrink-0 mt-0.5`}>
+                    <n.icon size={16} className={n.color} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-bold text-gray-900 dark:text-white leading-tight">{n.title}</p>
+                    <p className="text-[11px] text-gray-400 dark:text-slate-500 mt-0.5 leading-relaxed">{n.sub}</p>
+                    <p className="text-[10px] text-gray-300 dark:text-slate-600 mt-1 font-bold">{n.time}</p>
+                  </div>
+                  {n.unread && <span className="w-2 h-2 bg-vault-cyan rounded-full shrink-0 mt-1.5" />}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Sentinel Alert Modal ──────────────────────────────────────────── */}
       {sentinelAlert && confirmStep !== 'success' && confirmStep !== 'rejected' && (
@@ -348,21 +558,20 @@ const HomeScreen = () => {
 
               <div className="bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 rounded-xl p-4">
                 <p className="text-[10px] font-black text-amber-600 dark:text-amber-400 uppercase tracking-wider mb-2">Sentinel AI says:</p>
-              <p className="text-xs text-amber-900 dark:text-amber-200 leading-relaxed font-medium">
-                {(() => {
-                  const score = sentinelAlert.fraud_analysis?.total_risk_score || 0;
-                  const merchant = sentinelAlert.merchant || 'this merchant';
-                  const amount = Number(sentinelAlert.amount || 0);
-                  const time = sentinelAlert.time || '';
-                  const isLateNight = time.includes('AM') && parseInt(time) < 6;
-
-                  if (score >= 61)
-                    return `We've flagged this payment as high risk. Paying ₦${amount.toLocaleString('en-NG')} to ${merchant}${isLateNight ? ' at this hour of the night' : ''} matches patterns we associate with fraud. Only approve if you initiated this.`;
-                  if (score >= 30)
-                    return `This payment to ${merchant} looks unusual${isLateNight ? ', especially at this time of night' : ''}. Review carefully before approving.`;
-                  return `You're about to pay ₦${amount.toLocaleString('en-NG')} to ${merchant}${isLateNight ? ' at an unusual hour' : ''}. Please confirm this was you.`;
-                })()}
-              </p>
+                <p className="text-xs text-amber-900 dark:text-amber-200 leading-relaxed font-medium">
+                  {(() => {
+                    const score    = sentinelAlert.fraud_analysis?.total_risk_score || 0;
+                    const merchant = sentinelAlert.merchant || 'this merchant';
+                    const amount   = Number(sentinelAlert.amount || 0);
+                    const time     = sentinelAlert.time || '';
+                    const isLateNight = time.includes('AM') && parseInt(time) < 6;
+                    if (score >= 61)
+                      return `We've flagged this payment as high risk. Paying ₦${amount.toLocaleString('en-NG')} to ${merchant}${isLateNight ? ' at this hour of the night' : ''} matches patterns we associate with fraud. Only approve if you initiated this.`;
+                    if (score >= 30)
+                      return `This payment to ${merchant} looks unusual${isLateNight ? ', especially at this time of night' : ''}. Review carefully before approving.`;
+                    return `You're about to pay ₦${amount.toLocaleString('en-NG')} to ${merchant}${isLateNight ? ' at an unusual hour' : ''}. Please confirm this was you.`;
+                  })()}
+                </p>
                 {sentinelAlert.fraud_analysis?.total_risk_score != null && (
                   <div className="mt-2 flex items-center gap-2">
                     <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400">Risk Score:</span>
@@ -460,16 +669,20 @@ const HomeScreen = () => {
         </div>
       )}
 
-      {/* ── Welcome / Recommendation Popup ───────────────────────────────── */}
-      {showPopup && popupCard && !sentinelAlert && (
+      {/*
+        ── Welcome / RAG Recommendation Popup ────────────────────────────────
+        Only renders after the async fetch resolves with a real RAG card.
+        Fallback cards never appear here.
+      */}
+      {showPopup && ragPopupReady && ragPopupCard && !sentinelAlert && (
         <div
           className="fixed top-0 left-0 right-0 bottom-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm"
           onClick={(e) => { if (e.target === e.currentTarget) dispatch(dismissWelcome()); }}
         >
           <div
-            className="relative text-white shadow-2xl border border-white/10"
+            className="relative text-white shadow-2xl border border-white/10 scale-in"
             style={{
-              background: `linear-gradient(to bottom right, ${popupCard.gradient?.[0] || '#1d4ed8'}, ${popupCard.gradient?.[1] || '#1e3a8a'})`,
+              background: `linear-gradient(to bottom right, ${ragPopupCard.gradient?.[0] || '#1d4ed8'}, ${ragPopupCard.gradient?.[1] || '#1e3a8a'})`,
               width: "min(92vw, 360px)",
               borderRadius: "28px",
               padding: "clamp(20px, 4vw, 28px)"
@@ -484,21 +697,23 @@ const HomeScreen = () => {
             </button>
             <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full blur-2xl -mr-10 -mt-10 pointer-events-none" />
             <div className="relative z-10">
-              <span className="text-[10px] font-bold uppercase tracking-wider mb-2 block" style={{ color: popupCard.labelColor || '#22d3ee' }}>
-                {popupCard.label}
+              <span className="text-[10px] font-bold uppercase tracking-wider mb-2 block" style={{ color: ragPopupCard.labelColor || '#22d3ee' }}>
+                {ragPopupCard.label}
               </span>
-              <h3 className="text-xl sm:text-2xl font-black leading-tight mb-2">{popupCard.title}<br />{popupCard.subtitle}</h3>
-              <p className="text-white/80 text-xs mb-6 leading-relaxed flex items-start gap-1">
+              <h3 className="text-xl sm:text-2xl font-black leading-tight mb-2">
+                {ragPopupCard.title}<br />{ragPopupCard.subtitle}
+              </h3>
+              <p className="text-white/80 text-xs mb-6 leading-relaxed flex items-start gap-1.5">
                 <Sparkles size={14} className="shrink-0 mt-0.5 text-yellow-300" />
-                {popupCard.reasoning || "Based on your recent activity, we recommend this offer."}
+                {buildPopupTeaser(ragPopupCard.title, rawRec)}
               </p>
               <div className="space-y-3">
                 <button
-                  onClick={() => { dispatch(dismissWelcome()); handleApply(popupCard); }}
+                  onClick={() => { dispatch(dismissWelcome()); handleApply(ragPopupCard, rawRec); }}
                   className="w-full bg-white text-xs font-extrabold py-3.5 rounded-full shadow-lg active:scale-95 hover:shadow-xl transition-all"
-                  style={{ color: popupCard.gradient?.[0] || '#1d4ed8' }}
+                  style={{ color: ragPopupCard.gradient?.[0] || '#1d4ed8' }}
                 >
-                  {popupCard.cta}
+                  {ragPopupCard.cta || 'APPLY NOW'}
                 </button>
                 <button
                   type="button"
@@ -513,155 +728,200 @@ const HomeScreen = () => {
         </div>
       )}
 
-      {/* ── Application Submitted Modal ───────────────────────────────────── */}
-      {appliedProduct && (
-        <div
-          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
-          style={{ animation: 'fadeUp 0.3s ease' }}
-          onClick={(e) => { if (e.target === e.currentTarget) setAppliedProduct(null); }}
-        >
+      {/*
+        ── Application Modal ─────────────────────────────────────────────────
+        Step 1 (confirmApply=false): Eligibility details + "Yes, Apply Now"
+        Step 2 (confirmApply=true):  Submitted confirmation + next steps
+      */}
+      {appliedProduct && (() => {
+        const meta = buildApplyMeta(appliedProduct, applyRawRec);
+        return (
           <div
-            className="relative w-[min(92vw,400px)] bg-white dark:bg-vault-dark-card rounded-[28px] shadow-2xl overflow-hidden border border-gray-100 dark:border-white/5 scale-in"
-            onClick={e => e.stopPropagation()}
+            className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+            style={{ animation: 'fadeUp 0.3s ease' }}
+            onClick={(e) => { if (e.target === e.currentTarget) { setAppliedProduct(null); setConfirmApply(false); } }}
           >
-            {/* Gradient header matching the card's own gradient */}
             <div
-              className="px-6 pt-8 pb-7 text-white text-center relative overflow-hidden"
-              style={{
-                background: `linear-gradient(135deg, ${appliedProduct.gradient?.[0] || '#1d4ed8'}, ${appliedProduct.gradient?.[1] || '#1e3a8a'})`
-              }}
+              className="relative w-[min(92vw,420px)] bg-white dark:bg-vault-dark-card rounded-[28px] shadow-2xl overflow-hidden border border-gray-100 dark:border-white/5 scale-in"
+              style={{ maxHeight: '90dvh', overflowY: 'auto' }}
+              onClick={e => e.stopPropagation()}
             >
-              {/* Decorative blobs */}
-              <div className="absolute -top-10 -right-10 w-32 h-32 bg-white/5 rounded-full blur-2xl pointer-events-none" />
-              <div className="absolute -bottom-6 -left-6 w-24 h-24 bg-white/5 rounded-full blur-xl pointer-events-none" />
-
-              <div className="relative z-10">
-                {/* Animated success ring */}
-                <div className="relative w-20 h-20 mx-auto mb-4 flex items-center justify-center">
-                  <div className="absolute inset-0 rounded-full bg-white/10 animate-ping" style={{ animationDuration: '1.6s' }} />
-                  <div className="relative w-20 h-20 bg-white/20 rounded-full flex items-center justify-center border border-white/30">
-                    <CheckCircle size={34} className="text-white" />
-                  </div>
-                </div>
-                <h3 className="text-xl font-black mb-1">Application Received!</h3>
-                <p className="text-white/75 text-sm">
-                  Your <span className="font-bold text-white">{appliedProduct.title}</span> application has been submitted successfully.
-                </p>
-              </div>
-            </div>
-
-            {/* Body */}
-            <div className="p-6 space-y-5">
-
-              {/* Product summary pill */}
-              <div className="flex items-center justify-between bg-gray-50 dark:bg-white/5 rounded-2xl px-4 py-3 border border-gray-100 dark:border-white/5">
-                <div>
-                  <p className="text-[10px] font-black text-gray-400 dark:text-slate-500 uppercase tracking-wider mb-0.5">
-                    {appliedProduct.label}
-                  </p>
-                  <p className="text-sm font-black text-gray-900 dark:text-white">{appliedProduct.title}</p>
-                </div>
-                <span
-                  className="text-[10px] font-black px-3 py-1.5 rounded-full"
-                  style={{
-                    background: `${appliedProduct.gradient?.[0]}22`,
-                    color: appliedProduct.labelColor || '#22d3ee',
-                    border: `1px solid ${appliedProduct.labelColor || '#22d3ee'}33`
-                  }}
-                >
-                  PENDING REVIEW
-                </span>
-              </div>
-
-              {/* Next steps */}
-              <div className="space-y-1">
-                <p className="text-[11px] font-black text-gray-400 dark:text-slate-500 uppercase tracking-wider mb-3">
-                  What happens next
-                </p>
-                {[
-                  {
-                    icon: CheckCircle,
-                    color: 'text-emerald-500',
-                    bg: 'bg-emerald-50 dark:bg-emerald-500/10',
-                    title: 'Application submitted',
-                    sub: 'We\'ve received your request and it\'s in the queue',
-                    done: true,
-                  },
-                  {
-                    icon: Loader2,
-                    color: 'text-vault-cyan',
-                    bg: 'bg-cyan-50 dark:bg-cyan-500/10',
-                    title: 'Under review',
-                    sub: 'Our team will review your profile — usually 2–5 minutes',
-                    done: false,
-                  },
-                  {
-                    icon: Bell,
-                    color: 'text-vault-purple',
-                    bg: 'bg-purple-50 dark:bg-purple-500/10',
-                    title: 'Email confirmation',
-                    sub: `Check ${user?.email || 'your inbox'} for next steps & approval details`,
-                    done: false,
-                  },
-                  {
-                    icon: Sparkles,
-                    color: 'text-amber-500',
-                    bg: 'bg-amber-50 dark:bg-amber-500/10',
-                    title: 'Decision within 24 hrs',
-                    sub: 'You\'ll be notified in-app and via email once approved',
-                    done: false,
-                  },
-                ].map(({ icon: Icon, color, bg, title, sub, done }, idx) => (
-                  <div key={idx} className="flex items-start gap-3 py-2.5">
-                    <div className={`w-9 h-9 rounded-xl ${bg} flex items-center justify-center shrink-0 mt-0.5`}>
-                      <Icon size={17} className={`${color} ${!done && idx === 1 ? 'animate-spin' : ''}`} />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className={`text-sm font-bold leading-tight ${done ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-800 dark:text-white'}`}>
-                        {title}
-                      </p>
-                      <p className="text-[11px] text-gray-400 dark:text-slate-500 mt-0.5 leading-relaxed">{sub}</p>
-                    </div>
-                    {done && (
-                      <div className="w-5 h-5 bg-emerald-500 rounded-full flex items-center justify-center shrink-0 mt-1">
-                        <CheckCircle size={12} className="text-white" />
+              {/* Gradient header */}
+              <div
+                className="px-6 pt-7 pb-6 text-white text-center relative overflow-hidden"
+                style={{ background: `linear-gradient(135deg, ${appliedProduct.gradient?.[0] || '#1d4ed8'}, ${appliedProduct.gradient?.[1] || '#1e3a8a'})` }}
+              >
+                <div className="absolute -top-10 -right-10 w-32 h-32 bg-white/5 rounded-full blur-2xl pointer-events-none" />
+                <div className="absolute -bottom-6 -left-6 w-24 h-24 bg-white/5 rounded-full blur-xl pointer-events-none" />
+                <div className="relative z-10">
+                  {confirmApply ? (
+                    <>
+                      <div className="relative w-20 h-20 mx-auto mb-4 flex items-center justify-center">
+                        <div className="absolute inset-0 rounded-full bg-white/10 animate-ping" style={{ animationDuration: '1.6s' }} />
+                        <div className="relative w-20 h-20 bg-white/20 rounded-full flex items-center justify-center border border-white/30">
+                          <CheckCircle size={34} className="text-white" />
+                        </div>
                       </div>
-                    )}
-                  </div>
-                ))}
+                      <h3 className="text-xl font-black mb-1">Application Received!</h3>
+                      <p className="text-white/75 text-sm">
+                        Your <span className="font-bold text-white">{appliedProduct.title}</span> application has been submitted.
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <div className="w-16 h-16 mx-auto mb-3 bg-white/20 rounded-full flex items-center justify-center border border-white/30">
+                        <BadgeCheck size={30} className="text-white" />
+                      </div>
+                      <span className="text-[10px] font-bold uppercase tracking-wider block mb-1" style={{ color: appliedProduct.labelColor || '#22d3ee' }}>
+                        {appliedProduct.label}
+                      </span>
+                      <h3 className="text-xl font-black mb-1">You're Eligible!</h3>
+                      <p className="text-white/75 text-sm">Here's exactly what you're getting.</p>
+                    </>
+                  )}
+                </div>
               </div>
 
-              {/* CTA buttons */}
-              <div className="space-y-3 pt-1">
-                <button
-                  onClick={() => setAppliedProduct(null)}
-                  className="w-full vault-gradient text-white py-4 rounded-xl font-bold text-sm vault-glow active:scale-95 transition-all shadow-lg"
-                >
-                  Got it, thanks!
-                </button>
-                {/* <button
-                  onClick={() => {
-                    setAppliedProduct(null);
-                    if (appliedProduct.ctaRoute && appliedProduct.ctaRoute !== '#') {
-                      navigate(appliedProduct.ctaRoute);
-                    }
-                  }}
-                  className="w-full text-center text-xs text-gray-400 dark:text-slate-500 font-bold hover:text-vault-cyan dark:hover:text-vault-cyan transition-colors py-1"
-                >
-                  View full application details →
-                </button> */}
-              </div>
+              {/* Body */}
+              <div className="p-5 space-y-4">
+                {!confirmApply ? (
+                  <>
+                    {/* Offer stats grid */}
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="bg-gray-50 dark:bg-white/5 rounded-2xl p-3.5 border border-gray-100 dark:border-white/5">
+                        <p className="text-[10px] font-black text-gray-400 dark:text-slate-500 uppercase tracking-wider mb-1">Amount</p>
+                        <p className="text-base font-black text-gray-900 dark:text-white leading-tight">{meta.amountText}</p>
+                      </div>
+                      <div className="bg-gray-50 dark:bg-white/5 rounded-2xl p-3.5 border border-gray-100 dark:border-white/5">
+                        <p className="text-[10px] font-black text-gray-400 dark:text-slate-500 uppercase tracking-wider mb-1">Repayment</p>
+                        <p className="text-base font-black text-gray-900 dark:text-white leading-tight">{meta.repaymentText}</p>
+                      </div>
+                      {meta.rateText && (
+                        <div className="bg-gray-50 dark:bg-white/5 rounded-2xl p-3.5 border border-gray-100 dark:border-white/5">
+                          <p className="text-[10px] font-black text-gray-400 dark:text-slate-500 uppercase tracking-wider mb-1">Interest Rate</p>
+                          <p className="text-base font-black text-gray-900 dark:text-white leading-tight">{meta.rateText}</p>
+                        </div>
+                      )}
+                      <div className={`bg-gray-50 dark:bg-white/5 rounded-2xl p-3.5 border border-gray-100 dark:border-white/5 ${meta.rateText ? '' : 'col-span-2'}`}>
+                        <p className="text-[10px] font-black text-gray-400 dark:text-slate-500 uppercase tracking-wider mb-1">Status</p>
+                        <span
+                          className="text-[11px] font-black px-2.5 py-1 rounded-full inline-block"
+                          style={{
+                            background: `${appliedProduct.gradient?.[0]}22`,
+                            color: appliedProduct.labelColor || '#22d3ee',
+                            border: `1px solid ${appliedProduct.labelColor || '#22d3ee'}33`
+                          }}
+                        >
+                          PRE-APPROVED
+                        </span>
+                      </div>
+                    </div>
 
+                    {/* Why you qualify — human copy, never policy text */}
+                    <div className="bg-gray-50 dark:bg-white/5 rounded-2xl p-4 border border-gray-100 dark:border-white/5">
+                      <p className="text-[10px] font-black text-gray-400 dark:text-slate-500 uppercase tracking-wider flex items-center gap-1.5 mb-2">
+                        <Sparkles size={11} className="text-amber-400" /> Why you qualify
+                      </p>
+                      <p className="text-sm text-gray-700 dark:text-slate-300 leading-relaxed font-medium">
+                        {meta.eligLine}
+                      </p>
+                    </div>
+
+                    {/* Tenure note */}
+                    <div className="flex items-start gap-3 bg-cyan-50 dark:bg-cyan-500/10 rounded-2xl px-4 py-3 border border-cyan-100 dark:border-cyan-500/20">
+                      <Calendar size={15} className="text-vault-cyan shrink-0 mt-0.5" />
+                      <p className="text-xs text-cyan-800 dark:text-cyan-200 font-medium leading-relaxed">
+                        {meta.tenureNote}. You can pay ahead at any time without penalties.
+                      </p>
+                    </div>
+
+                    {/* Action buttons */}
+                    <div className="space-y-3 pt-1">
+                      <button
+                        onClick={() => setConfirmApply(true)}
+                        className="w-full vault-gradient text-white py-4 rounded-xl font-bold text-sm vault-glow active:scale-95 transition-all shadow-lg flex items-center justify-center gap-2"
+                      >
+                        Yes, Apply Now <ArrowRight size={16} />
+                      </button>
+                      <button
+                        onClick={() => { setAppliedProduct(null); setConfirmApply(false); }}
+                        className="w-full flex items-center justify-center gap-2 bg-white dark:bg-white/5 text-gray-500 dark:text-slate-400 py-3.5 rounded-xl font-bold text-sm border border-gray-200 dark:border-white/5 active:scale-95 transition-all"
+                      >
+                        <X size={15} /> Not right now
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    {/* Product summary pill */}
+                    <div className="flex items-center justify-between bg-gray-50 dark:bg-white/5 rounded-2xl px-4 py-3 border border-gray-100 dark:border-white/5">
+                      <div>
+                        <p className="text-[10px] font-black text-gray-400 dark:text-slate-500 uppercase tracking-wider mb-0.5">
+                          {appliedProduct.label}
+                        </p>
+                        <p className="text-sm font-black text-gray-900 dark:text-white">{appliedProduct.title}</p>
+                      </div>
+                      <span
+                        className="text-[10px] font-black px-3 py-1.5 rounded-full"
+                        style={{
+                          background: `${appliedProduct.gradient?.[0]}22`,
+                          color: appliedProduct.labelColor || '#22d3ee',
+                          border: `1px solid ${appliedProduct.labelColor || '#22d3ee'}33`
+                        }}
+                      >
+                        PENDING REVIEW
+                      </span>
+                    </div>
+
+                    {/* Next steps */}
+                    <div>
+                      <p className="text-[11px] font-black text-gray-400 dark:text-slate-500 uppercase tracking-wider mb-3">
+                        What happens next
+                      </p>
+                      {[
+                        { icon: CheckCircle, color: 'text-emerald-500', bg: 'bg-emerald-50 dark:bg-emerald-500/10', title: 'Application submitted',   sub: "We've received your request and it's in the queue",                                done: true  },
+                        { icon: Loader2,     color: 'text-vault-cyan',   bg: 'bg-cyan-50 dark:bg-cyan-500/10',       title: 'Under review',             sub: 'Our team reviews your profile — usually 2–5 minutes',                            done: false },
+                        { icon: Bell,        color: 'text-vault-purple', bg: 'bg-purple-50 dark:bg-purple-500/10',   title: 'Email confirmation',       sub: `Check ${user?.email || 'your inbox'} for next steps & approval details`,        done: false },
+                        { icon: Sparkles,    color: 'text-amber-500',    bg: 'bg-amber-50 dark:bg-amber-500/10',     title: 'Decision within 24 hrs',   sub: "You'll be notified in-app and via email once approved",                          done: false },
+                      ].map(({ icon: Icon, color, bg, title, sub, done }, idx) => (
+                        <div key={idx} className="flex items-start gap-3 py-2.5">
+                          <div className={`w-9 h-9 rounded-xl ${bg} flex items-center justify-center shrink-0 mt-0.5`}>
+                            <Icon size={17} className={`${color} ${!done && idx === 1 ? 'animate-spin' : ''}`} />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className={`text-sm font-bold leading-tight ${done ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-800 dark:text-white'}`}>{title}</p>
+                            <p className="text-[11px] text-gray-400 dark:text-slate-500 mt-0.5 leading-relaxed">{sub}</p>
+                          </div>
+                          {done && (
+                            <div className="w-5 h-5 bg-emerald-500 rounded-full flex items-center justify-center shrink-0 mt-1">
+                              <CheckCircle size={12} className="text-white" />
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="pt-1">
+                      <button
+                        onClick={() => { setAppliedProduct(null); setConfirmApply(false); }}
+                        className="w-full vault-gradient text-white py-4 rounded-xl font-bold text-sm vault-glow active:scale-95 transition-all shadow-lg"
+                      >
+                        Got it, thanks!
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* ── Hero header ──────────────────────────────────────────────────── */}
       <div className="w-full bg-gradient-to-br from-[#00b4d8] via-[#5b4bdb] to-[#7c3aed] text-white px-4 sm:px-6 xl:px-8 pt-8 pb-6 rounded-b-[32px] shadow-lg mb-6 relative z-20 overflow-hidden">
         <div className="absolute -top-20 -right-20 w-60 h-60 bg-vault-cyan/15 rounded-full blur-[80px] pointer-events-none" />
         <div className="absolute -bottom-10 -left-10 w-40 h-40 bg-vault-purple/15 rounded-full blur-[60px] pointer-events-none" />
-        
+
         <div className="flex justify-between items-center mb-6 fu fu1 relative z-10">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full overflow-hidden shrink-0 bg-white/10 border-2 border-white/20">
@@ -673,14 +933,26 @@ const HomeScreen = () => {
             </div>
           </div>
           <div className="flex gap-2">
-            <button className="relative w-10 h-10 flex items-center justify-center text-white hover:bg-white/10 rounded-full transition-colors">
-              <Bell size={22} />
-              <span className="absolute top-2 right-2.5 w-2 h-2 bg-vault-cyan rounded-full border border-slate-800 dark:border-vault-dark-bg" />
-            </button>
-            <button className="w-10 h-10 flex items-center justify-center text-white hover:bg-white/10 rounded-full transition-colors">
-              <Settings size={22} />
-            </button>
-          </div>
+                      <button
+                        onClick={() => setSentinelAlert(prev => {
+                          // If no real pending txn, show a demo notification drawer via notifOpen
+                          setNotifOpen(o => !o);
+                          return prev;
+                        })}
+                        className="relative w-10 h-10 flex items-center justify-center text-white hover:bg-white/10 rounded-full transition-colors"
+                      >
+                        <Bell size={22} />
+                        {hasUnreadNotif && (
+                          <span className="absolute top-2 right-2.5 w-2 h-2 bg-vault-cyan rounded-full border border-slate-800 dark:border-vault-dark-bg" />
+                        )}
+                      </button>
+                      <button
+                        onClick={() => navigate('/profile')}
+                        className="w-10 h-10 flex items-center justify-center text-white hover:bg-white/10 rounded-full transition-colors"
+                      >
+                        <Settings size={22} />
+                      </button>
+                    </div>
         </div>
 
         <div className="flex items-center gap-2 mb-4 fu fu2 relative z-10">
@@ -776,7 +1048,7 @@ const HomeScreen = () => {
                       <h3 className="text-lg sm:text-xl font-bold leading-tight">{card.title}<br />{card.subtitle}</h3>
                     </div>
                     <button
-                      onClick={() => handleApply(card)}
+                      onClick={() => handleApply(card, card._rawRec || rawRec)}
                       className="bg-white text-[10px] font-bold px-5 py-2.5 rounded-full w-fit hover:shadow-md active:scale-95 transition-all"
                       style={{ color: card.gradient?.[0] || '#1d4ed8' }}
                     >
