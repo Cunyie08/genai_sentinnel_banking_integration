@@ -10,6 +10,7 @@ import {
   TrendingUp, Clock, Star, ExternalLink, Copy, CheckCheck
 } from 'lucide-react';
 import { api } from '../api/axiosConfig';
+import { FAQ_INDEX } from './faqIndex';
 
 const ESC_STEPS = { IDLE: 0, ACCOUNT: 1, SENDING: 2, DONE: 3, ERROR: 4 };
 
@@ -469,7 +470,7 @@ const getEmpathyOpener = (query) => {
   const q = query.toLowerCase();
   // Use find — first match wins (most specific rules are listed first)
   const match = EMPATHY_OPENERS.find(e => e.keywords.some(k => q.includes(k)));
-  return match?.opener || "Of course, I can help with that. Here's what you need to know:";
+  return match?.opener || "I can help with that. Here's what you need to know:";
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -500,7 +501,7 @@ const ChatScreen = () => {
     setMessages([{
       id: 1, sender: 'ai', type: 'text',
       text: `Hello ${firstName}! Welcome to Sentinel Bank support. How can I assist you today? You can pick a common issue below or describe your situation in your own words.`,
-      options: ['My card keeps declining', 'Wrong transfer reversal', 'ATM debit but no cash'],
+      options: ['My card keeps declining', 'Wrong transfer reversal', 'My card was stolen'],
       time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     }]);
   }, [user?.name]);
@@ -528,57 +529,37 @@ const ChatScreen = () => {
     return cleaned;
   };
 
-  // ─── Normalize query before sending to FAQ API ──────────────────────────────
-  // Maps colloquial / shorthand phrasing to canonical questions the RAG expects,
-  // so queries like "I want to block my card" or "how do I upgrade" actually
-  // hit the right FAQ entry instead of returning no match.
+  // ─── Semantic score + normalise ──────────────────────────────────────────────
+  // Score each FAQ entry against the user's query, return the canonical question
+  // of the best match if score ≥ threshold, otherwise return original query.
   const normalizeQuery = (raw) => {
     const q = raw.toLowerCase().trim();
 
-    const QUERY_MAP = [
-      // Card lost / stolen / block
-      [/lost\s+my\s+card|my\s+card\s+(is\s+)?lost|card\s+missing/i,         'My card is lost. What should I do?'],
-      [/stolen\s+card|card\s+(got\s+)?stolen|someone\s+stole\s+my\s+card/i,  'My card got stolen. How do I block it immediately?'],
-      [/block\s+my\s+card|i\s+want\s+to\s+block|how\s+(do\s+i\s+)?block\s+(my\s+)?card/i, 'My card got stolen. How do I block it immediately?'],
-      [/freeze\s+my\s+card|temporarily\s+block/i,                             'How do I block my card temporarily?'],
-      // Card declining
-      [/card\s+(keeps?\s+)?declin|card\s+(keeps?\s+)?failing|card\s+rejected|card\s+not\s+working/i, 'Why was my card declined even though I have sufficient balance?'],
-      // ATM
-      [/atm\s+(debit|debited|charged)\s+(but\s+)?no\s+cash|no\s+cash\s+(from\s+)?atm|atm\s+dispense/i, 'The ATM did not dispense cash but my account was debited.'],
-      // Transfer issues
-      [/transfer\s+(was\s+)?debited\s+but|money\s+(sent\s+)?not\s+received|receiver\s+(did\s+not|didn.t)\s+get/i, 'My transfer was debited but the receiver did not get the money.'],
-      [/transfer\s+(is\s+)?pending|pending\s+transfer/i,                      'My transfer is showing as pending. What does that mean?'],
-      [/sent\s+(money\s+)?to\s+(the\s+)?wrong|wrong\s+(account|transfer)|mistaken\s+transfer/i, 'I sent money to the wrong account. Can it be reversed?'],
-      [/debited\s+twice|double\s+debit|charged\s+twice/i,                     'My account was debited twice for one transaction.'],
-      // Limits & upgrades
-      [/daily\s+transfer\s+limit|what.s\s+my\s+(daily\s+)?limit|what\s+is\s+my\s+(daily\s+)?limit|transfer\s+limit/i, 'What are my daily transfer limits?'],
-      [/increase\s+(my\s+)?(transfer\s+)?limit|how\s+(do\s+i\s+)?increase.*limit/i, 'How do I increase my transfer limit?'],
-      [/upgrade\s+my\s+account|how\s+(do\s+i\s+)?upgrade|account\s+upgrade|upgrade\s+tier/i, 'How do I upgrade my account tier?'],
-      // Scheduling
-      [/schedul(e|ing)\s+(a\s+)?transfer|future.dated|future\s+transfer/i,   'Can I schedule a future-dated transfer?'],
-      // PIN / password / login
-      [/change\s+(my\s+)?card\s+pin|how\s+(to|do\s+i)\s+change.*pin/i,       'How do I change my card PIN?'],
-      [/forgot\s+(my\s+)?(app\s+)?password|reset\s+(my\s+)?password|can.t\s+log\s+in/i, 'How do I reset my app password?'],
-      [/not\s+receiving\s+otp|otp\s+not\s+(coming|arriving)|no\s+otp/i,      'I am not receiving OTPs.'],
-      // Balance & statement
-      [/check\s+(my\s+)?balance|what.s\s+my\s+balance|how\s+(do\s+i\s+)?check.*balance/i, 'How do I check my account balance?'],
-      [/bank\s+statement|request\s+(a\s+)?statement|download\s+statement/i,   'How do I request a bank statement?'],
-      // New card
-      [/request\s+(a\s+)?(new\s+)?card|order\s+(a\s+)?card|get\s+(a\s+new\s+)?card/i, 'How do I request a new debit card?'],
-      // Fraud / unauthorised
-      [/unauthori[sz]ed\s+transaction|fraud(ulent)?\s+transaction|someone\s+used\s+my\s+account/i, 'I noticed an unauthorised transaction on my account.'],
-      [/account\s+(been\s+)?hacked|think\s+my\s+account.*hacked|account\s+compromised/i, 'I think my account has been hacked.'],
-      // Loan / salary
-      [/apply\s+for\s+(a\s+)?loan|get\s+(a\s+)?loan|loan\s+application/i,    'What loan products does Sentinel Bank offer?'],
-      [/salary\s+advance|advance\s+(on\s+)?salary/i,                          'How do I apply for an instant salary advance?'],
-      // Complaints
-      [/file\s+(a\s+)?complaint|make\s+(a\s+)?complaint|how\s+(do\s+i\s+)?complain/i, 'How do I file a formal complaint?'],
-    ];
+    let bestScore = 0;
+    let bestCanonical = null;
 
-    for (const [pattern, canonical] of QUERY_MAP) {
-      if (pattern.test(q)) return canonical;
+    for (const entry of FAQ_INDEX) {
+      let score = 0;
+      for (const { kw, w } of entry.signals) {
+        if (kw.some(k => q.includes(k))) {
+          score += w;
+        }
+      }
+      if (score > bestScore) {
+        bestScore = score;
+        bestCanonical = entry.canonical;
+      }
     }
-    return raw; // return original if no mapping matched
+
+    // Minimum threshold: score of 5 means at least one strong signal matched
+    // (avoids false positives on very generic words like "card" or "account" alone)
+    if (bestScore >= 5) {
+      console.log(`[FAQ] Normalized "${raw}" → "${bestCanonical}" (score: ${bestScore})`);
+      return bestCanonical;
+    }
+
+    // Below threshold — send original query to the RAG as-is
+    return raw;
   };
 
   // ─── Warm reply for conversational closers ──────────────────────────────────
@@ -595,12 +576,12 @@ const ChatScreen = () => {
 
   // ─── FAQ send ───────────────────────────────────────────────────────────────
   const handleFaqSend = async (overrideQuery) => {
-    const q = (overrideQuery || faqQuery).trim();
-    if (!q) return;
+    const rawQ = (overrideQuery || faqQuery).trim();
+    if (!rawQ) return;
     setFaqQuery('');
 
-    if (isConversationalCloser(q)) {
-      handleConversationalClose(q);
+    if (isConversationalCloser(rawQ)) {
+      handleConversationalClose(rawQ);
       return;
     }
 
@@ -609,11 +590,15 @@ const ChatScreen = () => {
     setEscResult(null);
     setActiveEscMsgId(null);
 
-    addMsg({ id: Date.now(), sender: 'user', type: 'text', text: q, time: now() });
+    // Show the user's original text in the chat bubble
+    addMsg({ id: Date.now(), sender: 'user', type: 'text', text: rawQ, time: now() });
     setFaqLoading(true);
 
+    // Normalize to canonical FAQ question before hitting the API
+    const apiQuery = normalizeQuery(rawQ);
+
     try {
-      const res = await api.getFaqs(q);
+      const res = await api.getFaqs(apiQuery);
       const d = res?.data || {};
       const matchFound = d.success === true;
 
@@ -624,23 +609,25 @@ const ChatScreen = () => {
       const cleaned = cleanAnswer(rawAnswer);
 
       if (matchFound) {
-        const opener = getEmpathyOpener(q);
+        // Use the normalized query (canonical topic) for the empathy opener
+        // so "I want to block my card" gets the card-block opener, not a generic one
+        const opener = getEmpathyOpener(apiQuery);
         const fullText = `${opener}\n\n${cleaned}`;
-        // Pass topic for icon rendering
-        addMsg({ id: Date.now(), sender: 'ai', type: 'text', text: fullText, topic: q, time: now() });
+        addMsg({ id: Date.now(), sender: 'ai', type: 'text', text: fullText, topic: apiQuery, time: now() });
 
         setTimeout(() => {
           addMsg({
             id: Date.now() + 1, sender: 'ai', type: 'resolution-check',
-            originalQuery: q, time: now(),
+            originalQuery: rawQ, time: now(),
           });
         }, 600);
       } else {
-        const wordCount = q.trim().split(/\s+/).length;
-        const hasVerb = /\b(is|are|was|were|have|has|had|do|does|did|can|could|keep|keeps|want|need|help|fix|check|update|change|why|how|what|when|where|getting|showing|failed|failing|blocked|declined|missing|sent|charged|deducted|reversed|locked|stolen|lost)\b/i.test(q);
-        const hasSupportIntent = /\b(card|transfer|atm|account|limit|fraud|pin|balance|loan|statement|charge|debit|credit|transaction|payment|bank|money|fund|wallet|complaint)\b/i.test(q);
+        // API still didn't match — check if this is just too vague or genuinely unknown
+        const wordCount = rawQ.trim().split(/\s+/).length;
+        const hasSupportIntent = /\b(card|transfer|atm|account|limit|fraud|pin|balance|loan|statement|charge|debit|credit|transaction|payment|bank|money|fund|wallet|complaint|otp|bvn|nin|ussd|kyc|block|freeze|upgrade|cancel|salary|interest|savings|deposit)\b/i.test(rawQ);
+        const hasVerb = /\b(is|are|was|were|have|has|had|do|does|did|can|could|keep|keeps|want|need|help|fix|check|update|change|why|how|what|when|where|getting|showing|failed|failing|blocked|declined|missing|sent|charged|deducted|reversed|locked|stolen|lost|work|use|apply|request|find|get|see|view)\b/i.test(rawQ);
         const isTopicLabel = wordCount <= 4 && !hasVerb && hasSupportIntent;
-        const isMeaningless = wordCount <= 3 && !hasSupportIntent;
+        const isMeaningless = wordCount <= 2 && !hasSupportIntent;
 
         if (isMeaningless) {
           addMsg({
@@ -651,17 +638,18 @@ const ChatScreen = () => {
         } else if (isTopicLabel) {
           addMsg({
             id: Date.now(), sender: 'ai', type: 'text',
-            text: `I'd be happy to help with that. Could you describe what's happening in a little more detail? For example — which transaction, what error message you're seeing, or what you've already tried. The more you share, the better I can assist.`,
+            text: `I'd be happy to help with that. Could you describe what's happening in a little more detail? For example — what error you're seeing, which transaction it involves, or what you've already tried. The more detail you share, the faster I can assist.`,
             time: now(),
           });
         } else {
+          // Genuinely not in the knowledge base — escalate
           const escMsgId = Date.now();
-          const warmEscText = `I wasn't able to find a specific answer for your concern about "${q}" in our knowledge base. Let me connect you with the right support team — they'll review this personally and follow up with you directly.`;
           addMsg({
             id: escMsgId, sender: 'ai', type: 'escalation',
-            text: warmEscText, time: now(),
+            text: `I wasn't able to find a specific answer for your concern in our knowledge base. Let me connect you with the right support team — they'll review this personally and follow up with you directly.`,
+            time: now(),
           });
-          setEscQuery(q);
+          setEscQuery(rawQ);
           setActiveEscMsgId(escMsgId);
         }
       }
@@ -957,7 +945,7 @@ const ChatScreen = () => {
           )}
           <div className={`p-4 space-y-2 ${isRichAnswer && TopicIcon ? 'pt-3' : ''}`}>
             {/* Quick metadata chips for rich answers */}
-            {isRichAnswer && <QuickInfoBar text={msg.text} />}
+            {isRichAnswer && <QuickInfoBar text={msg.text} query={msg.topic || ''} />}
             {parseAnswer(msg.text)}
           </div>
         </div>
